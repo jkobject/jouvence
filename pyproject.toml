@@ -26,6 +26,9 @@ dependencies = [
   "tqdm==4.67.3",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8"]
+
 [tool.setuptools]
 include-package-data = true
 zip-safe = false

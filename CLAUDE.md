@@ -331,21 +331,16 @@ Functions in `manage_db/ingest_opentargets.py`:
       enhancers, 597,831 gene edges)
 - [x] Papers: done via OpenTargets europepmc in Phase 4 literature
 
-### Phase 6 — Edge credibility pipeline ⚠️ (partial — NOT complete)
+### Phase 6 — Edge credibility pipeline ✅ complete
 
-- [~] `_credibility_from_score(score, dtype) -> int` defined in
-  `ingest_opentargets.py` but **never tested end-to-end**
-- [ ] Needs handling of **composed edges** (A→C→B path vs A→B direct) where
-      evidence through an intermediary node should count differently than a
-      direct edge with multiple independent sources
-- [ ] Multi-source author-independence check: credibility 2 requires ≥2
-      independent author groups (different labs/institutions), not just 2 papers
-      from the same group
-- [ ] Deduplication across sources: if the same evidence is present in multiple
-      datasets (e.g. a drug-target interaction from both OpenTargets and
-      DrugBank), it should only count once toward credibility scoring
-- [ ] Full `score_credibility(source, evidence_list) -> int` pipeline with
-      edge-composition logic and proper deduplication across composed paths
+- `manage_db/credibility.py` now houses `score_credibility`, enforcing curated
+  database overrides, evidence deduplication, and author-group independence.
+- Composed A→C→B paths roll up through `merge_composed_path`, propagating the
+  weakest credibility and annotated intermediary context.
+- `dedup_edges` regenerates credibility from merged evidence while preserving
+  deterministic ordering across grouped edges.
+- End-to-end coverage lives in `tests/test_credibility.py`, executed via
+  `uv run --group dev pytest tests/test_credibility.py -v` on CI and locally.
 
 ### Phase 7 — Parquet storage layout
 

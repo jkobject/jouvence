@@ -48,6 +48,8 @@ try:
 except ImportError:
     from kg_schema import Credibility, NodeType  # type: ignore[no-redef]
 
+from .credibility import EdgeEvidence, score_credibility
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -280,11 +282,15 @@ def _make_edge(
 
 def _credibility_from_score(score: float, datatype: str) -> int:
     """Combine OT score with datatype-based credibility."""
-    base = DATATYPE_CREDIBILITY.get(datatype, Credibility.SINGLE_EVIDENCE)
-    # Bump up if score is very high and base allows it
-    if base < Credibility.ESTABLISHED_FACT and score >= 0.75:
-        return min(base + 1, Credibility.ESTABLISHED_FACT)
-    return base
+    return score_credibility([
+        EdgeEvidence(
+            source=f"opentargets:{datatype}",
+            paper_id=None,
+            author_group_key=None,
+            raw_score=float(score) if score is not None else None,
+            datatype=datatype,
+        )
+    ])
 
 
 # ---------------------------------------------------------------------------
