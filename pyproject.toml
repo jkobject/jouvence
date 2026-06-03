@@ -14,13 +14,16 @@ authors = [
 urls = { Homepage = "https://github.com/mims-harvard/TxGNN" }
 dynamic = ["version"]
 dependencies = [
+  "fsspec>=2024.5.0",
   "gcsfs>=2024.6.1",
+  "google-cloud-storage>=2.16.0",
   "goatools==1.5.2",
   "lamindb==2.2.1",
   "lnschema-txgnn",
   "matplotlib==3.10.8",
   "numpy==2.4.2",
   "ipython==7.2.0",
+  "pyarrow>=20",
   "pandas==3.0.0",
   "scikit-learn==1.8.0",
   "tqdm==4.67.3",

@@ -347,13 +347,18 @@ Functions in `manage_db/ingest_opentargets.py`:
 - End-to-end coverage lives in `tests/test_credibility.py`, executed via
   `uv run --group dev pytest tests/test_credibility.py -v` on CI and locally.
 
-### Phase 7 — Parquet storage layout
+### Phase 7 — Parquet storage layout ✅ (complete)
 
 ```
 data/kg/
   nodes/{gene,disease,protein,…}.parquet
   edges/{relation_name}.parquet
 ```
+
+- `manage_db/kg_storage.py` centralises pyarrow/fsspec writes, append deduplication, and provenance/metadata helpers.
+- `manage_db/ingest_opentargets.py` and `manage_db/kg_migrate.py` now flow through the storage layer for local paths and `gs://` URIs.
+- `manage_db/export_kg.py` exports legacy `data/kg` layouts into `kg/v2/`, writing provenance and `SUMMARY.md` for reproducibility.
+- `tests/test_kg_storage.py` covers atomic writes, schema validation, provenance, and an optional GCS smoke round-trip.
 
 ### Phase 8 — KGLoader + graph export
 

@@ -39,6 +39,11 @@ from pathlib import Path
 import pandas as pd
 
 try:
+    from . import kg_storage
+except ImportError:  # pragma: no cover - script fallback
+    import kg_storage  # type: ignore
+
+try:
     from .kg_schema import (
         LEGACY_NODE_TYPE_MAP, LEGACY_RELATION_MAP, LEGACY_RELATION_FLIP,
         NodeType, Credibility,
@@ -217,28 +222,30 @@ def migrate_edges(
 # I/O helpers
 # ---------------------------------------------------------------------------
 
-def save_nodes(nodes_df: pd.DataFrame, out_dir: Path, dry_run: bool) -> None:
-    node_dir = out_dir / "nodes"
-    if not dry_run:
-        node_dir.mkdir(parents=True, exist_ok=True)
-
+def save_nodes(nodes_df: pd.DataFrame, root: kg_storage.KGRoot, dry_run: bool) -> None:
     for nt_val, group in nodes_df.groupby("node_type"):
-        path = node_dir / f"{nt_val}.parquet"
         log.info("  nodes/%s.parquet  →  %d rows", nt_val, len(group))
-        if not dry_run:
-            group.reset_index(drop=True).to_parquet(path, index=False)
+        if dry_run:
+            continue
+        kg_storage.write_nodes(
+            root,
+            nt_val,
+            group.reset_index(drop=True).drop(columns=["node_type"], errors="ignore"),
+            mode="overwrite",
+        )
 
 
-def save_edges(edges_df: pd.DataFrame, out_dir: Path, dry_run: bool) -> None:
-    edge_dir = out_dir / "edges"
-    if not dry_run:
-        edge_dir.mkdir(parents=True, exist_ok=True)
-
+def save_edges(edges_df: pd.DataFrame, root: kg_storage.KGRoot, dry_run: bool) -> None:
     for rel, group in edges_df.groupby("relation"):
-        path = edge_dir / f"{rel}.parquet"
         log.info("  edges/%s.parquet  →  %d rows", rel, len(group))
-        if not dry_run:
-            group.reset_index(drop=True).to_parquet(path, index=False)
+        if dry_run:
+            continue
+        kg_storage.write_edges(
+            root,
+            rel,
+            group.reset_index(drop=True),
+            mode="overwrite",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +256,7 @@ def run(data_dir: Path, dry_run: bool = False) -> None:
     nodes_path = data_dir / "txdata" / "nodes.tab"
     edges_path = data_dir / "txdata" / "edges.csv"
     out_dir    = data_dir / "kg"
+    root = kg_storage.open_kg_root(str(out_dir))
 
     log.info("Loading nodes from %s", nodes_path)
     nodes_raw = pd.read_csv(nodes_path, sep="\t", dtype=str)
@@ -283,10 +291,10 @@ def run(data_dir: Path, dry_run: bool = False) -> None:
     if dry_run:
         log.info("DRY RUN — no files written")
     else:
-        log.info("Writing node parquets to %s/nodes/", out_dir)
-        save_nodes(new_nodes, out_dir, dry_run=False)
-        log.info("Writing edge parquets to %s/edges/", out_dir)
-        save_edges(new_edges, out_dir, dry_run=False)
+        log.info("Writing node parquets to %s/nodes/", root.uri)
+        save_nodes(new_nodes, root, dry_run=False)
+        log.info("Writing edge parquets to %s/edges/", root.uri)
+        save_edges(new_edges, root, dry_run=False)
         log.info("Done.")
 
     # ── Summary ──────────────────────────────────────────────────────────────
@@ -297,7 +305,7 @@ def run(data_dir: Path, dry_run: bool = False) -> None:
     print(f"  Output edges: {len(new_edges):,}")
     if unmapped_rels:
         print(f"  Unmapped relations ({len(unmapped_rels)}): {unmapped_rels}")
-    print(f"  Output dir  : {out_dir}")
+    print(f"  Output dir  : {root.uri}")
     if dry_run:
         print("  (dry run — nothing written)")
 

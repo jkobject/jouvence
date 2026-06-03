@@ -50,6 +50,11 @@ except ImportError:
 
 from .credibility import EdgeEvidence, score_credibility
 
+try:
+    from . import kg_storage
+except ImportError:  # pragma: no cover - script fallback
+    import kg_storage  # type: ignore
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -190,33 +195,23 @@ def _read_parquet_dir_chunked(
             log.warning("Could not read %s: %s", f, exc)
 
 
-def _merge_parquet(new_df: pd.DataFrame, out_path: Path, dedup_cols: list[str]) -> None:
-    """Append *new_df* to *out_path* (create if absent), deduplicating on *dedup_cols*."""
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    if out_path.exists():
-        existing = pd.read_parquet(out_path)
-        combined = pd.concat([existing, new_df], ignore_index=True)
-    else:
-        combined = new_df.copy()
-    combined = combined.drop_duplicates(subset=dedup_cols, keep="first")
-    combined.reset_index(drop=True).to_parquet(out_path, index=False)
-    log.info("  saved %s  (%d rows)", out_path.name, len(combined))
-
-
-def _save_edge_df(df: pd.DataFrame, out_dir: Path, relation: str) -> None:
-    """Merge edge DataFrame into the appropriate Parquet file."""
+def _save_edge_df(df: pd.DataFrame, root: kg_storage.KGRoot, relation: str) -> None:
+    """Append edge DataFrame into the canonical Parquet store."""
     if df.empty:
         return
-    out_path = out_dir / "edges" / f"{relation}.parquet"
-    _merge_parquet(df, out_path, dedup_cols=["x_id", "y_id", "relation", "source"])
+    kg_storage.write_edges(root, relation, df.reset_index(drop=True), mode="append")
 
 
-def _save_node_df(df: pd.DataFrame, out_dir: Path, node_type: str) -> None:
-    """Merge node DataFrame into the appropriate Parquet file."""
+def _save_node_df(df: pd.DataFrame, root: kg_storage.KGRoot, node_type: str) -> None:
+    """Append node DataFrame into the canonical Parquet store."""
     if df.empty:
         return
-    out_path = out_dir / "nodes" / f"{node_type}.parquet"
-    _merge_parquet(df, out_path, dedup_cols=["id"])
+    kg_storage.write_nodes(
+        root,
+        node_type,
+        df.reset_index(drop=True).drop(columns=["node_type"], errors="ignore"),
+        mode="append",
+    )
 
 
 def _write_chunk(df: pd.DataFrame, chunk_dir: Path) -> None:
@@ -230,13 +225,10 @@ def _write_chunk(df: pd.DataFrame, chunk_dir: Path) -> None:
 
 def _finalize_chunks(
     chunk_dir: Path,
-    out_path: Path,
+    write_fn,
     dedup_cols: list[str],
 ) -> int:
-    """Concat all chunk files, dedup, write to *out_path*, remove chunk_dir.
-
-    Returns the number of rows written, or 0 if no chunks exist.
-    """
+    """Concat chunk files, deduplicate, write via *write_fn*, then clean up."""
     import shutil
 
     files = sorted(chunk_dir.glob("*.parquet"))
@@ -244,10 +236,8 @@ def _finalize_chunks(
         return 0
     combined = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
     combined = combined.drop_duplicates(subset=dedup_cols, keep="first")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    combined.reset_index(drop=True).to_parquet(out_path, index=False)
+    write_fn(combined.reset_index(drop=True))
     shutil.rmtree(chunk_dir)
-    log.info("  saved %s  (%d rows)", out_path.name, len(combined))
     return len(combined)
 
 
@@ -297,7 +287,7 @@ def _credibility_from_score(score: float, datatype: str) -> int:
 # 1. Target ingestion → gene nodes
 # ---------------------------------------------------------------------------
 
-def ingest_targets(ot_dir: Path, out_dir: Path) -> int:
+def ingest_targets(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     """Ingest OT target dataset → gene nodes.
 
     Returns number of gene nodes written.
@@ -360,7 +350,7 @@ def ingest_targets(ot_dir: Path, out_dir: Path) -> int:
         })
 
     gene_df = pd.DataFrame(rows)
-    _save_node_df(gene_df, out_dir, NodeType.GENE.value)
+    _save_node_df(gene_df, root, NodeType.GENE.value)
     log.info("  %d gene nodes saved", len(gene_df))
     return len(gene_df)
 
@@ -369,7 +359,7 @@ def ingest_targets(ot_dir: Path, out_dir: Path) -> int:
 # 2. Disease ingestion → disease nodes
 # ---------------------------------------------------------------------------
 
-def ingest_diseases(ot_dir: Path, out_dir: Path) -> int:
+def ingest_diseases(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     """Ingest OT disease dataset → disease nodes.
 
     Returns number of disease nodes written.
@@ -417,7 +407,7 @@ def ingest_diseases(ot_dir: Path, out_dir: Path) -> int:
         })
 
     disease_df = pd.DataFrame(rows)
-    _save_node_df(disease_df, out_dir, NodeType.DISEASE.value)
+    _save_node_df(disease_df, root, NodeType.DISEASE.value)
 
     # Also save disease hierarchy edges (parents)
     hier_rows = []
@@ -436,7 +426,7 @@ def ingest_diseases(ot_dir: Path, out_dir: Path) -> int:
                     ))
 
     if hier_rows:
-        _save_edge_df(pd.DataFrame(hier_rows), out_dir, "disease_subtype_of_disease")
+        _save_edge_df(pd.DataFrame(hier_rows), root, "disease_subtype_of_disease")
 
     log.info("  %d disease nodes, %d hierarchy edges saved", len(disease_df), len(hier_rows))
     return len(disease_df)
@@ -446,7 +436,7 @@ def ingest_diseases(ot_dir: Path, out_dir: Path) -> int:
 # 3. Drug / molecule ingestion → molecule nodes
 # ---------------------------------------------------------------------------
 
-def ingest_drugs(ot_dir: Path, out_dir: Path) -> int:
+def ingest_drugs(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     """Ingest OT drug/molecule dataset → molecule nodes.
 
     Returns number of molecule nodes written.
@@ -509,7 +499,7 @@ def ingest_drugs(ot_dir: Path, out_dir: Path) -> int:
         })
 
     mol_df = pd.DataFrame(rows)
-    _save_node_df(mol_df, out_dir, NodeType.MOLECULE.value)
+    _save_node_df(mol_df, root, NodeType.MOLECULE.value)
     log.info("  %d molecule nodes saved", len(mol_df))
     return len(mol_df)
 
@@ -518,7 +508,7 @@ def ingest_drugs(ot_dir: Path, out_dir: Path) -> int:
 # 4. Interaction ingestion → protein_interacts_protein edges
 # ---------------------------------------------------------------------------
 
-def ingest_interactions(ot_dir: Path, out_dir: Path) -> int:
+def ingest_interactions(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     """Ingest OT interaction dataset → protein_interacts_protein edges.
 
     Returns number of edges written.
@@ -570,9 +560,14 @@ def ingest_interactions(ot_dir: Path, out_dir: Path) -> int:
             _write_chunk(pd.DataFrame(rows), chunk_dir)
             n_chunks += len(rows)
 
-    out_path = out_dir / "edges" / "protein_interacts_protein.parquet"
     n_written = _finalize_chunks(
-        chunk_dir, out_path,
+        chunk_dir,
+        lambda df: kg_storage.write_edges(
+            root,
+            "protein_interacts_protein",
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=["x_id", "y_id", "relation", "source"],
     )
     log.info("  %d PPI edges saved", n_written)
@@ -583,7 +578,7 @@ def ingest_interactions(ot_dir: Path, out_dir: Path) -> int:
 # 5. Evidence ingestion → disease_associated_gene + drug edges
 # ---------------------------------------------------------------------------
 
-def ingest_evidence(ot_dir: Path, out_dir: Path) -> dict[str, int]:
+def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
     """Ingest OT evidence datasets (evidence_*) into multiple edge Parquets.
 
     OT splits evidence into ~20 separate directories named evidence_<source>.
@@ -730,7 +725,7 @@ def ingest_evidence(ot_dir: Path, out_dir: Path) -> dict[str, int]:
 # 6. GO ingestion → pathway nodes + pathway_contains_gene edges
 # ---------------------------------------------------------------------------
 
-def ingest_go(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
+def ingest_go(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int, int]:
     """Ingest GO annotations → pathway (GO) nodes + pathway_contains_gene edges.
 
     OT's go/ directory only contains GO term definitions (id, name).
@@ -813,9 +808,9 @@ def ingest_go(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
                 ))
 
     if pathway_rows:
-        _save_node_df(pd.DataFrame(pathway_rows), out_dir, NodeType.PATHWAY.value)
+        _save_node_df(pd.DataFrame(pathway_rows), root, NodeType.PATHWAY.value)
     if edge_rows:
-        _save_edge_df(pd.DataFrame(edge_rows), out_dir, "pathway_contains_gene")
+        _save_edge_df(pd.DataFrame(edge_rows), root, "pathway_contains_gene")
 
     log.info("  %d GO pathway nodes, %d pathway→gene edges", len(pathway_rows), len(edge_rows))
     return len(pathway_rows), len(edge_rows)
@@ -825,7 +820,7 @@ def ingest_go(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
 # 7. Reactome ingestion → pathway nodes + hierarchy edges
 # ---------------------------------------------------------------------------
 
-def ingest_reactome(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
+def ingest_reactome(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int, int]:
     """Ingest OT reactome dataset → pathway nodes + pathway_child_of_pathway edges.
 
     Returns (n_pathway_nodes, n_hierarchy_edges).
@@ -870,9 +865,9 @@ def ingest_reactome(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
                     ))
 
     if pathway_rows:
-        _save_node_df(pd.DataFrame(pathway_rows), out_dir, NodeType.PATHWAY.value)
+        _save_node_df(pd.DataFrame(pathway_rows), root, NodeType.PATHWAY.value)
     if hier_rows:
-        _save_edge_df(pd.DataFrame(hier_rows), out_dir, "pathway_child_of_pathway")
+        _save_edge_df(pd.DataFrame(hier_rows), root, "pathway_child_of_pathway")
 
     log.info("  %d Reactome pathway nodes, %d hierarchy edges", len(pathway_rows), len(hier_rows))
     return len(pathway_rows), len(hier_rows)
@@ -882,7 +877,7 @@ def ingest_reactome(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
 # 8. Literature ingestion → paper nodes + mention edges
 # ---------------------------------------------------------------------------
 
-def ingest_literature(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
+def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int, int]:
     """Ingest paper mentions from evidence_europepmc → paper nodes + mention edges.
 
     OT's literature_vector directory contains word embeddings, not paper mentions.
@@ -962,15 +957,33 @@ def ingest_literature(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
             _write_chunk(pd.DataFrame(disease_mention_rows), dis_chunks)
 
     n_papers = _finalize_chunks(
-        paper_chunks, out_dir / "nodes" / f"{NodeType.PAPER.value}.parquet",
+        paper_chunks,
+        lambda df: kg_storage.write_nodes(
+            root,
+            NodeType.PAPER.value,
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=["id"],
     )
     n_gene = _finalize_chunks(
-        gene_chunks, out_dir / "edges" / "paper_mentions_gene.parquet",
+        gene_chunks,
+        lambda df: kg_storage.write_edges(
+            root,
+            "paper_mentions_gene",
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=["x_id", "y_id", "relation", "source"],
     )
     n_dis = _finalize_chunks(
-        dis_chunks, out_dir / "edges" / "paper_mentions_disease.parquet",
+        dis_chunks,
+        lambda df: kg_storage.write_edges(
+            root,
+            "paper_mentions_disease",
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=["x_id", "y_id", "relation", "source"],
     )
     total_mentions = n_gene + n_dis
@@ -982,7 +995,7 @@ def ingest_literature(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
 # 9. Indication ingestion → molecule_treats/contraindicates_disease
 # ---------------------------------------------------------------------------
 
-def ingest_indication(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
+def ingest_indication(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int, int]:
     """Ingest OT indication dataset (EMA/FDA approved indications).
 
     Returns (n_indication_edges, n_contraindication_edges).
@@ -1048,9 +1061,9 @@ def ingest_indication(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
                 ))
 
     if treat_rows:
-        _save_edge_df(pd.DataFrame(treat_rows), out_dir, "molecule_treats_disease")
+        _save_edge_df(pd.DataFrame(treat_rows), root, "molecule_treats_disease")
     if contra_rows:
-        _save_edge_df(pd.DataFrame(contra_rows), out_dir, "molecule_contraindicates_disease")
+        _save_edge_df(pd.DataFrame(contra_rows), root, "molecule_contraindicates_disease")
 
     log.info("  %d indication edges, %d contraindication edges",
              len(treat_rows), len(contra_rows))
@@ -1061,7 +1074,7 @@ def ingest_indication(ot_dir: Path, out_dir: Path) -> tuple[int, int]:
 # 10. mechanismOfAction → molecule_targets_protein edges
 # ---------------------------------------------------------------------------
 
-def ingest_mechanism_of_action(ot_dir: Path, out_dir: Path) -> int:
+def ingest_mechanism_of_action(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     """Ingest OT mechanismOfAction dataset → molecule_targets_protein edges.
 
     Returns number of edges written.
@@ -1114,7 +1127,7 @@ def ingest_mechanism_of_action(ot_dir: Path, out_dir: Path) -> int:
                 ))
 
     if edge_rows:
-        _save_edge_df(pd.DataFrame(edge_rows), out_dir, "molecule_targets_protein")
+        _save_edge_df(pd.DataFrame(edge_rows), root, "molecule_targets_protein")
     log.info("  %d molecule→gene (MoA) edges saved", len(edge_rows))
     return len(edge_rows)
 
@@ -1140,7 +1153,7 @@ ALL_DATASETS = [
 # Phase 5a — Disease-phenotype (HPO) associations
 # ---------------------------------------------------------------------------
 
-def ingest_disease_phenotype(ot_dir: Path, out_dir: Path) -> int:
+def ingest_disease_phenotype(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     """Ingest disease-phenotype associations → ``disease_has_phenotype`` edges.
 
     Source: ``data/opentargets/disease_phenotype/``
@@ -1208,9 +1221,7 @@ def ingest_disease_phenotype(ot_dir: Path, out_dir: Path) -> int:
 
     df = pd.DataFrame(rows)
     df = df.drop_duplicates(subset=["x_id", "y_id", "relation", "source"], keep="first")
-    out_path = out_dir / "edges" / "disease_has_phenotype.parquet"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    df.reset_index(drop=True).to_parquet(out_path, index=False)
+    _save_edge_df(df, root, "disease_has_phenotype")
     log.info("  saved disease_has_phenotype.parquet  (%d rows)", len(df))
     return len(df)
 
@@ -1219,7 +1230,7 @@ def ingest_disease_phenotype(ot_dir: Path, out_dir: Path) -> int:
 # Phase 5b — Gene expression (GTEx / HPA via OpenTargets)
 # ---------------------------------------------------------------------------
 
-def ingest_expression(ot_dir: Path, out_dir: Path) -> dict[str, int]:
+def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
     """Ingest gene-expression data → tissue/cell-type expression edges.
 
     Source: ``data/opentargets/expression/``
@@ -1298,9 +1309,7 @@ def ingest_expression(ot_dir: Path, out_dir: Path) -> dict[str, int]:
             results[relation] = 0
             continue
         df = pd.DataFrame(rows).drop_duplicates(subset=dedup, keep="first")
-        out_path = out_dir / "edges" / f"{relation}.parquet"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        df.reset_index(drop=True).to_parquet(out_path, index=False)
+        _save_edge_df(df, root, relation)
         log.info("  saved %s.parquet  (%d rows)", relation, len(df))
         results[relation] = len(df)
 
@@ -1311,7 +1320,7 @@ def ingest_expression(ot_dir: Path, out_dir: Path) -> dict[str, int]:
 # Phase 5c — Biosample (cell-type and tissue node registry)
 # ---------------------------------------------------------------------------
 
-def ingest_biosample(ot_dir: Path, out_dir: Path) -> dict[str, int]:
+def ingest_biosample(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
     """Register cell-type and tissue nodes from the OpenTargets biosample table.
 
     Source: ``data/opentargets/biosample/``
@@ -1351,9 +1360,7 @@ def ingest_biosample(ot_dir: Path, out_dir: Path) -> dict[str, int]:
             results[ntype] = 0
             continue
         df = pd.DataFrame(rows).drop_duplicates(subset=["id"], keep="first")
-        out_path = out_dir / "nodes" / f"{ntype}.parquet"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        df.reset_index(drop=True).to_parquet(out_path, index=False)
+        _save_node_df(df, root, ntype)
         log.info("  saved nodes/%s.parquet  (%d rows)", ntype, len(df))
         results[ntype] = len(df)
 
@@ -1364,7 +1371,7 @@ def ingest_biosample(ot_dir: Path, out_dir: Path) -> dict[str, int]:
 # Phase 5d — Pharmacogenomics (variant–drug response)
 # ---------------------------------------------------------------------------
 
-def ingest_pharmacogenomics(ot_dir: Path, out_dir: Path) -> int:
+def ingest_pharmacogenomics(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     """Ingest pharmacogenomics data → ``mutation_affects_molecule_response`` edges.
 
     Source: ``data/opentargets/pharmacogenomics/``
@@ -1430,9 +1437,7 @@ def ingest_pharmacogenomics(ot_dir: Path, out_dir: Path) -> int:
 
     df = pd.DataFrame(rows)
     df = df.drop_duplicates(subset=["x_id", "y_id", "relation", "source"], keep="first")
-    out_path = out_dir / "edges" / "mutation_affects_molecule_response.parquet"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    df.reset_index(drop=True).to_parquet(out_path, index=False)
+    _save_edge_df(df, root, "mutation_affects_molecule_response")
     log.info("  saved mutation_affects_molecule_response.parquet  (%d rows)", len(df))
     return len(df)
 
@@ -1441,7 +1446,7 @@ def ingest_pharmacogenomics(ot_dir: Path, out_dir: Path) -> int:
 # Phase 5e — Variant (mutation nodes + consequence edges)
 # ---------------------------------------------------------------------------
 
-def ingest_variants(ot_dir: Path, out_dir: Path) -> dict[str, int]:
+def ingest_variants(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
     """Ingest variant data → mutation nodes + gene/transcript/protein edges.
 
     Source: ``data/opentargets/variant/`` (25 parquet files, large)
@@ -1581,22 +1586,42 @@ def ingest_variants(ot_dir: Path, out_dir: Path) -> dict[str, int]:
     results: dict[str, int] = {}
     results["mutation"] = _finalize_chunks(
         mut_chunks,
-        out_dir / "nodes" / f"{NodeType.MUTATION.value}.parquet",
+        lambda df: kg_storage.write_nodes(
+            root,
+            NodeType.MUTATION.value,
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=["id"],
     )
     results["mutation_in_gene"] = _finalize_chunks(
         gene_chunks,
-        out_dir / "edges" / "mutation_in_gene.parquet",
+        lambda df: kg_storage.write_edges(
+            root,
+            "mutation_in_gene",
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=dedup_edge,
     )
     results["mutation_affects_transcript"] = _finalize_chunks(
         tx_chunks,
-        out_dir / "edges" / "mutation_affects_transcript.parquet",
+        lambda df: kg_storage.write_edges(
+            root,
+            "mutation_affects_transcript",
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=dedup_edge,
     )
     results["mutation_causes_protein_change"] = _finalize_chunks(
         prot_chunks,
-        out_dir / "edges" / "mutation_causes_protein_change.parquet",
+        lambda df: kg_storage.write_edges(
+            root,
+            "mutation_causes_protein_change",
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=dedup_edge,
     )
     return results
@@ -1606,7 +1631,7 @@ def ingest_variants(ot_dir: Path, out_dir: Path) -> dict[str, int]:
 # Phase 5f — Enhancer-to-gene (E2G predictions)
 # ---------------------------------------------------------------------------
 
-def ingest_enhancers(ot_dir: Path, out_dir: Path) -> dict[str, int]:
+def ingest_enhancers(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
     """Ingest enhancer-to-gene links → enhancer nodes + regulatory edges.
 
     Source: ``data/opentargets/enhancer_to_gene/`` (83 parquet files)
@@ -1709,22 +1734,42 @@ def ingest_enhancers(ot_dir: Path, out_dir: Path) -> dict[str, int]:
     results: dict[str, int] = {}
     results["enhancer"] = _finalize_chunks(
         enh_node_chks,
-        out_dir / "nodes" / f"{NodeType.ENHANCER.value}.parquet",
+        lambda df: kg_storage.write_nodes(
+            root,
+            NodeType.ENHANCER.value,
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=["id"],
     )
     results["enhancer_regulates_gene"] = _finalize_chunks(
         gene_edge_chks,
-        out_dir / "edges" / "enhancer_regulates_gene.parquet",
+        lambda df: kg_storage.write_edges(
+            root,
+            "enhancer_regulates_gene",
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=dedup_edge,
     )
     results["enhancer_active_in_tissue"] = _finalize_chunks(
         tis_edge_chks,
-        out_dir / "edges" / "enhancer_active_in_tissue.parquet",
+        lambda df: kg_storage.write_edges(
+            root,
+            "enhancer_active_in_tissue",
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=dedup_edge,
     )
     results["enhancer_active_in_cell_type"] = _finalize_chunks(
         ct_edge_chks,
-        out_dir / "edges" / "enhancer_active_in_cell_type.parquet",
+        lambda df: kg_storage.write_edges(
+            root,
+            "enhancer_active_in_cell_type",
+            df,
+            mode="overwrite",
+        ),
         dedup_cols=dedup_edge,
     )
     return results
@@ -1782,6 +1827,7 @@ def run(
     ot_dir  = data_dir / "opentargets"
     out_dir = data_dir / "kg"
     out_dir.mkdir(parents=True, exist_ok=True)
+    kg_root = kg_storage.open_kg_root(str(out_dir))
 
     # ── Download ─────────────────────────────────────────────────────────────
     if download:
@@ -1809,7 +1855,7 @@ def run(
             continue
         log.info("\n=== Ingesting %s ===", ds_name)
         try:
-            result = fn(ot_dir, out_dir)
+            result = fn(ot_dir, out_dir, kg_root)
             summary[ds_name] = result
         except FileNotFoundError as exc:
             log.error("Dataset %r not found: %s", ds_name, exc)
