@@ -177,14 +177,17 @@ def write_nodes(
     for col in required:
         df[col] = df[col].astype("string[pyarrow]")
 
-    if mode == "append" and root.exists(root.node_path(node_type)):
-        existing = read_nodes(root, node_type)
-        df = pd.concat([existing, df], ignore_index=True)
-        df = df.drop_duplicates(subset=["id"], keep="last")
+    combined = df
+    if mode == "append":
+        node_internal = root._node_internal(node_type)
+        if root.fs.exists(node_internal):
+            existing = read_nodes(root, node_type)
+            combined = pd.concat([existing, df], ignore_index=True)
+    combined = combined.drop_duplicates(subset=["id"], keep="last")
 
-    arrow_table = pa.Table.from_pandas(df, preserve_index=False)
+    arrow_table = pa.Table.from_pandas(combined, preserve_index=False)
     _atomic_write(root, root._node_internal(node_type), arrow_table)
-    return len(df)
+    return len(combined)
 
 
 def write_edges(
@@ -204,14 +207,18 @@ def write_edges(
         df[col] = df[col].astype("string[pyarrow]")
     df["credibility"] = pd.to_numeric(df["credibility"], errors="raise").astype("int64")
 
-    if mode == "append" and root.exists(root.edge_path(relation)):
-        existing = read_edges(root, relation)
-        df = pd.concat([existing, df], ignore_index=True)
-        df = dedup_edges(df)
+    combined = df
+    if mode == "append":
+        edge_internal = root._edge_internal(relation)
+        if root.fs.exists(edge_internal):
+            existing = read_edges(root, relation)
+            combined = pd.concat([existing, df], ignore_index=True)
 
-    arrow_table = pa.Table.from_pandas(df, preserve_index=False)
+    deduped = dedup_edges(combined)
+
+    arrow_table = pa.Table.from_pandas(deduped, preserve_index=False)
     _atomic_write(root, root._edge_internal(relation), arrow_table)
-    return len(df)
+    return len(deduped)
 
 
 def read_nodes(root: KGRoot, node_type: str, columns: list[str] | None = None) -> pd.DataFrame:

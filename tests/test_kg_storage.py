@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from manage_db import kg_storage
+from manage_db.credibility import Credibility
 
 
 def _sample_node_df() -> pd.DataFrame:
@@ -111,6 +112,68 @@ def test_append_dedups_edges(tmp_path: Path) -> None:
     result = kg_storage.read_edges(root, "disease_associated_gene")
     assert len(result) == 1
     assert {"x_id", "y_id", "relation"} <= set(result.columns)
+
+
+def test_append_preserves_existing_rows(tmp_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+
+    batch_one = pd.DataFrame(
+        {
+            "x_id": ["ENSG000001", "ENSG000002", "ENSG000003"],
+            "x_type": ["gene", "gene", "gene"],
+            "y_id": ["EFO:0000305", "EFO:0000306", "EFO:0000307"],
+            "y_type": ["disease", "disease", "disease"],
+            "relation": ["disease_associated_gene"] * 3,
+            "display_relation": ["associated"] * 3,
+            "source": ["test"] * 3,
+            "credibility": [1, 1, 1],
+        }
+    ).convert_dtypes(dtype_backend="pyarrow")
+
+    batch_two = pd.DataFrame(
+        {
+            "x_id": ["ENSG000001"],
+            "x_type": ["gene"],
+            "y_id": ["EFO:0000305"],
+            "y_type": ["disease"],
+            "relation": ["disease_associated_gene"],
+            "display_relation": ["associated"],
+            "source": ["test"],
+            "credibility": [1],
+        }
+    ).convert_dtypes(dtype_backend="pyarrow")
+
+    kg_storage.write_edges(root, "disease_associated_gene", batch_one)
+    kg_storage.write_edges(root, "disease_associated_gene", batch_two, mode="append")
+
+    result = kg_storage.read_edges(root, "disease_associated_gene")
+    assert len(result) == 3
+    pairs = set(zip(result["x_id"], result["y_id"]))
+    expected_pairs = {
+        ("ENSG000001", "EFO:0000305"),
+        ("ENSG000002", "EFO:0000306"),
+        ("ENSG000003", "EFO:0000307"),
+    }
+    assert pairs == expected_pairs
+
+
+def test_append_recomputes_credibility_across_batches(tmp_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+
+    base = _sample_edge_df()
+    curated = base.copy()
+    curated["source"] = ["drugbank"]
+    curated["credibility"] = [Credibility.ESTABLISHED_FACT]
+
+    kg_storage.write_edges(root, "disease_associated_gene", base)
+    kg_storage.write_edges(root, "disease_associated_gene", curated, mode="append")
+
+    result = kg_storage.read_edges(root, "disease_associated_gene").convert_dtypes(
+        dtype_backend="pyarrow"
+    )
+    assert len(result) == 1
+    assert result.loc[0, "credibility"] == Credibility.ESTABLISHED_FACT
+    assert "drugbank" in result.loc[0, "source"]
 
 
 def test_provenance_json_roundtrip(tmp_path: Path) -> None:
