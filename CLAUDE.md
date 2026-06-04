@@ -59,6 +59,11 @@ the lamin instance for this is jkobject/jouvencekb and requires authentication
 from jkobject and a gsutil command access setup with the jkobject project id
 jkobject-1549353370965
 
+### I1 — bionty/pertdb populated (2026-06-04)
+- Run: `python -m manage_db.i1_bionty_pertdb_import` (idempotent)
+- Output: see `i1_run.log` for counts; executed notebook at `notebooks/1_lamindb_instance_setup.executed.ipynb`.
+- HP (Human Phenotype Ontology) is the active Phenotype source (PATO disabled per §7).
+
 ## Data
 
 - Knowledge graph CSVs: `data/kg.csv`, `node.csv`, `edges.csv` (Harvard
