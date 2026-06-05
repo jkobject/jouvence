@@ -366,15 +366,17 @@ data/kg/
 - `manage_db/export_kg.py` exports legacy `data/kg` layouts into `kg/v2/`, writing provenance and `SUMMARY.md` for reproducibility.
 - `tests/test_kg_storage.py` covers atomic writes, schema validation, provenance, and an optional GCS smoke round-trip.
 
-### Phase 8 — KGLoader + graph export
+### Phase 8 — KGLoader + graph export ✅ (complete)
 
-- `KGLoader(data_dir)` scans node/edge parquets, builds index maps
-- `to_pyg()` → `torch_geometric.data.HeteroData`
-- `to_dgl()` → `dgl.heterograph` (backward compat)
-- Integrate with `TxData.prepare_split()`
+- `txgnn.KGLoader(data_dir)` scans node/edge parquets and builds stable node ID maps.
+- `KGLoader.validate()` reports node counts, edge counts, and dangling-edge counts.
+- `KGLoader.edge_index_frames()` exports integer edge tables keyed by canonical edge type.
+- `to_pyg()` → `torch_geometric.data.HeteroData` when optional PyG deps are installed.
+- `to_dgl()` → `dgl.heterograph` when optional DGL deps are installed.
+- `txgnn.__init__` uses lazy heavy imports so `from txgnn import KGLoader` works without importing DGL.
 
 ### Phase 9 — Validation
 
-- Node ontology coverage stats
-- Dangling edge checks
+- [x] Dangling edge checks (`KGLoader.validate()`)
+- [ ] Node ontology coverage stats
 - Smoke-test: load full graph into PyG
