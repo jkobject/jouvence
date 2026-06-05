@@ -64,6 +64,12 @@ jkobject-1549353370965
 - Output: see `i1_run.log` for counts; executed notebook at `notebooks/1_lamindb_instance_setup.executed.ipynb`.
 - HP (Human Phenotype Ontology) is the active Phenotype source (PATO disabled per §7).
 
+### I2 — custom records + node sync (2026-06-05)
+- Run: `python -m manage_db.i2_custom_records_and_sync` (idempotent).
+- 5 custom `lnschema_txgnn` record types deployed (Paper, Transcript, Enhancer, Dataset, Mutation).
+- Sync mapped 129,375 nodes (existing=125,744, created=30, uncertain=3,601); see `data/txdata/node_entity_mapping.csv`.
+- Executed notebook: `notebooks/2_manage_db_setup.executed.ipynb`.
+
 ## Data
 
 - Knowledge graph CSVs: `data/kg.csv`, `node.csv`, `edges.csv` (Harvard

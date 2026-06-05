@@ -10,8 +10,14 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import time
 
 import pandas as pd
+
+try:
+    from django.core.exceptions import ObjectDoesNotExist
+except Exception:  # pragma: no cover - django is available in LaminDB runtime
+    ObjectDoesNotExist = Exception  # type: ignore[assignment]
 
 
 @dataclass(frozen=True)
@@ -22,6 +28,42 @@ class _MappingSpec:
     key_field: str
     key_value: str
     create_kwargs: dict[str, Any]
+
+
+def _is_locked(exc: BaseException) -> bool:
+    return "database is locked" in str(exc).lower()
+
+
+def _db_retry(label: str, func, retries: int = 10, delay: float = 5.0, max_delay: float = 120.0):
+    wait = delay
+    for attempt in range(1, retries + 1):
+        try:
+            return func()
+        except Exception as exc:
+            if _is_locked(exc) and attempt < retries:
+                print(f"{label}: database locked, retrying in {wait:.1f}s ({attempt}/{retries})")
+                time.sleep(wait)
+                wait = min(wait * 2, max_delay)
+                continue
+            raise
+
+
+def _from_source_or_none(label: str, func):
+    try:
+        return _db_retry(label, func)
+    except ObjectDoesNotExist:
+        return None
+
+
+def _configure_sqlite_timeout(timeout_ms: int = 600_000) -> None:
+    try:
+        from django.db import connection
+
+        if connection.vendor == "sqlite":
+            with connection.cursor() as cursor:
+                cursor.execute(f"PRAGMA busy_timeout = {int(timeout_ms)}")
+    except Exception:
+        pass
 
 
 def _read_nodes(nodes_path: str | Path) -> pd.DataFrame:
@@ -70,13 +112,11 @@ def _build_mapping_spec(
     ontology_id = _prefixed_id(node_source, node_id, node_type)
 
     if node_type == "gene/protein":
-        stable_id = f"NCBI:{node_id}"
         return _MappingSpec(
             registry="bionty.Gene",
-            key_field="stable_id",
-            key_value=stable_id,
+            key_field="symbol",
+            key_value=node_name,
             create_kwargs={
-                "stable_id": stable_id,
                 "symbol": node_name if node_name else None,
                 "ncbi_gene_ids": node_id,
             },
@@ -177,6 +217,7 @@ def sync_txgnn_nodes_to_lamin_entities(
 
     if lamin_instance:
         ln.connect(lamin_instance)
+    _configure_sqlite_timeout()
 
     nodes = _read_nodes(nodes_path)
 
@@ -189,15 +230,21 @@ def sync_txgnn_nodes_to_lamin_entities(
         "pertdb.Compound": pt.Compound,
         "pertdb.EnvironmentalPerturbation": pt.EnvironmentalPerturbation,
     }
-    human_organism = bt.Organism.objects.filter(name__iexact="human").first()
+    human_organism = _db_retry(
+        "lookup human organism",
+        lambda: bt.Organism.objects.filter(name__iexact="human").first(),
+    )
     if human_organism is None:
-        human_organism = bt.Organism.from_source(name="human")
+        human_organism = _db_retry(
+            "load human organism",
+            lambda: bt.Organism.from_source(name="human"),
+        )
         if isinstance(human_organism, list):
             human_organism = human_organism[0] if human_organism else None
         if human_organism is None:
             human_organism = bt.Organism(name="human")
         if getattr(human_organism, "_state", None) is not None and human_organism._state.adding:
-            human_organism = human_organism.save()
+            human_organism = _db_retry("save human organism", human_organism.save)
     public_genes = bt.Gene.public(organism="human")
     if hasattr(public_genes, "to_dataframe"):
         public_genes_df = public_genes.to_dataframe()
@@ -236,11 +283,24 @@ def sync_txgnn_nodes_to_lamin_entities(
         values = list(values_set)
         for start in range(0, len(values), chunk_size):
             chunk = values[start : start + chunk_size]
-            existing_rows = model.objects.filter(**{f"{key_field}__in": chunk}).values_list(
-                key_field, "uid"
+            existing_rows = _db_retry(
+                f"prefetch {registry_name}.{key_field}",
+                lambda model=model, key_field=key_field, chunk=chunk: list(
+                    model.objects.filter(**{f"{key_field}__in": chunk}).values_list(key_field, "uid")
+                ),
             )
-            for key_value, uid in existing_rows:
-                cache[(registry_name, key_field, str(key_value))] = ("existing", str(uid))
+            if registry_name == "bionty.Gene" and key_field == "symbol":
+                gene_hits: dict[str, set[str]] = defaultdict(set)
+                for key_value, uid in existing_rows:
+                    gene_hits[str(key_value)].add(str(uid))
+                for key_value, uids in gene_hits.items():
+                    if len(uids) == 1:
+                        cache[(registry_name, key_field, key_value)] = ("existing", next(iter(uids)))
+                    else:
+                        cache[(registry_name, key_field, key_value)] = ("uncertain", "")
+            else:
+                for key_value, uid in existing_rows:
+                    cache[(registry_name, key_field, str(key_value))] = ("existing", str(uid))
 
     for cache_key, create_kwargs in unique_keys.items():
         if cache_key in cache:
@@ -263,7 +323,10 @@ def sync_txgnn_nodes_to_lamin_entities(
                 if ncbi_gene_id not in public_gene_ncbi_by_symbol.get(symbol, set()):
                     cache[cache_key] = ("uncertain", "")
                     continue
-                created = model.from_source(symbol=symbol, organism=human_organism, mute=True)
+                created = _from_source_or_none(
+                    f"from_source {registry_name} {symbol}",
+                    lambda model=model, symbol=symbol: model.from_source(symbol=symbol, organism=human_organism, mute=True),
+                )
                 if isinstance(created, list):
                     created = created[0] if created else None
                 if created is None:
@@ -275,20 +338,26 @@ def sync_txgnn_nodes_to_lamin_entities(
                     cache[cache_key] = ("uncertain", "")
                     continue
                 if getattr(created, "_state", None) is not None and created._state.adding:
-                    created = created.save()
+                    created = _db_retry(f"save {registry_name} {symbol}", created.save)
             elif registry_name.startswith("bionty.") and create_kwargs.get("ontology_id"):
-                created = model.from_source(ontology_id=key_value, mute=True)
+                created = _from_source_or_none(
+                    f"from_source {registry_name} {key_value}",
+                    lambda model=model, key_value=key_value: model.from_source(ontology_id=key_value, mute=True),
+                )
                 if isinstance(created, list):
                     created = created[0] if created else None
                 if created is None:
                     created = model(**create_kwargs)
                 if getattr(created, "_state", None) is not None and created._state.adding:
-                    created = created.save()
+                    created = _db_retry(f"save {registry_name} {key_value}", created.save)
             elif registry_name.startswith("bionty."):
                 cache[cache_key] = ("uncertain", "")
                 continue
             else:
-                created = model(**create_kwargs).save()
+                created = _db_retry(
+                    f"save {registry_name} {key_value}",
+                    lambda model=model, create_kwargs=create_kwargs: model(**create_kwargs).save(),
+                )
             cache[cache_key] = ("created", str(created.uid))
 
     mapping_rows: list[dict[str, Any]] = []
