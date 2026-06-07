@@ -184,6 +184,20 @@ def dedup_edges(
     if edges_df.empty:
         return edges_df.copy()
 
+    evidence_cols = {"paper_id", "author_group_key", "raw_score", "datatype"}
+    has_evidence_columns = any(col in edges_df.columns for col in evidence_cols)
+    credibility = pd.to_numeric(edges_df.get("credibility"), errors="coerce")
+    if (
+        not has_evidence_columns
+        and bool((credibility == Credibility.ESTABLISHED_FACT).all())
+        and edges_df["source"].nunique(dropna=False) == 1
+    ):
+        return (
+            edges_df.drop_duplicates(subset=list(key_cols), keep="first")
+            .sort_values(list(key_cols))
+            .reset_index(drop=True)
+        )
+
     columns = list(edges_df.columns)
     grouped_rows: list[pd.Series] = []
 
@@ -236,4 +250,3 @@ def _coerce_optional_float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
-

@@ -365,6 +365,7 @@ data/kg/
 - `manage_db/ingest_opentargets.py` and `manage_db/kg_migrate.py` now flow through the storage layer for local paths and `gs://` URIs.
 - `manage_db/export_kg.py` exports legacy `data/kg` layouts into `kg/v2/`, writing provenance and `SUMMARY.md` for reproducibility.
 - `tests/test_kg_storage.py` covers atomic writes, schema validation, provenance, and an optional GCS smoke round-trip.
+- Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2` (6 node files, 17 edge files, metadata).
 
 ### Phase 8 — KGLoader + graph export ✅ (complete)
 
@@ -378,5 +379,6 @@ data/kg/
 ### Phase 9 — Validation
 
 - [x] Dangling edge checks (`KGLoader.validate()`)
+- [x] Remote smoke validation: `KGLoader("gs://jouvencekb/kg/v2").validate()` returns 129,312 nodes, 5,848,026 edges, 0 dangling edges.
 - [ ] Node ontology coverage stats
-- Smoke-test: load full graph into PyG
+- [ ] Smoke-test: load full graph into PyG once `torch`/`torch_geometric` are installed in the target runtime.

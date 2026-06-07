@@ -46,12 +46,12 @@ except ImportError:  # pragma: no cover - script fallback
 try:
     from .kg_schema import (
         LEGACY_NODE_TYPE_MAP, LEGACY_RELATION_MAP, LEGACY_RELATION_FLIP,
-        NodeType, Credibility,
+        NODE_TYPES, RELATION_BY_NAME, NodeType, Credibility,
     )
 except ImportError:
     from kg_schema import (  # type: ignore[no-redef]
         LEGACY_NODE_TYPE_MAP, LEGACY_RELATION_MAP, LEGACY_RELATION_FLIP,
-        NodeType, Credibility,
+        NODE_TYPES, RELATION_BY_NAME, NodeType, Credibility,
     )
 
 log = logging.getLogger(__name__)
@@ -116,7 +116,8 @@ def migrate_nodes(nodes_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, str]]
     Returns
     -------
     new_nodes_df
-        Columns: node_id, node_type, name, legacy_type, legacy_id, legacy_index, source
+        Columns include node_type, id, all schema-required xref columns, and
+        lightweight legacy provenance columns.
     index_to_id
         Dict mapping original ``node_index`` (int) → new ontology ``node_id``
     """
@@ -137,15 +138,30 @@ def migrate_nodes(nodes_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, str]]
             continue
 
         index_to_id[idx] = new_id
-        rows.append({
-            "node_id":       new_id,
-            "node_type":     new_type.value,
-            "name":          name,
-            "legacy_type":   legacy_type,
-            "legacy_id":     raw_id,
-            "legacy_index":  idx,
-            "source":        source,
-        })
+        record = {
+            "id": new_id,
+            "node_type": new_type.value,
+            "legacy_type": legacy_type,
+            "legacy_id": raw_id,
+            "legacy_index": idx,
+            "source": source,
+        }
+        for col in NODE_TYPES[new_type].xref_columns:
+            record[col] = None
+
+        if new_type == NodeType.GENE:
+            record["ncbi_gene_id"] = raw_id
+            record["gene_name"] = name
+        elif new_type == NodeType.MOLECULE and legacy_type == "drug":
+            record["drugbank_id"] = raw_id
+        elif new_type == NodeType.DISEASE:
+            record["mondo_id"] = new_id if new_id.startswith("MONDO:") else None
+        elif new_type == NodeType.PHENOTYPE:
+            record["hp_id"] = new_id if new_id.startswith("HP:") else None
+        elif new_type == NodeType.PATHWAY:
+            record["go_id"] = new_id if new_id.startswith("GO:") else None
+
+        rows.append(record)
 
     new_nodes_df = pd.DataFrame(rows)
     return new_nodes_df, index_to_id
@@ -169,53 +185,54 @@ def migrate_edges(
     unmapped_relations
         List of legacy relation names that had no mapping in LEGACY_RELATION_MAP
     """
-    # Build index → node_type lookup for x_type / y_type
-    index_to_type: dict[int, str] = {}
-    for _, row in nodes_df.iterrows():
-        lt = str(row["node_type"]).strip()
-        nt = LEGACY_NODE_TYPE_MAP.get(lt)
-        if nt is not None:
-            index_to_type[int(row["node_index"])] = nt.value
+    node_types = nodes_df["node_type"].astype(str).str.strip().map(LEGACY_NODE_TYPE_MAP)
+    index_to_type = pd.Series(
+        [nt.value if isinstance(nt, NodeType) else nt for nt in node_types],
+        index=pd.to_numeric(nodes_df["node_index"], errors="coerce"),
+    ).dropna()
 
-    unmapped: set[str] = set()
-    rows = []
+    legacy_rel = edges_df["relation"].astype(str).str.strip()
+    new_rel = legacy_rel.map(LEGACY_RELATION_MAP)
+    unmapped = sorted(set(legacy_rel[new_rel.isna()]))
 
-    for _, row in edges_df.iterrows():
-        legacy_rel = str(row["relation"]).strip()
-        x_idx = int(row["x_index"])
-        y_idx = int(row["y_index"])
+    x_idx = pd.to_numeric(edges_df["x_index"], errors="coerce")
+    y_idx = pd.to_numeric(edges_df["y_index"], errors="coerce")
 
-        new_rel = LEGACY_RELATION_MAP.get(legacy_rel)
-        if new_rel is None:
-            unmapped.add(legacy_rel)
-            continue
+    out = pd.DataFrame(
+        {
+            "x_id": x_idx.map(index_to_id),
+            "x_type": x_idx.map(index_to_type),
+            "y_id": y_idx.map(index_to_id),
+            "y_type": y_idx.map(index_to_type),
+            "relation": new_rel,
+            "display_relation": edges_df.get("display_relation", pd.Series("", index=edges_df.index)).astype(str).str.strip(),
+            "source": "TxGNN",
+            "credibility": Credibility.ESTABLISHED_FACT.value,
+            "_legacy_relation": legacy_rel,
+        }
+    )
+    out = out.dropna(subset=["x_id", "x_type", "y_id", "y_type", "relation"]).reset_index(drop=True)
 
-        x_id = index_to_id.get(x_idx)
-        y_id = index_to_id.get(y_idx)
-        if x_id is None or y_id is None:
-            continue  # dangling edge
+    flip = out["_legacy_relation"].isin(LEGACY_RELATION_FLIP)
+    if bool(flip.any()):
+        out.loc[flip, ["x_id", "y_id"]] = out.loc[flip, ["y_id", "x_id"]].to_numpy()
+        out.loc[flip, ["x_type", "y_type"]] = out.loc[flip, ["y_type", "x_type"]].to_numpy()
 
-        x_type = index_to_type.get(x_idx, "")
-        y_type = index_to_type.get(y_idx, "")
+    def legacy_node_type(node_type: NodeType) -> str:
+        # Legacy TxGNN conflates protein with gene/protein nodes stored as gene.
+        if node_type == NodeType.PROTEIN:
+            return NodeType.GENE.value
+        return node_type.value
 
-        # Swap x/y for relations where legacy direction is reversed vs canonical
-        if legacy_rel in LEGACY_RELATION_FLIP:
-            x_id, y_id = y_id, x_id
-            x_type, y_type = y_type, x_type
+    desired_source = out["relation"].map(lambda rel: legacy_node_type(RELATION_BY_NAME[rel].source))
+    desired_target = out["relation"].map(lambda rel: legacy_node_type(RELATION_BY_NAME[rel].target))
+    reverse = (out["x_type"] == desired_target) & (out["y_type"] == desired_source)
+    if bool(reverse.any()):
+        out.loc[reverse, ["x_id", "y_id"]] = out.loc[reverse, ["y_id", "x_id"]].to_numpy()
+        out.loc[reverse, ["x_type", "y_type"]] = out.loc[reverse, ["y_type", "x_type"]].to_numpy()
 
-        rows.append({
-            "x_id":              x_id,
-            "x_type":            x_type,
-            "y_id":              y_id,
-            "y_type":            y_type,
-            "relation":          new_rel,
-            "display_relation":  str(row.get("display_relation", "")).strip(),
-            "source":            "TxGNN",
-            "credibility":       Credibility.ESTABLISHED_FACT.value,
-        })
-
-    new_edges_df = pd.DataFrame(rows)
-    return new_edges_df, sorted(unmapped)
+    out = out.drop(columns=["_legacy_relation"])
+    return out, unmapped
 
 
 # ---------------------------------------------------------------------------
