@@ -108,6 +108,80 @@ TxGNN's existing KG with OpenTargets and other sources. Nodes are registered in
 feature tables are stored as **Parquet files**. A loader function converts
 everything into a GNN-ready graph object.
 
+### Current Export Reality (2026-06-08)
+
+Canonical export under `gs://jouvencekb/kg/v2/` is **not yet the full expanded
+KG vision**. It is currently:
+
+- TxData legacy KG migrated to the Phase 7 Parquet layout.
+- I1/I2 LaminDB/bionty registry setup and TxData node mapping.
+- OpenTargets Europe PMC literature files physically added (`paper` nodes and
+  `paper_mentions_gene` / `paper_mentions_disease` edges).
+
+Important caveat: the literature slice is currently **file-present but not
+graph-valid**. `paper_mentions_gene` points to Ensembl IDs (`ENSG...`) while the
+current exported `nodes/gene.parquet` contains legacy TxData gene IDs
+(`NCBI:*`). `paper_mentions_disease` points to OpenTargets disease IDs such as
+`EFO_...` while the exported disease nodes use the legacy normalized IDs. These
+two literature relations therefore have dangling endpoints until OpenTargets
+target/disease nodes are truly merged into the canonical export.
+
+`gene` does **not** mean that `transcript` and `protein` are fully represented.
+The legacy TxData source conflates `gene/protein` in places, and some relations
+use `protein` as an endpoint type, but there is no dedicated
+`nodes/protein.parquet` or `nodes/transcript.parquet` in the current export.
+
+#### Current Node Files on GCS
+
+| Node type | Rows | Status |
+| --- | ---: | --- |
+| `disease` | 17,080 | present; legacy TxData-normalized IDs |
+| `gene` | 27,610 | present; legacy `NCBI:*` IDs, not Ensembl target catalog |
+| `molecule` | 8,775 | present; legacy molecule/drug IDs |
+| `paper` | 2,958,199 | present; Europe PMC PMIDs |
+| `pathway` | 46,503 | present; legacy GO/Reactome-derived IDs |
+| `phenotype` | 15,311 | present; HP-derived |
+| `tissue` | 14,033 | present; UBERON-derived |
+
+Missing node files from the schema vision:
+`transcript`, `protein`, `cell_type`, `mutation`, `organism`, `cell_line`,
+`dataset`, `enhancer`.
+
+#### Current Edge Files on GCS
+
+| Relation | Rows | Status |
+| --- | ---: | --- |
+| `disease_associated_protein` | 80,411 | present |
+| `disease_has_phenotype` | 151,338 | present |
+| `disease_subtype_of_disease` | 64,388 | present |
+| `molecule_contraindicates_disease` | 30,675 | present |
+| `molecule_in_pathway` | 1,680 | present |
+| `molecule_interacts_molecule` | 2,676,768 | present |
+| `molecule_targets_protein` | 26,680 | present |
+| `molecule_treats_disease` | 14,135 | present |
+| `paper_mentions_disease` | 6,492,130 | present but dangling until disease ID merge |
+| `paper_mentions_gene` | 7,177,163 | present but dangling until Ensembl gene node merge |
+| `pathway_child_of_pathway` | 147,680 | present |
+| `pathway_contains_gene` | 297,737 | present |
+| `pathway_contains_protein` | 42,646 | present |
+| `phenotype_associated_molecule` | 64,784 | present |
+| `phenotype_associated_protein` | 3,330 | present |
+| `phenotype_subtype_of_phenotype` | 37,472 | present |
+| `protein_interacts_protein` | 642,150 | present |
+| `tissue_expresses_protein` | 1,538,088 | present |
+| `tissue_subtype_of_tissue` | 28,064 | present |
+
+Missing edge files from the schema vision include all transcript/mutation/
+enhancer/cell-type/cell-line/organism/dataset relations, plus several
+OpenTargets relations that are implemented in code but not present in the
+current canonical export: `disease_associated_gene`,
+`disease_involves_pathway`, `tissue_expresses_gene`,
+`cell_type_expresses_gene`, `cell_type_expresses_protein`,
+`phenotype_associated_gene`, and the extra literature relations
+`paper_mentions_protein`, `paper_mentions_molecule`,
+`paper_mentions_mutation`, `paper_mentions_pathway`, `paper_cites_paper`,
+`paper_produced_dataset`.
+
 ### Node Types & Ontology Namespaces
 
 | Node type    | Primary ontology / ID namespace      |
@@ -303,44 +377,47 @@ hetero_dgl  = kg.to_dgl()   # DGL HeteroGraph (legacy)
       validation helper in `notebooks/kg_schema_overview.ipynb` §7; all IDs
       normalised to valid ontology formats)
 
-### Phase 4 — OpenTargets ingestion ✅ (complete)
+### Phase 4 — OpenTargets ingestion ⚠️ (implemented, not fully exported)
 
-All functions in `manage_db/ingest_opentargets.py`, tested end-to-end:
+`manage_db/ingest_opentargets.py` contains ingestion functions for the core
+OpenTargets datasets, but the current canonical `gs://jouvencekb/kg/v2` export
+does **not** yet reflect a complete OpenTargets run/merge.
 
-- [x] `ingest_targets` → 78,725 gene nodes
-- [x] `ingest_diseases` → 46,960 disease nodes + 63,886 hierarchy edges
-- [x] `ingest_drugs` → 18,475 molecule nodes
-- [x] `ingest_interactions` → ~12.7M protein–protein edges (per-chunk flush)
-- [x] `ingest_evidence` → disease*associated_gene, molecule_treats_disease,
-      disease_involves_pathway edges (per-chunk flush, all evidence*\* dirs)
-- [x] `ingest_go` → 17,891 GO pathway nodes + 755,796 gene-GO edges
-- [x] `ingest_reactome` → 2,825 Reactome pathway nodes + 2,841 hierarchy edges
-- [x] `ingest_indication` → 76,520 approved indication edges
-- [x] `ingest_mechanism_of_action` → 15,363 drug-target edges
-- [x] `ingest_literature` → paper nodes + paper_mentions_gene/disease edges
-      (per-chunk flush over 23.3M europepmc rows)
+- [ ] `ingest_targets` → Ensembl `nodes/gene.parquet` with xrefs. Implemented,
+      but not merged into the canonical export; current gene nodes are legacy
+      `NCBI:*`.
+- [ ] `ingest_diseases` → EFO/MONDO disease nodes + hierarchy. Implemented,
+      but not merged into the canonical export; current paper disease mentions
+      still dangle on `EFO_...` IDs.
+- [ ] `ingest_drugs` → ChEMBL molecule nodes. Implemented, but canonical export
+      still appears legacy-sized (`8,775` molecule nodes).
+- [x] Legacy/TxData `protein_interacts_protein`, `molecule_targets_protein`,
+      indication/contraindication-like edges are present in the export.
+- [ ] Full OpenTargets `interaction`, `evidence`, `go`, `reactome`,
+      `indication`, and `mechanismOfAction` runs need a fresh audited merge
+      into the canonical export if we want the expanded OT-scale graph.
+- [ ] PARTIAL: `ingest_literature` produced and uploaded `paper` nodes plus
+      `paper_mentions_gene` / `paper_mentions_disease`, but these edges are
+      currently dangling because target/disease node ID spaces were not merged.
 
-### Phase 5 — Additional sources (from OpenTargets local data) ✅ (complete)
+### Phase 5 — Additional sources ⚠️ (partially implemented, mostly pending export)
 
-All data already downloaded to `data/opentargets/` — no external sources needed.
-Functions in `manage_db/ingest_opentargets.py`:
+Additional OpenTargets-derived functions exist, but the corresponding node/edge
+files are missing from the current canonical export unless listed in the
+Current Export Reality section above.
 
-- [x] `ingest_disease_phenotype`: 137,411 `disease_has_phenotype` edges
-- [x] `ingest_expression`: 3,311,510 `tissue_expresses_gene` + 1,353,553
-      `cell_type_expresses_gene` edges
-- [x] `ingest_biosample`: 3,499 cell_type + 16,054 tissue nodes
-- [x] `ingest_pharmacogenomics`: 4,837 `mutation_affects_molecule_response`
-      edges
-- [x] `ingest_variants`: mutation nodes + `mutation_in_gene`,
-      `mutation_affects_transcript`, `mutation_causes_protein_change` edges
-      (vectorized `explode`+`json_normalize`); smoke-tested (1/25 files: 293,918
-      mutations, 10,868,328 gene edges); ⚠️ full run requires ~20GB RAM, ~4
-      hours — run on a server with sufficient memory
-- [x] `ingest_enhancers`: enhancer nodes + `enhancer_regulates_gene`,
-      `enhancer_active_in_tissue`, `enhancer_active_in_cell_type` edges
-      (vectorized, `pd.cut` credibility); smoke-tested (1/83 files: 597,831
-      enhancers, 597,831 gene edges)
-- [x] Papers: done via OpenTargets europepmc in Phase 4 literature
+- [ ] `ingest_disease_phenotype`: implemented; current export has legacy
+      `disease_has_phenotype`, but not an audited OT-scale merge.
+- [ ] `ingest_expression`: implemented; current export lacks
+      `tissue_expresses_gene`, `cell_type_expresses_gene`, and
+      `cell_type_expresses_protein`.
+- [ ] `ingest_biosample`: implemented; current export lacks `cell_type` nodes.
+- [ ] `ingest_pharmacogenomics`: implemented; current export lacks `mutation`
+      nodes and `mutation_affects_molecule_response`.
+- [ ] `ingest_variants`: smoke-tested only; full mutation/transcript/protein
+      variant graph remains pending.
+- [ ] `ingest_enhancers`: smoke-tested only; enhancer nodes and enhancer
+      regulatory edges remain pending.
 
 ### Phase 6 — Edge credibility pipeline ✅ complete
 
@@ -365,7 +442,9 @@ data/kg/
 - `manage_db/ingest_opentargets.py` and `manage_db/kg_migrate.py` now flow through the storage layer for local paths and `gs://` URIs.
 - `manage_db/export_kg.py` exports legacy `data/kg` layouts into `kg/v2/`, writing provenance and `SUMMARY.md` for reproducibility.
 - `tests/test_kg_storage.py` covers atomic writes, schema validation, provenance, and an optional GCS smoke round-trip.
-- Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2` (6 node files, 17 edge files, metadata).
+- Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2`; paper files were later
+  added. Current GCS layout has 7 node files and 19 edge files, but the paper
+  mention edges are not yet endpoint-valid against the exported node ID spaces.
 
 ### Phase 8 — KGLoader + graph export ✅ (complete)
 
@@ -379,6 +458,13 @@ data/kg/
 ### Phase 9 — Validation
 
 - [x] Dangling edge checks (`KGLoader.validate()`)
-- [x] Remote smoke validation: `KGLoader("gs://jouvencekb/kg/v2").validate()` returns 129,312 nodes, 5,848,026 edges, 0 dangling edges.
+- [x] Remote smoke validation before paper upload: legacy-only
+      `KGLoader("gs://jouvencekb/kg/v2").validate()` returned 129,312 nodes,
+      5,848,026 edges, 0 dangling edges.
+- [ ] Re-run validation after paper upload and OpenTargets node ID merge.
+      Current paper files are expected to fail dangling checks because
+      `paper_mentions_gene` uses `ENSG...` IDs while exported genes are
+      `NCBI:*`, and `paper_mentions_disease` uses `EFO_...`/`MONDO_...` IDs
+      while exported disease nodes are legacy-normalized.
 - [ ] Node ontology coverage stats
 - [ ] Smoke-test: load full graph into PyG once `torch`/`torch_geometric` are installed in the target runtime.
