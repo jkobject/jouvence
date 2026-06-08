@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
-
 from txgnn import KGLoader
 
 
@@ -15,7 +13,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "kg_path",
-        type=Path,
         help="Path to a KG root, or a data directory containing kg/.",
     )
     args = parser.parse_args(argv)
