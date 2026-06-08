@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import concurrent.futures
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -19,7 +20,18 @@ _OT_FTP_BASE = "https://ftp.ebi.ac.uk/pub/databases/opentargets/platform"
 
 # Some user-facing dataset names differ from the on-disk folder name.
 _OT_DATASET_ALIASES: dict[str, str] = {
+    "disease": "diseases",
+    "drug_indication": "indication",
+    "drug_mechanism_of_action": "mechanismOfAction",
+    "drug_molecule": "molecule",
+    "evidence_europepmc": "evidence/sourceId=europepmc",
+    "literature": "evidence/sourceId=europepmc",
     "literaturel2g_prediction": "l2g_prediction",
+    "target": "targets",
+}
+
+_OT_LOCAL_DATASET_NAMES: dict[str, str] = {
+    "literature": "evidence_europepmc",
 }
 
 _OT_USER_AGENT = "Mozilla/5.0"
@@ -84,7 +96,7 @@ def list_opentargets_datasets(release: str = "latest") -> list[str]:
     """
     if release == "latest":
         release = get_latest_opentargets_release()
-    url = f"{_OT_FTP_BASE}/{release}/output/"
+    url = f"{_OT_FTP_BASE}/{release}/output/etl/parquet/"
     items = _list_ftp_dir(url)
     return sorted(
         item.rstrip("/")
@@ -101,17 +113,21 @@ def _is_downloaded(dest: Path) -> bool:
     return (dest / _SUCCESS_MARKER).exists()
 
 
-def _download_single_file(url: str, dest: Path) -> None:
+def _download_single_file(url: str, dest: Path, retries: int = 3) -> None:
     """Stream one file from *url* to *dest*, skipping if already complete."""
     if dest.exists() and dest.stat().st_size > 0:
         return
     tmp = dest.with_suffix(dest.suffix + ".part")
-    try:
-        _stream_to_file(url, tmp)
-        tmp.rename(dest)
-    except Exception:
-        tmp.unlink(missing_ok=True)
-        raise
+    for attempt in range(1, retries + 1):
+        try:
+            _stream_to_file(url, tmp)
+            tmp.rename(dest)
+            return
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            if attempt == retries:
+                raise
+            time.sleep(2**attempt)
 
 
 def download_opentargets_dataset(
@@ -145,20 +161,29 @@ def download_opentargets_dataset(
     if release == "latest":
         release = get_latest_opentargets_release()
 
-    dest = Path(dest_dir) / dataset_name
+    local_name = _OT_LOCAL_DATASET_NAMES.get(dataset_name, dataset_name)
+    dest = Path(dest_dir) / local_name
     if _is_downloaded(dest):
         print(f"[skip] {dataset_name} already present at {dest}")
         return dest
 
     dest.mkdir(parents=True, exist_ok=True)
 
-    base_url = f"{_OT_FTP_BASE}/{release}/output/{resolved_name}/"
-    try:
-        items = _list_ftp_dir(base_url)
-    except Exception as exc:
+    base_urls = [
+        f"{_OT_FTP_BASE}/{release}/output/etl/parquet/{resolved_name}/",
+        f"{_OT_FTP_BASE}/{release}/output/{resolved_name}/",
+    ]
+    last_error: Exception | None = None
+    for base_url in base_urls:
+        try:
+            items = _list_ftp_dir(base_url)
+            break
+        except Exception as exc:
+            last_error = exc
+    else:
         raise ValueError(
-            f"Dataset '{resolved_name}' not found in release {release}: {exc}"
-        ) from exc
+            f"Dataset '{resolved_name}' not found in release {release}: {last_error}"
+        ) from last_error
 
     # Collect only parquet files (skip _SUCCESS; we write our own marker)
     to_download: list[tuple[str, Path]] = []
@@ -179,10 +204,11 @@ def download_opentargets_dataset(
     total = len(to_download)
     print(f"[download] {dataset_name}  ({total} files, {already} cached, release={release})")
 
+    missing_downloads = [(url, path) for url, path in to_download if not (path.exists() and path.stat().st_size > 0)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(_download_single_file, url, path): path.name
-            for url, path in to_download
+            for url, path in missing_downloads
         }
         done = already
         for future in concurrent.futures.as_completed(futures):

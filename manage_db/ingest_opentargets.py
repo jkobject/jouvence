@@ -379,7 +379,7 @@ def ingest_diseases(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int
         efo_id = str(row["id"]).strip()
 
         # Cross-references (dbXRefs is a list of plain strings like 'MONDO:0000510')
-        mondo_id = omim_id = doid_id = icd10_code = mesh_id = None
+        mondo_id = omim_id = doid_id = icd10_code = mesh_id = hp_id = None
         db_xrefs = _to_list(row.get("dbXRefs"))
         for xref in db_xrefs:
                 xref_str = str(xref).strip()
@@ -393,6 +393,8 @@ def ingest_diseases(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int
                     icd10_code = icd10_code or xref_str.replace("ICD10:", "")
                 elif xref_str.startswith("MeSH:") or xref_str.startswith("MESH:"):
                     mesh_id = mesh_id or xref_str
+                elif xref_str.startswith("HP:"):
+                    hp_id = hp_id or xref_str
 
         rows.append({
             "id":           efo_id,
@@ -403,6 +405,7 @@ def ingest_diseases(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int
             "doid_id":      doid_id,
             "icd10_code":   icd10_code,
             "mesh_id":      mesh_id,
+            "hp_id":        hp_id,
             "source":       SOURCE_NAME,
         })
 
@@ -898,6 +901,7 @@ def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
     gene_chunks   = chunks_base / "paper_mentions_gene"
     dis_chunks    = chunks_base / "paper_mentions_disease"
     seen_papers: set[str] = set()
+    seen_genes: set[str] = set()
 
     for chunk in _read_parquet_dir_chunked(
         lit_path,
@@ -923,12 +927,16 @@ def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
                 if paper_id not in seen_papers:
                     seen_papers.add(paper_id)
                     paper_rows.append({
-                        "id":     paper_id,
-                        "year":   year,
-                        "source": SOURCE_NAME,
+                        "id":       paper_id,
+                        "doi":      None,
+                        "pmc_id":   None,
+                        "arxiv_id": None,
+                        "year":     year,
+                        "source":   SOURCE_NAME,
                     })
 
                 if target_id.startswith("ENSG"):
+                    seen_genes.add(target_id)
                     gene_mention_rows.append(_make_edge(
                         x_id=paper_id, x_type=NodeType.PAPER.value,
                         y_id=target_id, y_type=NodeType.GENE.value,
@@ -966,6 +974,34 @@ def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
         ),
         dedup_cols=["id"],
     )
+    if seen_genes:
+        try:
+            existing_gene_ids = set(
+                kg_storage.read_nodes(root, NodeType.GENE.value, columns=["id"])["id"].astype(str)
+            )
+        except Exception:
+            existing_gene_ids = set()
+        missing_gene_ids = sorted(seen_genes - existing_gene_ids)
+        if missing_gene_ids:
+            gene_stub_rows = [
+                {
+                    "id": gene_id,
+                    "ncbi_gene_id": None,
+                    "hgnc_id": None,
+                    "uniprot_id": None,
+                    "gene_name": None,
+                    "name": gene_id,
+                    "source": "OpenTargets/europepmc",
+                }
+                for gene_id in missing_gene_ids
+            ]
+            kg_storage.write_nodes(
+                root,
+                NodeType.GENE.value,
+                pd.DataFrame(gene_stub_rows),
+                mode="append",
+            )
+            log.info("  added %d literature-only gene stubs", len(missing_gene_ids))
     n_gene = _finalize_chunks(
         gene_chunks,
         lambda df: kg_storage.write_edges(
