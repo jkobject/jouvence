@@ -458,6 +458,11 @@ data/kg/
 ### Phase 9 — Validation
 
 - [x] Dangling edge checks (`KGLoader.validate()`)
+- [x] Schema coverage audit CLI:
+      `uv run python -m manage_db.audit_kg_coverage gs://jouvencekb/kg/v2`
+      reports physical node/edge file coverage against `kg_schema.py`. Current
+      GCS export: 7/15 node files, 19/77 edge files. See
+      `docs/kg_coverage_audit.md`.
 - [x] Remote smoke validation before paper upload: legacy-only
       `KGLoader("gs://jouvencekb/kg/v2").validate()` returned 129,312 nodes,
       5,848,026 edges, 0 dangling edges.
