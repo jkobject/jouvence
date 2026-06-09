@@ -2,14 +2,15 @@
   "schema": "omoc.ralph.v1",
   "loop_id": "txgnn-kg-ralph",
   "objective": "Run bounded non-overlapping cycles for TxGNN KG completion; never run the final TxGNN model smoke test above 2 CPU / 4G RAM.",
-  "status": "idle",
-  "iteration": 1,
+  "status": "running",
+  "iteration": 2,
   "max_iterations": 20,
   "lease": {
-    "owner": null,
-    "acquired_at": null,
-    "expires_at": null,
-    "heartbeat_at": null
+    "owner": "clawd",
+    "acquired_at": "2026-06-09T13:30:25.187499Z",
+    "expires_at": "2026-06-09T14:00:25.187547Z",
+    "heartbeat_at": "2026-06-09T13:30:25.187627Z",
+    "stale_recovery": false
   },
   "evidence": [],
   "risks": [],

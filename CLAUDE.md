@@ -152,7 +152,7 @@ use `protein` as an endpoint type, but there is no dedicated
 | `transcript` | Ensembl (`ENST00000380152`) | no | - | not exported yet |
 | `protein` | UniProt (`P38398`) | no | - | not exported yet |
 | `pathway` | Reactome (`R-HSA-5633007`) | yes | 48,021 | legacy + OpenTargets Reactome evidence stubs |
-| `molecule` | ChEMBL (`CHEMBL941`) | yes | 31,007 | legacy + OpenTargets ChEMBL molecule IDs; pharmacogenomics stubs added |
+| `molecule` | ChEMBL (`CHEMBL941`) | yes | 31,007 | legacy + OpenTargets `drug_molecule` xrefs/properties; pharmacogenomics stubs added |
 | `mutation` | dbSNP (`rs7412`) | yes | 2,429 | OpenTargets pharmacogenomics stubs |
 | `disease` | EFO (`EFO:0000305`) | yes | 48,291 | legacy + OpenTargets disease IDs; disease-phenotype stubs added |
 | `cell_type` | CL (`CL:0000576`) | yes | 3,513 | OpenTargets biosample CL IDs |
@@ -349,8 +349,10 @@ does **not** yet reflect a complete OpenTargets run/merge.
 - [x] `ingest_diseases` → EFO/MONDO disease nodes + hierarchy. Partially merged
       into the canonical export; current paper and evidence disease endpoints
       validate cleanly.
-- [ ] `ingest_drugs` → ChEMBL molecule nodes. Implemented, but canonical export
-      still appears legacy-sized (`8,775` molecule nodes).
+- [x] `ingest_drugs` → ChEMBL molecule nodes. OpenTargets `drug_molecule`
+      xrefs/properties are merged into `nodes/molecule.parquet`; the row count
+      remains `31,007` because the merge enriches existing ChEMBL nodes rather
+      than adding new endpoint IDs.
 - [x] Legacy/TxData `protein_interacts_protein`, `molecule_targets_protein`,
       indication/contraindication-like edges are present in the export.
 - [ ] PARTIAL: `ingest_evidence` added the cached OpenTargets Reactome evidence

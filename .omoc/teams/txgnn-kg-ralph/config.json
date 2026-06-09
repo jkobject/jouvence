@@ -20,7 +20,7 @@
       "state": "idle"
     }
   ],
-  "next_task_id": 5,
+  "next_task_id": 6,
   "created_at": "2026-06-09T12:41:24.167007Z",
   "status": "running",
   "leader": "leader",
