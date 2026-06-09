@@ -9,6 +9,7 @@ from manage_db.ingest_opentargets import (
     ingest_biosample,
     ingest_drugs,
     ingest_evidence,
+    ingest_expression,
     ingest_literature,
 )
 
@@ -143,4 +144,38 @@ def test_ingest_biosample_writes_required_node_xrefs(tmp_path: Path) -> None:
     assert set(["id", "uberon_id", "mesh_id"]) <= set(cell_types.columns)
     assert set(["id", "bto_id", "mesh_id", "fma_id"]) <= set(tissues.columns)
     assert cell_types.loc[0, "id"] == "CL_0000540"
-    assert tissues.loc[0, "id"] == "UBERON_0000955"
+    assert tissues.loc[0, "id"] == "UBERON:0000955"
+
+
+def test_ingest_expression_normalizes_tissue_ids_and_adds_gene_stubs(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    expression_dir = ot_dir / "expression"
+    expression_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "id": "ENSG00000123456",
+                "tissues": [
+                    {"efo_code": "UBERON_0000955", "rna": {"value": 12.5, "level": 4}},
+                    {"efo_code": "CL_0000540", "rna": {"value": 3.0, "level": 2}},
+                ],
+            },
+        ]
+    ).to_parquet(expression_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+
+    assert ingest_expression(ot_dir, kg_dir, root) == {
+        "tissue_expresses_gene": 1,
+        "cell_type_expresses_gene": 1,
+    }
+
+    tissue_edges = kg_storage.read_edges(root, "tissue_expresses_gene")
+    cell_type_edges = kg_storage.read_edges(root, "cell_type_expresses_gene")
+    genes = kg_storage.read_nodes(root, "gene")
+
+    assert tissue_edges.loc[0, "x_id"] == "UBERON:0000955"
+    assert tissue_edges.loc[0, "y_id"] == "ENSG00000123456"
+    assert cell_type_edges.loc[0, "x_id"] == "CL_0000540"
+    assert set(genes["id"]) == {"ENSG00000123456"}

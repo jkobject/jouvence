@@ -231,6 +231,12 @@ def _save_node_df(df: pd.DataFrame, root: kg_storage.KGRoot, node_type: str) -> 
     )
 
 
+def _normalize_uberon_id(value: str) -> str:
+    if value.startswith("UBERON_"):
+        return "UBERON:" + value.removeprefix("UBERON_")
+    return value
+
+
 def _write_chunk(df: pd.DataFrame, chunk_dir: Path) -> None:
     """Append *df* as a new numbered parquet file in *chunk_dir* (no read-back)."""
     if df.empty:
@@ -1454,6 +1460,7 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
 
     tissue_rows:    list[dict] = []
     cell_type_rows: list[dict] = []
+    seen_genes: set[str] = set()
 
     for chunk in _read_parquet_dir_chunked(
         exp_dir, columns=["id", "tissues"], chunksize=50_000
@@ -1462,6 +1469,7 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
             gene_id   = row["id"]
             if not isinstance(gene_id, str) or not gene_id.startswith("ENSG"):
                 continue
+            seen_genes.add(gene_id)
             tissues = _to_list(row.get("tissues", []))
             for t in tissues:
                 if not isinstance(t, dict):
@@ -1482,8 +1490,9 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
                     extra["expression_level"] = int(level)
 
                 if efo_code.startswith("UBERON_"):
+                    tissue_id = _normalize_uberon_id(efo_code)
                     tissue_rows.append(_make_edge(
-                        x_id=efo_code,
+                        x_id=tissue_id,
                         x_type=NodeType.TISSUE.value,
                         y_id=gene_id,
                         y_type=NodeType.GENE.value,
@@ -1508,6 +1517,33 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
 
     dedup = ["x_id", "y_id", "relation", "source"]
     results: dict[str, int] = {}
+    if seen_genes:
+        try:
+            existing_gene_ids = set(
+                kg_storage.read_nodes(root, NodeType.GENE.value, columns=["id"])["id"].astype(str)
+            )
+        except Exception:
+            existing_gene_ids = set()
+        missing_gene_ids = sorted(seen_genes - existing_gene_ids)
+        if missing_gene_ids:
+            kg_storage.write_nodes(
+                root,
+                NodeType.GENE.value,
+                pd.DataFrame(
+                    {
+                        "id": gene_id,
+                        "ncbi_gene_id": None,
+                        "hgnc_id": None,
+                        "uniprot_id": None,
+                        "gene_name": None,
+                        "name": gene_id,
+                        "source": "OpenTargets/expression",
+                    }
+                    for gene_id in missing_gene_ids
+                ),
+                mode="append",
+            )
+            log.info("  added %d expression-only gene stubs", len(missing_gene_ids))
 
     for relation, rows in [
         ("tissue_expresses_gene",    tissue_rows),
@@ -1557,6 +1593,7 @@ def ingest_biosample(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> di
             if bid.startswith("CL_"):
                 cell_type_rows.append(node)
             elif bid.startswith("UBERON_"):
+                node["id"] = _normalize_uberon_id(bid)
                 tissue_rows.append(node)
 
     results: dict[str, int] = {}
