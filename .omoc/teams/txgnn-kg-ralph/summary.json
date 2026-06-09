@@ -3,9 +3,9 @@
   "task": "Drive remaining CLAUDE.md expanded KG checklist items to validated completion with bounded scratch-first work.",
   "goal_id": "G002",
   "counts": {
-    "pending": 1,
     "failed": 1,
-    "completed": 10,
+    "completed": 12,
+    "pending": 1,
     "in_progress": 0,
     "blocked": 0
   },
@@ -203,12 +203,46 @@
       "id": "12",
       "subject": "Plan ENSP protein edge remapping",
       "description": "Use protein node ensembl_gene_id/uniprot_id xrefs to decide and implement safe remapping for legacy protein-named edges from gene endpoints to ENSP endpoints where unambiguous.",
+      "status": "completed",
+      "role": "worker",
+      "owner": "builder",
+      "depends_on": [],
+      "version": 3,
+      "created_at": "2026-06-09T15:06:14.626775Z",
+      "coordination": {
+        "mode": "lightweight"
+      },
+      "verifier_required": false,
+      "completed_at": "2026-06-09T15:20:19.041891Z",
+      "result": "Audited legacy protein-edge remapping coverage against ENSP protein nodes. Direct blind remapping is unsafe: most legacy endpoints are NCBI IDs, and many genes have multiple ENSP translations. Only 1,528 molecule_targets_protein endpoints were unambiguously single-ENSP. Updated CLAUDE.md: next safe edge is gene_encodes_protein from nodes/protein.parquet, not rewriting legacy protein-named edges."
+    },
+    {
+      "id": "13",
+      "subject": "Export gene_encodes_protein ENSP edges",
+      "description": "Create edges/gene_encodes_protein.parquet from nodes/protein.ensembl_gene_id to ENSP protein IDs, validate scratch, then promote to GCS if zero dangling edges.",
+      "status": "completed",
+      "role": "worker",
+      "owner": "builder",
+      "depends_on": [],
+      "version": 3,
+      "created_at": "2026-06-09T15:20:19.004650Z",
+      "coordination": {
+        "mode": "lightweight"
+      },
+      "verifier_required": false,
+      "completed_at": "2026-06-09T15:25:58.970401Z",
+      "result": "Exported edges/gene_encodes_protein.parquet from protein.ensembl_gene_id to ENSP IDs. Promoted 233,995 ENSG→ENSP edges to GCS. Final GCS validate PASS: 10 node types, 25 edge types, 3,467,844 nodes, 25,559,913 edges, total_dangling_edges=0."
+    },
+    {
+      "id": "14",
+      "subject": "Plan transcript node export",
+      "description": "Use OpenTargets target transcriptIds/transcripts to plan and implement nodes/transcript.parquet plus gene_has_transcript/transcript_encodes_protein where graph-valid.",
       "status": "pending",
       "role": "worker",
       "owner": null,
       "depends_on": [],
       "version": 1,
-      "created_at": "2026-06-09T15:06:14.626775Z",
+      "created_at": "2026-06-09T15:25:58.924002Z",
       "coordination": {
         "mode": "lightweight"
       },
@@ -218,11 +252,11 @@
   "loop": {
     "status": "running",
     "lease": {
-      "owner": "7bcaed11077f4f2d88902788db5d3bac",
-      "acquired_at": "2026-06-09T15:07:32.085823Z",
-      "expires_at": "2026-06-09T15:22:32.085863Z",
-      "heartbeat_at": "2026-06-09T15:07:32.085920Z"
+      "owner": "87e8b9b5530f4c87b93315accb17a3fa",
+      "acquired_at": "2026-06-09T15:26:47.628784Z",
+      "expires_at": "2026-06-09T15:41:47.628822Z",
+      "heartbeat_at": "2026-06-09T15:26:47.628880Z"
     },
-    "last_loop_at": "2026-06-09T14:57:33.433787Z"
+    "last_loop_at": "2026-06-09T15:07:32.094551Z"
   }
 }
