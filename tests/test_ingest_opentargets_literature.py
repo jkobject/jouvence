@@ -7,6 +7,7 @@ import pandas as pd
 from manage_db import kg_storage
 from manage_db.ingest_opentargets import (
     ingest_biosample,
+    ingest_disease_phenotype,
     ingest_drugs,
     ingest_evidence,
     ingest_expression,
@@ -179,3 +180,36 @@ def test_ingest_expression_normalizes_tissue_ids_and_adds_gene_stubs(tmp_path: P
     assert tissue_edges.loc[0, "y_id"] == "ENSG00000123456"
     assert cell_type_edges.loc[0, "x_id"] == "CL_0000540"
     assert set(genes["id"]) == {"ENSG00000123456"}
+
+
+def test_ingest_disease_phenotype_normalizes_ids_and_adds_stubs(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    dp_dir = ot_dir / "disease_phenotype"
+    dp_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "disease": "MONDO_0005148",
+                "phenotype": "HP_0001250",
+                "evidence": [{"evidenceType": "TAS"}],
+            },
+            {
+                "disease": "MONDO_0005148",
+                "phenotype": "HP_0004322",
+                "evidence": [{"evidenceType": "IEA", "qualifierNot": True}],
+            },
+        ]
+    ).to_parquet(dp_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+
+    assert ingest_disease_phenotype(ot_dir, kg_dir, root) == 1
+    edges = kg_storage.read_edges(root, "disease_has_phenotype")
+    diseases = kg_storage.read_nodes(root, "disease")
+    phenotypes = kg_storage.read_nodes(root, "phenotype")
+
+    assert edges.loc[0, "x_id"] == "MONDO:0005148"
+    assert edges.loc[0, "y_id"] == "HP:0001250"
+    assert set(diseases["id"]) == {"MONDO:0005148"}
+    assert set(phenotypes["id"]) == {"HP:0001250"}

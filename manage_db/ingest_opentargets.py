@@ -237,6 +237,18 @@ def _normalize_uberon_id(value: str) -> str:
     return value
 
 
+def _normalize_mondo_id(value: str) -> str:
+    if value.startswith("MONDO_"):
+        return "MONDO:" + value.removeprefix("MONDO_")
+    return value
+
+
+def _normalize_hp_id(value: str) -> str:
+    if value.startswith("HP_"):
+        return "HP:" + value.removeprefix("HP_")
+    return value
+
+
 def _write_chunk(df: pd.DataFrame, chunk_dir: Path) -> None:
     """Append *df* as a new numbered parquet file in *chunk_dir* (no read-back)."""
     if df.empty:
@@ -1385,6 +1397,8 @@ def ingest_disease_phenotype(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoo
         raise FileNotFoundError(dp_dir)
 
     rows: list[dict] = []
+    seen_diseases: set[str] = set()
+    seen_phenotypes: set[str] = set()
     for chunk in _read_parquet_dir_chunked(
         dp_dir, columns=["disease", "phenotype", "evidence"], chunksize=100_000
     ):
@@ -1398,6 +1412,8 @@ def ingest_disease_phenotype(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoo
                 continue
             if not isinstance(phenotype_id, str) or not phenotype_id.startswith("HP_"):
                 continue
+            disease_id = _normalize_mondo_id(disease_id)
+            phenotype_id = _normalize_hp_id(phenotype_id)
 
             # Skip negated associations (qualifierNot=True in any evidence item)
             if any(
@@ -1405,6 +1421,8 @@ def ingest_disease_phenotype(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoo
                 for e in evidence_list
             ):
                 continue
+            seen_diseases.add(disease_id)
+            seen_phenotypes.add(phenotype_id)
 
             # Derive credibility from the strongest evidenceType present
             ev_types = {
@@ -1433,6 +1451,63 @@ def ingest_disease_phenotype(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoo
     if not rows:
         log.warning("ingest_disease_phenotype: no rows written")
         return 0
+
+    if seen_diseases:
+        try:
+            existing_disease_ids = set(
+                kg_storage.read_nodes(root, NodeType.DISEASE.value, columns=["id"])["id"].astype(str)
+            )
+        except Exception:
+            existing_disease_ids = set()
+        missing_disease_ids = sorted(seen_diseases - existing_disease_ids)
+        if missing_disease_ids:
+            kg_storage.write_nodes(
+                root,
+                NodeType.DISEASE.value,
+                pd.DataFrame(
+                    {
+                        "id": disease_id,
+                        "mondo_id": disease_id,
+                        "omim_id": None,
+                        "doid_id": None,
+                        "icd10_code": None,
+                        "name": disease_id,
+                        "mesh_id": None,
+                        "hp_id": None,
+                        "source": "OpenTargets/HPO",
+                    }
+                    for disease_id in missing_disease_ids
+                ),
+                mode="append",
+            )
+            log.info("  added %d disease-phenotype disease stubs", len(missing_disease_ids))
+    if seen_phenotypes:
+        try:
+            existing_phenotype_ids = set(
+                kg_storage.read_nodes(root, NodeType.PHENOTYPE.value, columns=["id"])["id"].astype(str)
+            )
+        except Exception:
+            existing_phenotype_ids = set()
+        missing_phenotype_ids = sorted(seen_phenotypes - existing_phenotype_ids)
+        if missing_phenotype_ids:
+            kg_storage.write_nodes(
+                root,
+                NodeType.PHENOTYPE.value,
+                pd.DataFrame(
+                    {
+                        "id": phenotype_id,
+                        "mondo_id": None,
+                        "efo_id": None,
+                        "mp_id": None,
+                        "mesh_id": None,
+                        "name": phenotype_id,
+                        "source": "OpenTargets/HPO",
+                    }
+                    for phenotype_id in missing_phenotype_ids
+                ),
+                mode="append",
+            )
+            log.info("  added %d disease-phenotype phenotype stubs", len(missing_phenotype_ids))
 
     df = pd.DataFrame(rows)
     df = df.drop_duplicates(subset=["x_id", "y_id", "relation", "source"], keep="first")

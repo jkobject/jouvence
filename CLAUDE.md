@@ -123,11 +123,18 @@ KG vision**. It is currently:
   `disease_involves_pathway`.
 - OpenTargets ChEMBL molecule nodes and mechanism-of-action target edges added
   from the local Phase 4/5 slice.
+- OpenTargets biosample and expression slice added as `cell_type` nodes plus
+  `tissue_expresses_gene` / `cell_type_expresses_gene` edges. Expression-only
+  Ensembl gene stubs are present where needed for graph-valid endpoints.
+- OpenTargets disease-phenotype HPO slice merged into `disease_has_phenotype`
+  with normalized `MONDO:` / `HP:` endpoints and endpoint stubs where needed.
 
 As of the 2026-06-09 pass, `uv run python -m manage_db.validate_kg
 gs://jouvencekb/kg/v2` reports `total_dangling_edges: 0` across the current
 physical export. This means the current files are graph-valid, not complete:
 many schema-vision node and edge files are still absent.
+The coverage audit currently reports `8 / 15` node files, `23 / 77` edge
+files, `3,203,188` total nodes, and `25,030,503` total edges.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
 The legacy TxData source conflates `gene/protein` in places, and some relations
@@ -138,25 +145,27 @@ use `protein` as an endpoint type, but there is no dedicated
 
 | Node type | Rows | Status |
 | --- | ---: | --- |
-| `disease` | 45,407 | present; legacy + OpenTargets disease IDs |
-| `gene` | 57,860 | present; legacy + OpenTargets Ensembl IDs |
+| `cell_type` | 3,513 | present; OpenTargets biosample CL IDs |
+| `disease` | 48,291 | present; legacy + OpenTargets disease IDs |
+| `gene` | 81,649 | present; legacy + OpenTargets Ensembl IDs, including expression stubs |
 | `molecule` | 31,005 | present; legacy + OpenTargets ChEMBL molecule IDs |
 | `paper` | 2,958,199 | present; Europe PMC PMIDs |
 | `pathway` | 48,021 | present; legacy + OpenTargets Reactome evidence stubs |
-| `phenotype` | 15,311 | present; HP-derived |
-| `tissue` | 14,033 | present; UBERON-derived |
+| `phenotype` | 16,449 | present; HP-derived + OpenTargets HPO stubs |
+| `tissue` | 16,061 | present; UBERON-derived + OpenTargets biosample |
 
 Missing node files from the schema vision:
-`transcript`, `protein`, `cell_type`, `mutation`, `organism`, `cell_line`,
-`dataset`, `enhancer`.
+`transcript`, `protein`, `mutation`, `organism`, `cell_line`, `dataset`,
+`enhancer`.
 
 #### Current Edge Files on GCS
 
 | Relation | Rows | Status |
 | --- | ---: | --- |
+| `cell_type_expresses_gene` | 1,561,873 | present; OpenTargets expression |
 | `disease_associated_gene` | 2,928 | present; OpenTargets Reactome evidence slice |
 | `disease_associated_protein` | 80,411 | present |
-| `disease_has_phenotype` | 151,338 | present |
+| `disease_has_phenotype` | 241,797 | present; legacy + OpenTargets HPO |
 | `disease_involves_pathway` | 2,296 | present; OpenTargets Reactome evidence slice |
 | `disease_subtype_of_disease` | 104,809 | present |
 | `molecule_contraindicates_disease` | 30,675 | present |
@@ -173,14 +182,14 @@ Missing node files from the schema vision:
 | `phenotype_associated_protein` | 3,330 | present |
 | `phenotype_subtype_of_phenotype` | 37,472 | present |
 | `protein_interacts_protein` | 642,150 | present |
+| `tissue_expresses_gene` | 3,800,648 | present; OpenTargets expression |
 | `tissue_expresses_protein` | 1,538,088 | present |
 | `tissue_subtype_of_tissue` | 28,064 | present |
 
 Missing edge files from the schema vision include all transcript/mutation/
 enhancer/cell-type/cell-line/organism/dataset relations, plus several
 OpenTargets relations that are implemented in code but not present in the
-current canonical export: `tissue_expresses_gene`,
-`cell_type_expresses_gene`, `cell_type_expresses_protein`,
+current canonical export: `cell_type_expresses_protein`,
 `phenotype_associated_gene`, and the extra literature relations
 `paper_mentions_protein`, `paper_mentions_molecule`,
 `paper_mentions_mutation`, `paper_mentions_pathway`, `paper_cites_paper`,
@@ -415,12 +424,13 @@ Additional OpenTargets-derived functions exist, but the corresponding node/edge
 files are missing from the current canonical export unless listed in the
 Current Export Reality section above.
 
-- [ ] `ingest_disease_phenotype`: implemented; current export has legacy
-      `disease_has_phenotype`, but not an audited OT-scale merge.
-- [ ] `ingest_expression`: implemented; current export lacks
-      `tissue_expresses_gene`, `cell_type_expresses_gene`, and
-      `cell_type_expresses_protein`.
-- [ ] `ingest_biosample`: implemented; current export lacks `cell_type` nodes.
+- [x] `ingest_disease_phenotype`: OpenTargets HPO slice merged and audited
+      with normalized `MONDO:` / `HP:` endpoints.
+- [ ] PARTIAL: `ingest_expression` added OpenTargets `tissue_expresses_gene`
+      and `cell_type_expresses_gene`; `cell_type_expresses_protein` remains
+      pending.
+- [x] `ingest_biosample`: OpenTargets `cell_type` nodes are present in the
+      canonical export.
 - [ ] `ingest_pharmacogenomics`: implemented; current export lacks `mutation`
       nodes and `mutation_affects_molecule_response`.
 - [ ] `ingest_variants`: smoke-tested only; full mutation/transcript/protein
@@ -451,9 +461,10 @@ data/kg/
 - `manage_db/ingest_opentargets.py` and `manage_db/kg_migrate.py` now flow through the storage layer for local paths and `gs://` URIs.
 - `manage_db/export_kg.py` exports legacy `data/kg` layouts into `kg/v2/`, writing provenance and `SUMMARY.md` for reproducibility.
 - `tests/test_kg_storage.py` covers atomic writes, schema validation, provenance, and an optional GCS smoke round-trip.
-- Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2`; paper files were later
-  added. Current GCS layout has 7 node files and 19 edge files, but the paper
-  mention edges are not yet endpoint-valid against the exported node ID spaces.
+- Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2`; paper, Reactome,
+  molecule/MoA, biosample, and expression slices were later added. Current GCS
+  layout has 8 node files and 23 edge files and validates with zero dangling
+  edges.
 
 ### Phase 8 — KGLoader + graph export ✅ (complete)
 
@@ -469,16 +480,16 @@ data/kg/
 - [x] Dangling edge checks (`KGLoader.validate()`)
 - [x] Schema coverage audit CLI:
       `uv run python -m manage_db.audit_kg_coverage gs://jouvencekb/kg/v2`
-      reports physical node/edge file coverage against `kg_schema.py`. Current
-      GCS export: 7/15 node files, 19/77 edge files. See
+      reports physical node/edge file coverage against `kg_schema.py`.
+      Current GCS export: 8/15 node files, 23/77 edge files. See
       `docs/kg_coverage_audit.md`.
-- [x] Remote smoke validation before paper upload: legacy-only
-      `KGLoader("gs://jouvencekb/kg/v2").validate()` returned 129,312 nodes,
-      5,848,026 edges, 0 dangling edges.
-- [ ] Re-run validation after paper upload and OpenTargets node ID merge.
-      Current paper files are expected to fail dangling checks because
-      `paper_mentions_gene` uses `ENSG...` IDs while exported genes are
-      `NCBI:*`, and `paper_mentions_disease` uses `EFO_...`/`MONDO_...` IDs
-      while exported disease nodes are legacy-normalized.
+- [x] Remote GCS validation after paper, OpenTargets ID-space merge,
+      biosample/expression, and disease-phenotype promotion:
+      `uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2`
+      reports `3,203,188` nodes, `25,030,503` edges, and
+      `total_dangling_edges: 0`.
 - [ ] Node ontology coverage stats
-- [ ] Smoke-test: load full graph into PyG once `torch`/`torch_geometric` are installed in the target runtime.
+- [ ] Final TxGNN model smoke test on the VPS. This must be a tiny model and
+      must run under explicit systemd limits: at most `CPUQuota=200%` and
+      `MemoryMax=4G`. Use local/scratch data, no production GCS mutation, and
+      treat any memory/CPU pressure as a blocker rather than raising limits.
