@@ -20,14 +20,8 @@ _OT_FTP_BASE = "https://ftp.ebi.ac.uk/pub/databases/opentargets/platform"
 
 # Some user-facing dataset names differ from the on-disk folder name.
 _OT_DATASET_ALIASES: dict[str, str] = {
-    "disease": "diseases",
-    "drug_indication": "indication",
-    "drug_mechanism_of_action": "mechanismOfAction",
-    "drug_molecule": "molecule",
-    "evidence_europepmc": "evidence/sourceId=europepmc",
-    "literature": "evidence/sourceId=europepmc",
+    "literature": "evidence_europepmc",
     "literaturel2g_prediction": "l2g_prediction",
-    "target": "targets",
 }
 
 _OT_LOCAL_DATASET_NAMES: dict[str, str] = {
@@ -96,12 +90,26 @@ def list_opentargets_datasets(release: str = "latest") -> list[str]:
     """
     if release == "latest":
         release = get_latest_opentargets_release()
-    url = f"{_OT_FTP_BASE}/{release}/output/etl/parquet/"
-    items = _list_ftp_dir(url)
+    urls = [
+        f"{_OT_FTP_BASE}/{release}/output/etl/parquet/",
+        f"{_OT_FTP_BASE}/{release}/output/",
+    ]
+    last_error: Exception | None = None
+    for url in urls:
+        try:
+            items = _list_ftp_dir(url)
+            break
+        except Exception as exc:
+            last_error = exc
+    else:
+        raise RuntimeError(
+            f"Could not list OpenTargets datasets for release {release}: {last_error}"
+        ) from last_error
     return sorted(
         item.rstrip("/")
         for item in items
         if item.endswith("/") and not item.startswith("/")
+        and item not in {"../", "./"}
     )
 
 

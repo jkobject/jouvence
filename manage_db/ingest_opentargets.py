@@ -175,6 +175,18 @@ def _read_parquet_dir(path: Path, columns: list[str] | None = None) -> pd.DataFr
     return pd.concat(frames, ignore_index=True)
 
 
+def _read_parquet_dir_available(path: Path, columns: list[str]) -> pd.DataFrame:
+    """Read requested columns that are present in the dataset schema."""
+    import pyarrow.parquet as pq
+
+    files = sorted(path.glob("*.parquet"))
+    if not files:
+        raise FileNotFoundError(f"No parquet files found in {path}")
+    schema_fields = {field.name for field in pq.read_schema(files[0])}
+    available = [column for column in columns if column in schema_fields]
+    return _read_parquet_dir(path, columns=available)
+
+
 def _read_parquet_dir_chunked(
     path: Path,
     columns: list[str] | None = None,
@@ -455,12 +467,22 @@ def ingest_drugs(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
 
     log.info("Loading drug dataset from %s", drug_path)
 
-    df = _read_parquet_dir(
+    df = _read_parquet_dir_available(
         drug_path,
-        columns=["id", "name", "inchiKey", "drugType", "isApproved",
-                 "maximumClinicalTrialPhase",
-                 "hasBeenWithdrawn", "blackBoxWarning",
-                 "crossReferences"],
+        columns=[
+            "id",
+            "name",
+            "description",
+            "inchiKey",
+            "canonicalSmiles",
+            "drugType",
+            "isApproved",
+            "maximumClinicalTrialPhase",
+            "maximumClinicalStage",
+            "hasBeenWithdrawn",
+            "blackBoxWarning",
+            "crossReferences",
+        ],
     )
     log.info("  %d molecule rows", len(df))
 
@@ -488,16 +510,19 @@ def ingest_drugs(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
         rows.append({
             "id":                          chembl_id,
             "name":                        str(row.get("name") or "").strip(),
-            "description":                 "",   # not present in OT drug_molecule
+            "description":                 str(row.get("description") or "").strip(),
             "drug_type":                   str(row.get("drugType") or "").strip(),
             "is_approved":                 bool(row.get("isApproved") or False),
-            "max_clinical_trial_phase":    row.get("maximumClinicalTrialPhase"),
+            "max_clinical_trial_phase":    row.get("maximumClinicalTrialPhase")
+                                            if row.get("maximumClinicalTrialPhase") is not None
+                                            else row.get("maximumClinicalStage"),
             "has_been_withdrawn":          bool(row.get("hasBeenWithdrawn") or False),
             "black_box_warning":           bool(row.get("blackBoxWarning") or False),
             "inchikey":                    str(row.get("inchiKey") or "").strip() or None,
             "drugbank_id":                 drugbank_id,
             "pubchem_cid":                 pubchem_cid,
             "cas_rn":                      cas_rn,
+            "smiles":                      str(row.get("canonicalSmiles") or "").strip() or None,
             "source":                      SOURCE_NAME,
         })
 
@@ -600,6 +625,8 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
     gd_chunks  = chunks_base / "disease_associated_gene"
     dd_chunks  = chunks_base / "molecule_treats_disease"
     pd_chunks  = chunks_base / "disease_involves_pathway"
+    seen_genes: set[str] = set()
+    seen_pathways: dict[str, str | None] = {}
 
     BASE_COLS = ["targetId", "diseaseId", "datatypeId", "datasourceId", "score"]
 
@@ -613,7 +640,12 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
         except Exception:
             schema_fields = set()
 
-        cols = BASE_COLS + (["drugId"] if "drugId" in schema_fields else [])
+        optional_cols = [
+            col
+            for col in ("drugId", "pathways", "reactionId", "reactionName")
+            if col in schema_fields
+        ]
+        cols = BASE_COLS + optional_cols
 
         log.info("  Processing %s (%d files)", ev_path.name, len(parquet_files))
         for chunk in _read_parquet_dir_chunked(ev_path, columns=cols, chunksize=500_000):
@@ -656,8 +688,28 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
 
                 # ── Pathway-disease evidence ─────────────────────────────────
                 elif dtype in EVIDENCE_PATHWAY_DISEASE_TYPES:
+                    pathway_ids: list[tuple[str, str | None]] = []
+                    for pathway in _to_list(row.get("pathways")):
+                        if isinstance(pathway, dict):
+                            pathway_id = str(pathway.get("id") or "").strip()
+                            pathway_name = str(pathway.get("name") or "").strip() or None
+                        else:
+                            pathway_id = str(pathway or "").strip()
+                            pathway_name = None
+                        if pathway_id.startswith("R-HSA-"):
+                            pathway_ids.append((pathway_id, pathway_name))
+
+                    reaction_id = str(row.get("reactionId") or "").strip()
+                    if reaction_id.startswith("R-HSA-"):
+                        reaction_name = str(row.get("reactionName") or "").strip() or None
+                        pathway_ids.append((reaction_id, reaction_name))
+
                     pathway_id = target_id
-                    if pathway_id.startswith("R-HSA-"):
+                    if not pathway_ids and pathway_id.startswith("R-HSA-"):
+                        pathway_ids.append((pathway_id, None))
+
+                    for pathway_id, pathway_name in pathway_ids:
+                        seen_pathways.setdefault(pathway_id, pathway_name)
                         pathway_disease_rows.append(_make_edge(
                             x_id=disease_id, x_type=NodeType.DISEASE.value,
                             y_id=pathway_id, y_type=NodeType.PATHWAY.value,
@@ -666,8 +718,10 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                             source=f"OpenTargets/{dsource}",
                             credibility=cred,
                             score=round(score, 4),
+                            pathway_name=pathway_name,
                         ))
-                    elif target_id.startswith("ENSG"):
+                    if target_id.startswith("ENSG"):
+                        seen_genes.add(target_id)
                         gene_disease_rows.append(_make_edge(
                             x_id=disease_id, x_type=NodeType.DISEASE.value,
                             y_id=target_id, y_type=NodeType.GENE.value,
@@ -681,6 +735,7 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                 # ── Gene-disease evidence ────────────────────────────────────
                 elif dtype in EVIDENCE_GENE_DISEASE_RELATIONS:
                     if target_id.startswith("ENSG"):
+                        seen_genes.add(target_id)
                         gene_disease_rows.append(_make_edge(
                             x_id=disease_id, x_type=NodeType.DISEASE.value,
                             y_id=target_id, y_type=NodeType.GENE.value,
@@ -693,6 +748,7 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                 else:
                     # Unknown datatype — emit as gene-disease if IDs look right
                     if target_id.startswith("ENSG"):
+                        seen_genes.add(target_id)
                         gene_disease_rows.append(_make_edge(
                             x_id=disease_id, x_type=NodeType.DISEASE.value,
                             y_id=target_id, y_type=NodeType.GENE.value,
@@ -713,11 +769,91 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
 
     dedup_edge = ["x_id", "y_id", "relation", "source"]
     counts: dict[str, int] = {}
-    n = _finalize_chunks(gd_chunks,  out_dir / "edges" / "disease_associated_gene.parquet",  dedup_edge)
+    if seen_genes:
+        try:
+            existing_gene_ids = set(
+                kg_storage.read_nodes(root, NodeType.GENE.value, columns=["id"])["id"].astype(str)
+            )
+        except Exception:
+            existing_gene_ids = set()
+        missing_gene_ids = sorted(seen_genes - existing_gene_ids)
+        if missing_gene_ids:
+            kg_storage.write_nodes(
+                root,
+                NodeType.GENE.value,
+                pd.DataFrame(
+                    {
+                        "id": gene_id,
+                        "ncbi_gene_id": None,
+                        "hgnc_id": None,
+                        "uniprot_id": None,
+                        "gene_name": None,
+                        "name": gene_id,
+                        "source": "OpenTargets/evidence",
+                    }
+                    for gene_id in missing_gene_ids
+                ),
+                mode="append",
+            )
+            log.info("  added %d evidence-only gene stubs", len(missing_gene_ids))
+    if seen_pathways:
+        try:
+            existing_pathway_ids = set(
+                kg_storage.read_nodes(root, NodeType.PATHWAY.value, columns=["id"])["id"].astype(str)
+            )
+        except Exception:
+            existing_pathway_ids = set()
+        missing_pathway_ids = sorted(set(seen_pathways) - existing_pathway_ids)
+        if missing_pathway_ids:
+            kg_storage.write_nodes(
+                root,
+                NodeType.PATHWAY.value,
+                pd.DataFrame(
+                    {
+                        "id": pathway_id,
+                        "go_id": None,
+                        "reactome_id": pathway_id,
+                        "kegg_id": None,
+                        "name": seen_pathways.get(pathway_id) or pathway_id,
+                        "source": "OpenTargets/evidence",
+                    }
+                    for pathway_id in missing_pathway_ids
+                ),
+                mode="append",
+            )
+            log.info("  added %d evidence-only pathway stubs", len(missing_pathway_ids))
+    n = _finalize_chunks(
+        gd_chunks,
+        lambda df: kg_storage.write_edges(
+            root,
+            "disease_associated_gene",
+            df,
+            mode="append",
+        ),
+        dedup_edge,
+    )
     if n: counts["disease_associated_gene"] = n
-    n = _finalize_chunks(dd_chunks,  out_dir / "edges" / "molecule_treats_disease.parquet",  dedup_edge)
+    n = _finalize_chunks(
+        dd_chunks,
+        lambda df: kg_storage.write_edges(
+            root,
+            "molecule_treats_disease",
+            df,
+            mode="append",
+        ),
+        dedup_edge,
+    )
     if n: counts["molecule_treats_disease"] = n
-    n = _finalize_chunks(pd_chunks,  out_dir / "edges" / "disease_involves_pathway.parquet", dedup_edge)
+    n = _finalize_chunks(
+        pd_chunks,
+        lambda df: kg_storage.write_edges(
+            root,
+            "disease_involves_pathway",
+            df,
+            mode="append",
+        ),
+        dedup_edge,
+    )
     if n: counts["disease_involves_pathway"] = n
 
     log.info("  Evidence edges: %s", counts)
@@ -902,6 +1038,7 @@ def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
     dis_chunks    = chunks_base / "paper_mentions_disease"
     seen_papers: set[str] = set()
     seen_genes: set[str] = set()
+    seen_diseases: set[str] = set()
 
     for chunk in _read_parquet_dir_chunked(
         lit_path,
@@ -947,6 +1084,7 @@ def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
                     ))
 
                 if disease_id:
+                    seen_diseases.add(disease_id)
                     disease_mention_rows.append(_make_edge(
                         x_id=paper_id, x_type=NodeType.PAPER.value,
                         y_id=disease_id, y_type=NodeType.DISEASE.value,
@@ -1002,6 +1140,36 @@ def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
                 mode="append",
             )
             log.info("  added %d literature-only gene stubs", len(missing_gene_ids))
+    if seen_diseases:
+        try:
+            existing_disease_ids = set(
+                kg_storage.read_nodes(root, NodeType.DISEASE.value, columns=["id"])["id"].astype(str)
+            )
+        except Exception:
+            existing_disease_ids = set()
+        missing_disease_ids = sorted(seen_diseases - existing_disease_ids)
+        if missing_disease_ids:
+            disease_stub_rows = [
+                {
+                    "id": disease_id,
+                    "mondo_id": None,
+                    "omim_id": None,
+                    "doid_id": None,
+                    "icd10_code": None,
+                    "mesh_id": None,
+                    "hp_id": None,
+                    "name": disease_id,
+                    "source": "OpenTargets/europepmc",
+                }
+                for disease_id in missing_disease_ids
+            ]
+            kg_storage.write_nodes(
+                root,
+                NodeType.DISEASE.value,
+                pd.DataFrame(disease_stub_rows),
+                mode="append",
+            )
+            log.info("  added %d literature-only disease stubs", len(missing_disease_ids))
     n_gene = _finalize_chunks(
         gene_chunks,
         lambda df: kg_storage.write_edges(

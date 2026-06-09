@@ -20,7 +20,7 @@ uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2
 Coverage audit answers: "which schema files are physically missing?"
 Validation answers: "do present edges resolve to present node IDs?"
 
-As of 2026-06-08, the GCS export has `paper` files but the paper mention edges
-are not graph-valid because OpenTargets uses `ENSG...`, `EFO_...`, and
-`MONDO_...` identifiers that have not yet been merged into the exported
-gene/disease node ID spaces.
+As of 2026-06-09, the GCS export is graph-valid for the files currently
+present: `uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2` reports
+`total_dangling_edges: 0`. The coverage audit still reports missing schema
+files because the expanded KG vision is not fully exported yet.

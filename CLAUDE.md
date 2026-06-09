@@ -108,23 +108,24 @@ TxGNN's existing KG with OpenTargets and other sources. Nodes are registered in
 feature tables are stored as **Parquet files**. A loader function converts
 everything into a GNN-ready graph object.
 
-### Current Export Reality (2026-06-08)
+### Current Export Reality (2026-06-09)
 
 Canonical export under `gs://jouvencekb/kg/v2/` is **not yet the full expanded
 KG vision**. It is currently:
 
 - TxData legacy KG migrated to the Phase 7 Parquet layout.
 - I1/I2 LaminDB/bionty registry setup and TxData node mapping.
+- OpenTargets target and disease ID spaces merged enough for graph-valid
+  literature endpoints.
 - OpenTargets Europe PMC literature files physically added (`paper` nodes and
   `paper_mentions_gene` / `paper_mentions_disease` edges).
+- OpenTargets Reactome evidence slice added as `disease_associated_gene` and
+  `disease_involves_pathway`.
 
-Important caveat: the literature slice is currently **file-present but not
-graph-valid**. `paper_mentions_gene` points to Ensembl IDs (`ENSG...`) while the
-current exported `nodes/gene.parquet` contains legacy TxData gene IDs
-(`NCBI:*`). `paper_mentions_disease` points to OpenTargets disease IDs such as
-`EFO_...` while the exported disease nodes use the legacy normalized IDs. These
-two literature relations therefore have dangling endpoints until OpenTargets
-target/disease nodes are truly merged into the canonical export.
+As of the 2026-06-09 pass, `uv run python -m manage_db.validate_kg
+gs://jouvencekb/kg/v2` reports `total_dangling_edges: 0` across the current
+physical export. This means the current files are graph-valid, not complete:
+many schema-vision node and edge files are still absent.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
 The legacy TxData source conflates `gene/protein` in places, and some relations
@@ -135,11 +136,11 @@ use `protein` as an endpoint type, but there is no dedicated
 
 | Node type | Rows | Status |
 | --- | ---: | --- |
-| `disease` | 17,080 | present; legacy TxData-normalized IDs |
-| `gene` | 27,610 | present; legacy `NCBI:*` IDs, not Ensembl target catalog |
+| `disease` | 45,407 | present; legacy + OpenTargets disease IDs |
+| `gene` | 57,857 | present; legacy + OpenTargets Ensembl IDs |
 | `molecule` | 8,775 | present; legacy molecule/drug IDs |
 | `paper` | 2,958,199 | present; Europe PMC PMIDs |
-| `pathway` | 46,503 | present; legacy GO/Reactome-derived IDs |
+| `pathway` | 48,021 | present; legacy + OpenTargets Reactome evidence stubs |
 | `phenotype` | 15,311 | present; HP-derived |
 | `tissue` | 14,033 | present; UBERON-derived |
 
@@ -151,16 +152,18 @@ Missing node files from the schema vision:
 
 | Relation | Rows | Status |
 | --- | ---: | --- |
+| `disease_associated_gene` | 2,928 | present; OpenTargets Reactome evidence slice |
 | `disease_associated_protein` | 80,411 | present |
 | `disease_has_phenotype` | 151,338 | present |
-| `disease_subtype_of_disease` | 64,388 | present |
+| `disease_involves_pathway` | 2,296 | present; OpenTargets Reactome evidence slice |
+| `disease_subtype_of_disease` | 104,809 | present |
 | `molecule_contraindicates_disease` | 30,675 | present |
 | `molecule_in_pathway` | 1,680 | present |
 | `molecule_interacts_molecule` | 2,676,768 | present |
 | `molecule_targets_protein` | 26,680 | present |
 | `molecule_treats_disease` | 14,135 | present |
-| `paper_mentions_disease` | 6,492,130 | present but dangling until disease ID merge |
-| `paper_mentions_gene` | 7,177,163 | present but dangling until Ensembl gene node merge |
+| `paper_mentions_disease` | 6,492,130 | present; graph-valid |
+| `paper_mentions_gene` | 7,177,163 | present; graph-valid |
 | `pathway_child_of_pathway` | 147,680 | present |
 | `pathway_contains_gene` | 297,737 | present |
 | `pathway_contains_protein` | 42,646 | present |
@@ -174,8 +177,7 @@ Missing node files from the schema vision:
 Missing edge files from the schema vision include all transcript/mutation/
 enhancer/cell-type/cell-line/organism/dataset relations, plus several
 OpenTargets relations that are implemented in code but not present in the
-current canonical export: `disease_associated_gene`,
-`disease_involves_pathway`, `tissue_expresses_gene`,
+current canonical export: `tissue_expresses_gene`,
 `cell_type_expresses_gene`, `cell_type_expresses_protein`,
 `phenotype_associated_gene`, and the extra literature relations
 `paper_mentions_protein`, `paper_mentions_molecule`,
@@ -383,22 +385,27 @@ hetero_dgl  = kg.to_dgl()   # DGL HeteroGraph (legacy)
 OpenTargets datasets, but the current canonical `gs://jouvencekb/kg/v2` export
 does **not** yet reflect a complete OpenTargets run/merge.
 
-- [ ] `ingest_targets` → Ensembl `nodes/gene.parquet` with xrefs. Implemented,
-      but not merged into the canonical export; current gene nodes are legacy
-      `NCBI:*`.
-- [ ] `ingest_diseases` → EFO/MONDO disease nodes + hierarchy. Implemented,
-      but not merged into the canonical export; current paper disease mentions
-      still dangle on `EFO_...` IDs.
+- [x] `ingest_targets` → Ensembl `nodes/gene.parquet` with xrefs. Partially
+      merged into the canonical export; enough Ensembl IDs exist for current
+      paper and evidence endpoints.
+- [x] `ingest_diseases` → EFO/MONDO disease nodes + hierarchy. Partially merged
+      into the canonical export; current paper and evidence disease endpoints
+      validate cleanly.
 - [ ] `ingest_drugs` → ChEMBL molecule nodes. Implemented, but canonical export
       still appears legacy-sized (`8,775` molecule nodes).
 - [x] Legacy/TxData `protein_interacts_protein`, `molecule_targets_protein`,
       indication/contraindication-like edges are present in the export.
-- [ ] Full OpenTargets `interaction`, `evidence`, `go`, `reactome`,
+- [ ] PARTIAL: `ingest_evidence` added the cached OpenTargets Reactome evidence
+      slice (`2,928` `disease_associated_gene`, `2,296`
+      `disease_involves_pathway`) and validates with zero dangling endpoints.
+      Other evidence sources such as known_drug/chembl/genetic associations
+      still need download/merge.
+- [ ] Full OpenTargets `interaction`, `go`, `reactome`,
       `indication`, and `mechanismOfAction` runs need a fresh audited merge
       into the canonical export if we want the expanded OT-scale graph.
 - [ ] PARTIAL: `ingest_literature` produced and uploaded `paper` nodes plus
-      `paper_mentions_gene` / `paper_mentions_disease`, but these edges are
-      currently dangling because target/disease node ID spaces were not merged.
+      `paper_mentions_gene` / `paper_mentions_disease`; these now validate
+      cleanly after the target/disease node ID-space merge.
 
 ### Phase 5 — Additional sources ⚠️ (partially implemented, mostly pending export)
 
