@@ -3,10 +3,10 @@
   "task": "Drive remaining CLAUDE.md expanded KG checklist items to validated completion with bounded scratch-first work.",
   "goal_id": "G002",
   "counts": {
+    "completed": 8,
     "failed": 1,
-    "blocked": 0,
-    "completed": 7,
     "in_progress": 0,
+    "blocked": 0,
     "pending": 1
   },
   "terminal": false,
@@ -152,12 +152,29 @@
       "id": "9",
       "subject": "Resolve legacy protein endpoint conflation",
       "description": "Audit protein-named GCS edge files that currently use gene endpoints, update CLAUDE.md/schema notes, and decide the safe path before interaction/MoA/protein node exports.",
+      "status": "completed",
+      "role": "worker",
+      "owner": "builder",
+      "depends_on": [],
+      "version": 3,
+      "created_at": "2026-06-09T14:30:37.343664Z",
+      "coordination": {
+        "mode": "lightweight"
+      },
+      "verifier_required": false,
+      "completed_at": "2026-06-09T14:48:02.888081Z",
+      "result": "Audited all protein-named GCS edge files. They physically use gene endpoints: protein_interacts_protein gene→gene, and molecule_targets_protein/disease_associated_protein/pathway_contains_protein/tissue_expresses_protein/phenotype_associated_protein y_type=gene. Updated CLAUDE.md to mark them as legacy gene/protein-conflated relations and to block blind interaction/MoA ingestion until protein node/remapping is handled."
+    },
+    {
+      "id": "10",
+      "subject": "Plan protein node export path",
+      "description": "Use current OpenTargets target data and legacy gene/protein mappings to decide the safest path for nodes/protein.parquet and protein remapping before interaction/MoA exports.",
       "status": "pending",
       "role": "worker",
       "owner": null,
       "depends_on": [],
       "version": 1,
-      "created_at": "2026-06-09T14:30:37.343664Z",
+      "created_at": "2026-06-09T14:48:02.907153Z",
       "coordination": {
         "mode": "lightweight"
       },
@@ -167,11 +184,11 @@
   "loop": {
     "status": "running",
     "lease": {
-      "owner": "49466db58b3645e39e1a6c708395fb6b",
-      "acquired_at": "2026-06-09T14:32:42.489809Z",
-      "expires_at": "2026-06-09T14:47:42.489872Z",
-      "heartbeat_at": "2026-06-09T14:32:42.489886Z"
+      "owner": "2e949856351f467eb26555447002db68",
+      "acquired_at": "2026-06-09T14:49:13.583098Z",
+      "expires_at": "2026-06-09T15:04:13.583132Z",
+      "heartbeat_at": "2026-06-09T14:49:13.583146Z"
     },
-    "last_loop_at": "2026-06-09T12:41:54.418711Z"
+    "last_loop_at": "2026-06-09T14:32:42.497415Z"
   }
 }
