@@ -136,7 +136,7 @@ gs://jouvencekb/kg/v2` reports `total_dangling_edges: 0` across the current
 physical export. This means the current files are graph-valid, not complete:
 many schema-vision node and edge files are still absent.
 The coverage audit currently reports `9 / 15` node files, `24 / 77` edge
-files, `3,205,619` total nodes, and `25,035,369` total edges.
+files, `3,233,849` total nodes, and `25,325,918` total edges.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
 The legacy TxData source conflates `gene/protein` in places, and some relations
@@ -148,10 +148,10 @@ use `protein` as an endpoint type, but there is no dedicated
 | Node type | Primary ontology / ID namespace | GCS? | Rows | Comment |
 | --- | --- | --- | ---: | --- |
 | `paper` | PubMed (`PMID:12345678`) | yes | 2,958,199 | Europe PMC PMIDs |
-| `gene` | Ensembl (`ENSG00000139618`) | yes | 81,649 | legacy + OpenTargets Ensembl IDs; expression stubs added |
+| `gene` | Ensembl (`ENSG00000139618`) | yes | 109,325 | legacy + OpenTargets 26.03 target IDs; expression/evidence stubs added |
 | `transcript` | Ensembl (`ENST00000380152`) | no | - | not exported yet |
 | `protein` | UniProt (`P38398`) | no | - | not exported yet |
-| `pathway` | Reactome (`R-HSA-5633007`) | yes | 48,021 | legacy + OpenTargets Reactome evidence stubs |
+| `pathway` | Reactome / GO (`R-HSA-5633007`, `GO:0008150`) | yes | 48,575 | legacy + OpenTargets Reactome evidence stubs + GO terms |
 | `molecule` | ChEMBL (`CHEMBL941`) | yes | 31,007 | legacy + OpenTargets `drug_molecule` xrefs/properties; pharmacogenomics stubs added |
 | `mutation` | dbSNP (`rs7412`) | yes | 2,429 | OpenTargets pharmacogenomics stubs |
 | `disease` | EFO (`EFO:0000305`) | yes | 48,291 | legacy + OpenTargets disease IDs; disease-phenotype stubs added |
@@ -223,7 +223,7 @@ source, credibility, [additional metadata columns...]
 | `cell_line_expresses_gene` | `cell_line` | `gene` | `experimental` | yes | no | - | not exported yet |
 | `cell_line_expresses_protein` | `cell_line` | `protein` | `experimental` | yes | no | - | not exported yet |
 | `protein_interacts_protein` | `protein` | `protein` | `physical` | yes | yes | 642,150 | PPI (STRING, IntAct...) |
-| `pathway_contains_gene` | `pathway` | `gene` | `pathway` | no | yes | 297,737 | Reactome / GO |
+| `pathway_contains_gene` | `pathway` | `gene` | `pathway` | no | yes | 588,286 | Reactome / OpenTargets GO |
 | `pathway_contains_protein` | `pathway` | `protein` | `pathway` | no | yes | 42,646 | Reactome / KEGG |
 | `pathway_child_of_pathway` | `pathway` | `pathway` | `ontological` | yes | yes | 147,680 | Reactome hierarchy |
 | `molecule_in_pathway` | `molecule` | `pathway` | `pathway` | no | yes | 1,680 | Metabolic pathway |
@@ -343,9 +343,8 @@ hetero_dgl  = kg.to_dgl()   # DGL HeteroGraph (legacy)
 OpenTargets datasets, but the current canonical `gs://jouvencekb/kg/v2` export
 does **not** yet reflect a complete OpenTargets run/merge.
 
-- [x] `ingest_targets` → Ensembl `nodes/gene.parquet` with xrefs. Partially
-      merged into the canonical export; enough Ensembl IDs exist for current
-      paper and evidence endpoints.
+- [x] `ingest_targets` → Ensembl `nodes/gene.parquet` with xrefs. OpenTargets
+      26.03 target IDs are merged into the canonical export.
 - [x] `ingest_diseases` → EFO/MONDO disease nodes + hierarchy. Partially merged
       into the canonical export; current paper and evidence disease endpoints
       validate cleanly.
@@ -360,9 +359,10 @@ does **not** yet reflect a complete OpenTargets run/merge.
       `disease_involves_pathway`) and validates with zero dangling endpoints.
       Other evidence sources such as known_drug/chembl/genetic associations
       still need download/merge.
-- [ ] Full OpenTargets `interaction`, `go`, `reactome`,
-      `indication`, and `mechanismOfAction` runs need a fresh audited merge
-      into the canonical export if we want the expanded OT-scale graph.
+- [ ] Full OpenTargets `interaction`, `reactome`, `indication`, and
+      `mechanismOfAction` runs need a fresh audited merge into the canonical
+      export if we want the expanded OT-scale graph. OpenTargets 26.03
+      `target` + `go` are merged and validated.
 - [ ] PARTIAL: `ingest_literature` produced and uploaded `paper` nodes plus
       `paper_mentions_gene` / `paper_mentions_disease`; these now validate
       cleanly after the target/disease node ID-space merge.
@@ -435,7 +435,7 @@ data/kg/
 - [x] Remote GCS validation after paper, OpenTargets ID-space merge,
       biosample/expression, and disease-phenotype promotion:
       `uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2`
-      reports `3,205,619` nodes, `25,035,369` edges, and
+      reports `3,233,849` nodes, `25,325,918` edges, and
       `total_dangling_edges: 0`.
 - [ ] Node ontology coverage stats
 - [ ] Final TxGNN model smoke test on the VPS. This must be a tiny model and

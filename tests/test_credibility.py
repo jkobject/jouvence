@@ -204,6 +204,41 @@ def test_dedup_edges_preserves_sort() -> None:
     assert deduped.iloc[1]["credibility"] == Credibility.ESTABLISHED_FACT
 
 
+def test_dedup_edges_fast_path_without_evidence_columns() -> None:
+    df = pd.DataFrame(
+        [
+            {
+                "x_id": "GO:1",
+                "y_id": "ENSG1",
+                "relation": "pathway_contains_gene",
+                "source": "OpenTargets/GO",
+                "credibility": 1,
+            },
+            {
+                "x_id": "GO:1",
+                "y_id": "ENSG1",
+                "relation": "pathway_contains_gene",
+                "source": "TxGNN",
+                "credibility": 3,
+            },
+            {
+                "x_id": "GO:2",
+                "y_id": "ENSG2",
+                "relation": "pathway_contains_gene",
+                "source": "OpenTargets/GO",
+                "credibility": 1,
+            },
+        ]
+    )
+
+    deduped = dedup_edges(df)
+
+    assert len(deduped) == 2
+    first = deduped[deduped["x_id"] == "GO:1"].iloc[0]
+    assert first["source"] == "OpenTargets/GO,TxGNN"
+    assert first["credibility"] == 3
+
+
 def test_score_credibility_deterministic() -> None:
     evidences_a = [
         _evidence("opentargets:genetic_association", 0.8, "genetic_association", "PMID11", "labD"),

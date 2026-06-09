@@ -192,6 +192,32 @@ def dedup_edges(
             .sort_values(list(key_cols))
             .reset_index(drop=True)
         )
+    if not has_evidence_columns:
+        key_cols_list = list(key_cols)
+        duplicate_mask = edges_df.duplicated(subset=key_cols_list, keep=False)
+        if not duplicate_mask.any():
+            return edges_df.sort_values(key_cols_list).reset_index(drop=True)
+
+        unique_rows = edges_df.loc[~duplicate_mask]
+        duplicate_rows = edges_df.loc[duplicate_mask]
+        representatives = duplicate_rows.drop_duplicates(
+            subset=key_cols_list,
+            keep="first",
+        ).copy()
+        merged = duplicate_rows.groupby(key_cols_list, sort=False).agg({
+            "source": lambda values: ",".join(dict.fromkeys(str(v) for v in values)),
+            "credibility": "max",
+        }).reset_index()
+        representatives = representatives.drop(columns=["source", "credibility"]).merge(
+            merged,
+            on=key_cols_list,
+            how="left",
+        )
+        return (
+            pd.concat([unique_rows, representatives], ignore_index=True)
+            .sort_values(key_cols_list)
+            .reset_index(drop=True)
+        )
 
     columns = list(edges_df.columns)
     grouped_rows: list[pd.Series] = []
