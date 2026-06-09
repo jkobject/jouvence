@@ -3,11 +3,11 @@
   "task": "Drive remaining CLAUDE.md expanded KG checklist items to validated completion with bounded scratch-first work.",
   "goal_id": "G002",
   "counts": {
-    "completed": 3,
-    "pending": 0,
+    "completed": 4,
     "in_progress": 0,
+    "blocked": 0,
     "failed": 0,
-    "blocked": 0
+    "pending": 0
   },
   "terminal": true,
   "verifier_done": true,
@@ -62,6 +62,23 @@
       "verifier_required": false,
       "completed_at": "2026-06-09T12:58:43.131044Z",
       "result": "CLAUDE.md Phase 9 now specifies final TxGNN model smoke constraints: tiny model, systemd CPUQuota=200%, MemoryMax=4G, local/scratch data only, no production GCS mutation, pressure treated as blocker."
+    },
+    {
+      "id": "4",
+      "subject": "Merge OpenTargets pharmacogenomics",
+      "description": "Add mutation stubs and mutation_affects_molecule_response from OpenTargets pharmacogenomics using scratch-first GCS copy, validate zero dangling edges, then promote only if validated.",
+      "status": "completed",
+      "role": "worker",
+      "owner": "builder",
+      "depends_on": [],
+      "version": 3,
+      "created_at": "2026-06-09T13:18:45.008003Z",
+      "coordination": {
+        "mode": "lightweight"
+      },
+      "verifier_required": true,
+      "completed_at": "2026-06-09T13:27:10.039643Z",
+      "result": "Merged OpenTargets pharmacogenomics. Promoted nodes/mutation.parquet, updated nodes/molecule.parquet, and edges/mutation_affects_molecule_response.parquet. GCS validate PASS: 3,205,619 nodes, 25,035,369 edges, total_dangling_edges=0. Coverage now 9/15 node files and 24/77 edge files."
     }
   ],
   "loop": {

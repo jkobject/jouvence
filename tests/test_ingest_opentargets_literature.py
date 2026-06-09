@@ -11,6 +11,7 @@ from manage_db.ingest_opentargets import (
     ingest_drugs,
     ingest_evidence,
     ingest_expression,
+    ingest_pharmacogenomics,
     ingest_literature,
 )
 
@@ -213,3 +214,36 @@ def test_ingest_disease_phenotype_normalizes_ids_and_adds_stubs(tmp_path: Path) 
     assert edges.loc[0, "y_id"] == "HP:0001250"
     assert set(diseases["id"]) == {"MONDO:0005148"}
     assert set(phenotypes["id"]) == {"HP:0001250"}
+
+
+def test_ingest_pharmacogenomics_adds_endpoint_stubs(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    pg_dir = ot_dir / "pharmacogenomics"
+    pg_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "variantId": "1_12345_A_G",
+                "variantRsId": "rs123",
+                "targetFromSourceId": "ENSG00000123456",
+                "drugs": [{"drugId": "CHEMBL123", "drugFromSource": "drug"}],
+                "evidenceLevel": "1A",
+                "pgxCategory": "toxicity",
+                "datasourceId": "pharmgkb",
+            },
+        ]
+    ).to_parquet(pg_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+
+    assert ingest_pharmacogenomics(ot_dir, kg_dir, root) == 1
+    edges = kg_storage.read_edges(root, "mutation_affects_molecule_response")
+    mutations = kg_storage.read_nodes(root, "mutation")
+    molecules = kg_storage.read_nodes(root, "molecule")
+
+    assert edges.loc[0, "x_id"] == "1_12345_A_G"
+    assert edges.loc[0, "y_id"] == "CHEMBL123"
+    assert set(mutations["id"]) == {"1_12345_A_G"}
+    assert mutations.loc[0, "name"] == "rs123"
+    assert set(molecules["id"]) == {"CHEMBL123"}

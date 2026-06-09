@@ -128,13 +128,15 @@ KG vision**. It is currently:
   Ensembl gene stubs are present where needed for graph-valid endpoints.
 - OpenTargets disease-phenotype HPO slice merged into `disease_has_phenotype`
   with normalized `MONDO:` / `HP:` endpoints and endpoint stubs where needed.
+- OpenTargets pharmacogenomics slice added as `mutation` stubs plus
+  `mutation_affects_molecule_response` edges.
 
 As of the 2026-06-09 pass, `uv run python -m manage_db.validate_kg
 gs://jouvencekb/kg/v2` reports `total_dangling_edges: 0` across the current
 physical export. This means the current files are graph-valid, not complete:
 many schema-vision node and edge files are still absent.
-The coverage audit currently reports `8 / 15` node files, `23 / 77` edge
-files, `3,203,188` total nodes, and `25,030,503` total edges.
+The coverage audit currently reports `9 / 15` node files, `24 / 77` edge
+files, `3,205,619` total nodes, and `25,035,369` total edges.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
 The legacy TxData source conflates `gene/protein` in places, and some relations
@@ -150,8 +152,8 @@ use `protein` as an endpoint type, but there is no dedicated
 | `transcript` | Ensembl (`ENST00000380152`) | no | - | not exported yet |
 | `protein` | UniProt (`P38398`) | no | - | not exported yet |
 | `pathway` | Reactome (`R-HSA-5633007`) | yes | 48,021 | legacy + OpenTargets Reactome evidence stubs |
-| `molecule` | ChEMBL (`CHEMBL941`) | yes | 31,005 | legacy + OpenTargets ChEMBL molecule IDs |
-| `mutation` | dbSNP (`rs7412`) | no | - | not exported yet |
+| `molecule` | ChEMBL (`CHEMBL941`) | yes | 31,007 | legacy + OpenTargets ChEMBL molecule IDs; pharmacogenomics stubs added |
+| `mutation` | dbSNP (`rs7412`) | yes | 2,429 | OpenTargets pharmacogenomics stubs |
 | `disease` | EFO (`EFO:0000305`) | yes | 48,291 | legacy + OpenTargets disease IDs; disease-phenotype stubs added |
 | `cell_type` | CL (`CL:0000576`) | yes | 3,513 | OpenTargets biosample CL IDs |
 | `tissue` | UBERON (`UBERON:0002107`) | yes | 16,061 | UBERON-derived + OpenTargets biosample |
@@ -205,7 +207,7 @@ source, credibility, [additional metadata columns...]
 | `mutation_overlaps_enhancer` | `mutation` | `enhancer` | `genetic` | yes | no | - | not exported yet |
 | `mutation_associated_disease` | `mutation` | `disease` | `genetic` | no | no | - | not exported yet |
 | `mutation_causes_phenotype` | `mutation` | `phenotype` | `genetic` | no | no | - | not exported yet |
-| `mutation_affects_molecule_response` | `mutation` | `molecule` | `pharmacological` | no | no | - | not exported yet |
+| `mutation_affects_molecule_response` | `mutation` | `molecule` | `pharmacological` | no | yes | 4,866 | OpenTargets pharmacogenomics |
 | `mutation_associated_cell_type` | `mutation` | `cell_type` | `genetic` | no | no | - | not exported yet |
 | `gene_ortholog_gene` | `gene` | `gene` | `genetic` | yes | no | - | not exported yet |
 | `enhancer_regulates_gene` | `enhancer` | `gene` | `regulatory` | no | no | - | not exported yet |
@@ -376,8 +378,8 @@ Current Export Reality section above.
       pending.
 - [x] `ingest_biosample`: OpenTargets `cell_type` nodes are present in the
       canonical export.
-- [ ] `ingest_pharmacogenomics`: implemented; current export lacks `mutation`
-      nodes and `mutation_affects_molecule_response`.
+- [x] `ingest_pharmacogenomics`: OpenTargets pharmacogenomics slice merged as
+      `mutation` stubs and `mutation_affects_molecule_response`.
 - [ ] `ingest_variants`: smoke-tested only; full mutation/transcript/protein
       variant graph remains pending.
 - [ ] `ingest_enhancers`: smoke-tested only; enhancer nodes and enhancer
@@ -431,7 +433,7 @@ data/kg/
 - [x] Remote GCS validation after paper, OpenTargets ID-space merge,
       biosample/expression, and disease-phenotype promotion:
       `uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2`
-      reports `3,203,188` nodes, `25,030,503` edges, and
+      reports `3,205,619` nodes, `25,035,369` edges, and
       `total_dangling_edges: 0`.
 - [ ] Node ontology coverage stats
 - [ ] Final TxGNN model smoke test on the VPS. This must be a tiny model and

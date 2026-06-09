@@ -1707,6 +1707,8 @@ def ingest_pharmacogenomics(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot
         raise FileNotFoundError(pg_dir)
 
     rows: list[dict] = []
+    seen_mutations: dict[str, str | None] = {}
+    seen_molecules: set[str] = set()
     pg_cols = ["variantId", "variantRsId", "targetFromSourceId", "drugs",
                "evidenceLevel", "pgxCategory", "datasourceId"]
 
@@ -1715,6 +1717,7 @@ def ingest_pharmacogenomics(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot
             variant_id = row.get("variantId")
             if not isinstance(variant_id, str) or not variant_id:
                 continue
+            variant_rs_id = row.get("variantRsId")
 
             drugs = _to_list(row.get("drugs", []))
             ev_level = row.get("evidenceLevel")
@@ -1739,6 +1742,11 @@ def ingest_pharmacogenomics(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot
                 drug_id = drug.get("drugId")
                 if not isinstance(drug_id, str) or not drug_id.startswith("CHEMBL"):
                     continue
+                seen_mutations.setdefault(
+                    variant_id,
+                    str(variant_rs_id).strip() if variant_rs_id is not None else None,
+                )
+                seen_molecules.add(drug_id)
 
                 rows.append(_make_edge(
                     x_id=variant_id,
@@ -1755,6 +1763,61 @@ def ingest_pharmacogenomics(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot
     if not rows:
         log.warning("ingest_pharmacogenomics: no rows written")
         return 0
+
+    if seen_mutations:
+        try:
+            existing_mutation_ids = set(
+                kg_storage.read_nodes(root, NodeType.MUTATION.value, columns=["id"])["id"].astype(str)
+            )
+        except Exception:
+            existing_mutation_ids = set()
+        missing_mutation_ids = sorted(set(seen_mutations) - existing_mutation_ids)
+        if missing_mutation_ids:
+            kg_storage.write_nodes(
+                root,
+                NodeType.MUTATION.value,
+                pd.DataFrame(
+                    {
+                        "id": mutation_id,
+                        "hgvs": None,
+                        "clinvar_id": None,
+                        "gnomad_id": None,
+                        "name": seen_mutations.get(mutation_id) or mutation_id,
+                        "source": "OpenTargets/pharmacogenomics",
+                    }
+                    for mutation_id in missing_mutation_ids
+                ),
+                mode="append",
+            )
+            log.info("  added %d pharmacogenomics mutation stubs", len(missing_mutation_ids))
+    if seen_molecules:
+        try:
+            existing_molecule_ids = set(
+                kg_storage.read_nodes(root, NodeType.MOLECULE.value, columns=["id"])["id"].astype(str)
+            )
+        except Exception:
+            existing_molecule_ids = set()
+        missing_molecule_ids = sorted(seen_molecules - existing_molecule_ids)
+        if missing_molecule_ids:
+            kg_storage.write_nodes(
+                root,
+                NodeType.MOLECULE.value,
+                pd.DataFrame(
+                    {
+                        "id": molecule_id,
+                        "drugbank_id": None,
+                        "pubchem_cid": None,
+                        "cas_rn": None,
+                        "inchikey": None,
+                        "smiles": None,
+                        "name": molecule_id,
+                        "source": "OpenTargets/pharmacogenomics",
+                    }
+                    for molecule_id in missing_molecule_ids
+                ),
+                mode="append",
+            )
+            log.info("  added %d pharmacogenomics molecule stubs", len(missing_molecule_ids))
 
     df = pd.DataFrame(rows)
     df = df.drop_duplicates(subset=["x_id", "y_id", "relation", "source"], keep="first")
