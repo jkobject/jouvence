@@ -141,98 +141,34 @@ The legacy TxData source conflates `gene/protein` in places, and some relations
 use `protein` as an endpoint type, but there is no dedicated
 `nodes/protein.parquet` or `nodes/transcript.parquet` in the current export.
 
-#### Current Node Files on GCS
+### Node Schema & GCS Coverage
 
-| Node type | Rows | Status |
-| --- | ---: | --- |
-| `cell_type` | 3,513 | present; OpenTargets biosample CL IDs |
-| `disease` | 48,291 | present; legacy + OpenTargets disease IDs |
-| `gene` | 81,649 | present; legacy + OpenTargets Ensembl IDs, including expression stubs |
-| `molecule` | 31,005 | present; legacy + OpenTargets ChEMBL molecule IDs |
-| `paper` | 2,958,199 | present; Europe PMC PMIDs |
-| `pathway` | 48,021 | present; legacy + OpenTargets Reactome evidence stubs |
-| `phenotype` | 16,449 | present; HP-derived + OpenTargets HPO stubs |
-| `tissue` | 16,061 | present; UBERON-derived + OpenTargets biosample |
+| Node type | Primary ontology / ID namespace | GCS? | Rows | Comment |
+| --- | --- | --- | ---: | --- |
+| `paper` | PubMed (`PMID:12345678`) | yes | 2,958,199 | Europe PMC PMIDs |
+| `gene` | Ensembl (`ENSG00000139618`) | yes | 81,649 | legacy + OpenTargets Ensembl IDs; expression stubs added |
+| `transcript` | Ensembl (`ENST00000380152`) | no | - | not exported yet |
+| `protein` | UniProt (`P38398`) | no | - | not exported yet |
+| `pathway` | Reactome (`R-HSA-5633007`) | yes | 48,021 | legacy + OpenTargets Reactome evidence stubs |
+| `molecule` | ChEMBL (`CHEMBL941`) | yes | 31,005 | legacy + OpenTargets ChEMBL molecule IDs |
+| `mutation` | dbSNP (`rs7412`) | no | - | not exported yet |
+| `disease` | EFO (`EFO:0000305`) | yes | 48,291 | legacy + OpenTargets disease IDs; disease-phenotype stubs added |
+| `cell_type` | CL (`CL:0000576`) | yes | 3,513 | OpenTargets biosample CL IDs |
+| `tissue` | UBERON (`UBERON:0002107`) | yes | 16,061 | UBERON-derived + OpenTargets biosample |
+| `phenotype` | HP (`HP:0000118`) | yes | 16,449 | HP-derived + OpenTargets HPO stubs |
+| `cell_line` | Cellosaurus (`CVCL_0023`) | no | - | not exported yet |
+| `organism` | NCBI Taxonomy (`9606`) | no | - | not exported yet |
+| `dataset` | DOI / UUID (`DOI:10.1038/s41586-023-06221-2`) | no | - | not exported yet |
+| `enhancer` | ENCODE (`EH38E1516972`) | no | - | not exported yet |
 
-Missing node files from the schema vision:
-`transcript`, `protein`, `mutation`, `organism`, `cell_line`, `dataset`,
-`enhancer`.
-
-#### Current Edge Files on GCS
-
-| Relation | Rows | Status |
-| --- | ---: | --- |
-| `cell_type_expresses_gene` | 1,561,873 | present; OpenTargets expression |
-| `disease_associated_gene` | 2,928 | present; OpenTargets Reactome evidence slice |
-| `disease_associated_protein` | 80,411 | present |
-| `disease_has_phenotype` | 241,797 | present; legacy + OpenTargets HPO |
-| `disease_involves_pathway` | 2,296 | present; OpenTargets Reactome evidence slice |
-| `disease_subtype_of_disease` | 104,809 | present |
-| `molecule_contraindicates_disease` | 30,675 | present |
-| `molecule_in_pathway` | 1,680 | present |
-| `molecule_interacts_molecule` | 2,676,768 | present |
-| `molecule_targets_protein` | 41,239 | present; includes OpenTargets MoA rows with Ensembl gene endpoints pending protein resolution |
-| `molecule_treats_disease` | 14,135 | present |
-| `paper_mentions_disease` | 6,492,130 | present; graph-valid |
-| `paper_mentions_gene` | 7,177,163 | present; graph-valid |
-| `pathway_child_of_pathway` | 147,680 | present |
-| `pathway_contains_gene` | 297,737 | present |
-| `pathway_contains_protein` | 42,646 | present |
-| `phenotype_associated_molecule` | 64,784 | present |
-| `phenotype_associated_protein` | 3,330 | present |
-| `phenotype_subtype_of_phenotype` | 37,472 | present |
-| `protein_interacts_protein` | 642,150 | present |
-| `tissue_expresses_gene` | 3,800,648 | present; OpenTargets expression |
-| `tissue_expresses_protein` | 1,538,088 | present |
-| `tissue_subtype_of_tissue` | 28,064 | present |
-
-Missing edge files from the schema vision include all transcript/mutation/
-enhancer/cell-type/cell-line/organism/dataset relations, plus several
-OpenTargets relations that are implemented in code but not present in the
-current canonical export: `cell_type_expresses_protein`,
-`phenotype_associated_gene`, and the extra literature relations
-`paper_mentions_protein`, `paper_mentions_molecule`,
-`paper_mentions_mutation`, `paper_mentions_pathway`, `paper_cites_paper`,
-`paper_produced_dataset`.
-
-### Node Types & Ontology Namespaces
-
-| Node type    | Primary ontology / ID namespace      |
-| ------------ | ------------------------------------ |
-| `paper`      | PubMed ID / DOI                      |
-| `gene`       | Ensembl Gene ID (ENSG…)              |
-| `transcript` | Ensembl Transcript ID (ENST…)        |
-| `protein`    | UniProt accession                    |
-| `pathway`    | Reactome / GO term                   |
-| `molecule`   | ChEMBL ID / InChIKey                 |
-| `mutation`   | dbSNP rsID / HGVS                    |
-| `disease`    | MONDO / EFO / HP                     |
-| `cell_type`  | Cell Ontology (CL:…)                 |
-| `tissue`     | UBERON                               |
-| `phenotype`  | Human Phenotype Ontology (HP:…)      |
-| `cell_line`  | Cellosaurus (CVCL\_…)                |
-| `organism`   | NCBI Taxonomy ID                     |
-| `dataset`    | Internal UUID / DOI                  |
-| `enhancer`   | ENCODE / Ensembl Regulatory Build ID |
-
-### Edge Schema
+### Edge Schema & GCS Coverage
 
 All edges stored as Parquet with at minimum:
 
 ```
 x_id, x_type, y_id, y_type, relation, display_relation,
-source, credibility, [additional metadata columns…]
+source, credibility, [additional metadata columns...]
 ```
-
-### Credibility Score
-
-| Score | Meaning                                                            |
-| ----- | ------------------------------------------------------------------ |
-| `3`   | Established fact (curated DB, no ambiguity)                        |
-| `2`   | Multiple independent evidence (papers from distinct author groups) |
-| `1`   | Single evidence (one paper, possibly same authors)                 |
-
-### Relation Types
 
 **Kind legend:**
 
@@ -253,88 +189,97 @@ source, credibility, [additional metadata columns…]
 
 **Direct flag:**
 
-- ✓ = direct biological interaction (physical, mechanistic, sequence-derived)
-- ~ = sometimes direct depending on source
-- ✗ = associative / statistical / indirect
+- yes = direct biological interaction (physical, mechanistic, sequence-derived)
+- maybe = sometimes direct depending on source
+- no = associative / statistical / indirect
 
-| Relation                             | Source     | Target     | Kind            | Direct? | Notes                      |
-| ------------------------------------ | ---------- | ---------- | --------------- | ------- | -------------------------- |
-| `gene_has_transcript`                | gene       | transcript | central_dogma   | ✓       | Transcription              |
-| `transcript_encodes_protein`         | transcript | protein    | central_dogma   | ✓       | Translation                |
-| `gene_encodes_protein`               | gene       | protein    | central_dogma   | ✗       | Shortcut edge              |
-| `mutation_in_gene`                   | mutation   | gene       | genetic         | ✓       | Genomic position           |
-| `mutation_affects_transcript`        | mutation   | transcript | genetic         | ✓       | Splicing / UTR variant     |
-| `mutation_causes_protein_change`     | mutation   | protein    | genetic         | ✓       | Amino acid change          |
-| `mutation_overlaps_enhancer`         | mutation   | enhancer   | genetic         | ✓       | Regulatory variant         |
-| `mutation_associated_disease`        | mutation   | disease    | genetic         | ~       | GWAS / ClinVar             |
-| `mutation_causes_phenotype`          | mutation   | phenotype  | genetic         | ~       | Mendelian / GWAS           |
-| `mutation_affects_molecule_response` | mutation   | molecule   | pharmacological | ~       | Pharmacogenomics           |
-| `mutation_associated_cell_type`      | mutation   | cell_type  | genetic         | ✗       | eQTL cell-type enrichment  |
-| `enhancer_regulates_gene`            | enhancer   | gene       | regulatory      | ✓       | ChIP-seq / Hi-C            |
-| `enhancer_regulates_transcript`      | enhancer   | transcript | regulatory      | ✓       | TSS-specific regulation    |
-| `enhancer_active_in_cell_type`       | enhancer   | cell_type  | regulatory      | ✓       | ATAC-seq / ChIP-seq        |
-| `enhancer_active_in_tissue`          | enhancer   | tissue     | regulatory      | ✓       | Bulk ATAC / DNase-seq      |
-| `enhancer_associated_disease`        | enhancer   | disease    | disease_assoc   | ~       | GWAS overlap               |
-| `gene_coexpressed_gene`              | gene       | gene       | expression      | ✗       | Co-expression network      |
-| `gene_ortholog_gene`                 | gene       | gene       | genetic         | ✓       | Cross-species orthology    |
-| `transcript_alternative_transcript`  | transcript | transcript | central_dogma   | ✓       | Alternative splicing       |
-| `protein_interacts_protein`          | protein    | protein    | physical        | ✓       | PPI (STRING, IntAct…)      |
-| `pathway_contains_gene`              | pathway    | gene       | pathway         | ~       | Reactome / GO              |
-| `pathway_contains_protein`           | pathway    | protein    | pathway         | ~       | Reactome / KEGG            |
-| `pathway_child_of_pathway`           | pathway    | pathway    | ontological     | ✓       | Reactome hierarchy         |
-| `molecule_in_pathway`                | molecule   | pathway    | pathway         | ~       | Metabolic pathway          |
-| `molecule_targets_protein`           | molecule   | protein    | pharmacological | ✓       | Drug-target binding        |
-| `molecule_treats_disease`            | molecule   | disease    | pharmacological | ✗       | Indication (clinical)      |
-| `molecule_contraindicates_disease`   | molecule   | disease    | pharmacological | ✗       | Contraindication           |
-| `molecule_interacts_molecule`        | molecule   | molecule   | pharmacological | ~       | Drug-drug interaction      |
-| `disease_associated_gene`            | disease    | gene       | disease_assoc   | ~       | GWAS / rare variant        |
-| `disease_associated_protein`         | disease    | protein    | disease_assoc   | ~       | Proteomics / genetics      |
-| `disease_involves_pathway`           | disease    | pathway    | disease_assoc   | ✗       | Pathway enrichment         |
-| `disease_associated_mutation`        | disease    | mutation   | genetic         | ~       | ClinVar / GWAS             |
-| `disease_subtype_of_disease`         | disease    | disease    | ontological     | ✓       | MONDO / EFO hierarchy      |
-| `disease_comorbid_disease`           | disease    | disease    | epidemiological | ✗       | Co-occurrence in EHR       |
-| `disease_manifests_in_tissue`        | disease    | tissue     | disease_assoc   | ~       | Pathology annotation       |
-| `disease_has_phenotype`              | disease    | phenotype  | phenotype_assoc | ✓       | HPO annotation             |
-| `phenotype_observed_in_tissue`       | phenotype  | tissue     | phenotype_assoc | ~       | Anatomical manifestation   |
-| `phenotype_caused_by_mutation`       | phenotype  | mutation   | genetic         | ~       | Mendelian causal           |
-| `phenotype_associated_gene`          | phenotype  | gene       | phenotype_assoc | ~       | HPO-gene annotation        |
-| `phenotype_associated_protein`       | phenotype  | protein    | phenotype_assoc | ✗       | Inferred via gene          |
-| `phenotype_associated_molecule`      | phenotype  | molecule   | pharmacological | ✗       | Side effect / rescue       |
-| `phenotype_associated_cell_type`     | phenotype  | cell_type  | phenotype_assoc | ✗       | Cell type enrichment       |
-| `phenotype_subtype_of_phenotype`     | phenotype  | phenotype  | ontological     | ✓       | HPO hierarchy              |
-| `tissue_expresses_gene`              | tissue     | gene       | expression      | ✓       | GTEx / HPA bulk RNA        |
-| `tissue_expresses_protein`           | tissue     | protein    | expression      | ✓       | HPA / proteomics           |
-| `cell_type_expresses_gene`           | cell_type  | gene       | expression      | ✓       | scRNA-seq (CellxGene)      |
-| `cell_type_expresses_protein`        | cell_type  | protein    | expression      | ✓       | CyTOF / sc-proteomics      |
-| `cell_type_found_in_tissue`          | cell_type  | tissue     | ontological     | ✓       | Cell Ontology / UBERON     |
-| `cell_type_involved_in_disease`      | cell_type  | disease    | disease_assoc   | ✗       | scRNA disease enrichment   |
-| `cell_type_responds_to_molecule`     | cell_type  | molecule   | pharmacological | ~       | Drug screen / perturbation |
-| `cell_type_subtype_of_cell_type`     | cell_type  | cell_type  | ontological     | ✓       | Cell Ontology IS-A         |
-| `cell_line_expresses_gene`           | cell_line  | gene       | experimental    | ✓       | RNA-seq (CCLE…)            |
-| `cell_line_expresses_protein`        | cell_line  | protein    | experimental    | ✓       | Proteomics (CCLE…)         |
-| `cell_line_responds_to_molecule`     | cell_line  | molecule   | experimental    | ✓       | GDSC / PRISM viability     |
-| `cell_line_models_disease`           | cell_line  | disease    | experimental    | ~       | Curated annotation         |
-| `cell_line_derived_from_cell_type`   | cell_line  | cell_type  | experimental    | ✓       | Cellosaurus                |
-| `cell_line_derived_from_tissue`      | cell_line  | tissue     | experimental    | ✓       | Cellosaurus origin         |
-| `cell_line_from_organism`            | cell_line  | organism   | metadata        | ✓       | Donor species              |
-| `cell_line_associated_disease`       | cell_line  | disease    | experimental    | ~       | Added by user              |
-| `organism_has_gene`                  | organism   | gene       | genetic         | ✓       | Ensembl species            |
-| `organism_models_disease`            | organism   | disease    | experimental    | ~       | MGI / Alliance             |
-| `organism_has_tissue`                | organism   | tissue     | ontological     | ✓       | Anatomy ontology           |
-| `paper_mentions_gene`                | paper      | gene       | literature      | ✗       | NLP / Europe PMC           |
-| `paper_mentions_disease`             | paper      | disease    | literature      | ✗       | NLP / Europe PMC           |
-| `paper_mentions_protein`             | paper      | protein    | literature      | ✗       | NLP / Europe PMC           |
-| `paper_mentions_molecule`            | paper      | molecule   | literature      | ✗       | NLP / Europe PMC           |
-| `paper_mentions_mutation`            | paper      | mutation   | literature      | ✗       | NLP / Europe PMC           |
-| `paper_mentions_pathway`             | paper      | pathway    | literature      | ✗       | NLP / Europe PMC           |
-| `paper_produced_dataset`             | paper      | dataset    | metadata        | ✓       | Provenance                 |
-| `paper_cites_paper`                  | paper      | paper      | literature      | ✓       | Citation graph             |
-| `dataset_contains_gene`              | dataset    | gene       | metadata        | ✓       | Measured entity            |
-| `dataset_contains_disease`           | dataset    | disease    | metadata        | ✓       | Measured entity            |
-| `dataset_contains_molecule`          | dataset    | molecule   | metadata        | ✓       | Measured entity            |
-| `dataset_contains_cell_type`         | dataset    | cell_type  | metadata        | ✓       | Measured entity            |
-| `dataset_contains_cell_line`         | dataset    | cell_line  | metadata        | ✓       | Measured entity            |
-| `dataset_contains_tissue`            | dataset    | tissue     | metadata        | ✓       | Measured entity            |
+| Relation | Source | Target | Kind | Direct? | GCS? | Rows | Comment |
+| --- | --- | --- | --- | --- | --- | ---: | --- |
+| `gene_has_transcript` | `gene` | `transcript` | `central_dogma` | yes | no | - | not exported yet |
+| `transcript_encodes_protein` | `transcript` | `protein` | `central_dogma` | yes | no | - | not exported yet |
+| `gene_encodes_protein` | `gene` | `protein` | `central_dogma` | no | no | - | not exported yet |
+| `transcript_alternative_transcript` | `transcript` | `transcript` | `central_dogma` | yes | no | - | not exported yet |
+| `mutation_in_gene` | `mutation` | `gene` | `genetic` | yes | no | - | not exported yet |
+| `mutation_affects_transcript` | `mutation` | `transcript` | `genetic` | yes | no | - | not exported yet |
+| `mutation_causes_protein_change` | `mutation` | `protein` | `genetic` | yes | no | - | not exported yet |
+| `mutation_overlaps_enhancer` | `mutation` | `enhancer` | `genetic` | yes | no | - | not exported yet |
+| `mutation_associated_disease` | `mutation` | `disease` | `genetic` | no | no | - | not exported yet |
+| `mutation_causes_phenotype` | `mutation` | `phenotype` | `genetic` | no | no | - | not exported yet |
+| `mutation_affects_molecule_response` | `mutation` | `molecule` | `pharmacological` | no | no | - | not exported yet |
+| `mutation_associated_cell_type` | `mutation` | `cell_type` | `genetic` | no | no | - | not exported yet |
+| `gene_ortholog_gene` | `gene` | `gene` | `genetic` | yes | no | - | not exported yet |
+| `enhancer_regulates_gene` | `enhancer` | `gene` | `regulatory` | no | no | - | not exported yet |
+| `enhancer_regulates_transcript` | `enhancer` | `transcript` | `regulatory` | yes | no | - | not exported yet |
+| `enhancer_active_in_cell_type` | `enhancer` | `cell_type` | `regulatory` | yes | no | - | not exported yet |
+| `enhancer_active_in_tissue` | `enhancer` | `tissue` | `regulatory` | yes | no | - | not exported yet |
+| `enhancer_associated_disease` | `enhancer` | `disease` | `disease_assoc` | no | no | - | not exported yet |
+| `gene_coexpressed_gene` | `gene` | `gene` | `expression` | no | no | - | not exported yet |
+| `tissue_expresses_gene` | `tissue` | `gene` | `expression` | yes | yes | 3,800,648 | OpenTargets expression |
+| `tissue_expresses_protein` | `tissue` | `protein` | `expression` | yes | yes | 1,538,088 | HPA / proteomics |
+| `cell_type_expresses_gene` | `cell_type` | `gene` | `expression` | yes | yes | 1,561,873 | OpenTargets expression |
+| `cell_type_expresses_protein` | `cell_type` | `protein` | `expression` | yes | no | - | not exported yet |
+| `cell_line_expresses_gene` | `cell_line` | `gene` | `experimental` | yes | no | - | not exported yet |
+| `cell_line_expresses_protein` | `cell_line` | `protein` | `experimental` | yes | no | - | not exported yet |
+| `protein_interacts_protein` | `protein` | `protein` | `physical` | yes | yes | 642,150 | PPI (STRING, IntAct...) |
+| `pathway_contains_gene` | `pathway` | `gene` | `pathway` | no | yes | 297,737 | Reactome / GO |
+| `pathway_contains_protein` | `pathway` | `protein` | `pathway` | no | yes | 42,646 | Reactome / KEGG |
+| `pathway_child_of_pathway` | `pathway` | `pathway` | `ontological` | yes | yes | 147,680 | Reactome hierarchy |
+| `molecule_in_pathway` | `molecule` | `pathway` | `pathway` | no | yes | 1,680 | Metabolic pathway |
+| `molecule_targets_protein` | `molecule` | `protein` | `pharmacological` | yes | yes | 41,239 | legacy + OpenTargets MoA rows; protein resolution still imperfect |
+| `molecule_treats_disease` | `molecule` | `disease` | `pharmacological` | no | yes | 14,135 | Indication (clinical) |
+| `molecule_contraindicates_disease` | `molecule` | `disease` | `pharmacological` | no | yes | 30,675 | Contraindication |
+| `molecule_interacts_molecule` | `molecule` | `molecule` | `pharmacological` | no | yes | 2,676,768 | Drug-drug interaction |
+| `cell_type_responds_to_molecule` | `cell_type` | `molecule` | `pharmacological` | no | no | - | not exported yet |
+| `cell_line_responds_to_molecule` | `cell_line` | `molecule` | `experimental` | yes | no | - | not exported yet |
+| `phenotype_associated_molecule` | `phenotype` | `molecule` | `pharmacological` | no | yes | 64,784 | Side effect / rescue |
+| `disease_associated_gene` | `disease` | `gene` | `disease_assoc` | no | yes | 2,928 | OpenTargets Reactome evidence slice |
+| `disease_associated_protein` | `disease` | `protein` | `disease_assoc` | no | yes | 80,411 | Proteomics / genetics |
+| `disease_involves_pathway` | `disease` | `pathway` | `disease_assoc` | no | yes | 2,296 | OpenTargets Reactome evidence slice |
+| `disease_associated_mutation` | `disease` | `mutation` | `genetic` | no | no | - | not exported yet |
+| `disease_manifests_in_tissue` | `disease` | `tissue` | `disease_assoc` | no | no | - | not exported yet |
+| `disease_subtype_of_disease` | `disease` | `disease` | `ontological` | yes | yes | 104,809 | EFO / MONDO hierarchy |
+| `disease_comorbid_disease` | `disease` | `disease` | `epidemiological` | no | no | - | not exported yet |
+| `disease_has_phenotype` | `disease` | `phenotype` | `phenotype_assoc` | yes | yes | 241,797 | legacy + OpenTargets HPO |
+| `phenotype_observed_in_tissue` | `phenotype` | `tissue` | `phenotype_assoc` | no | no | - | not exported yet |
+| `phenotype_caused_by_mutation` | `phenotype` | `mutation` | `genetic` | no | no | - | not exported yet |
+| `phenotype_associated_gene` | `phenotype` | `gene` | `phenotype_assoc` | no | no | - | not exported yet |
+| `phenotype_associated_protein` | `phenotype` | `protein` | `phenotype_assoc` | no | yes | 3,330 | Inferred via gene |
+| `phenotype_associated_cell_type` | `phenotype` | `cell_type` | `phenotype_assoc` | no | no | - | not exported yet |
+| `phenotype_subtype_of_phenotype` | `phenotype` | `phenotype` | `ontological` | yes | yes | 37,472 | HPO hierarchy |
+| `tissue_subtype_of_tissue` | `tissue` | `tissue` | `ontological` | yes | yes | 28,064 | UBERON parent-child hierarchy |
+| `cell_type_found_in_tissue` | `cell_type` | `tissue` | `ontological` | yes | no | - | not exported yet |
+| `cell_type_involved_in_disease` | `cell_type` | `disease` | `disease_assoc` | no | no | - | not exported yet |
+| `cell_type_subtype_of_cell_type` | `cell_type` | `cell_type` | `ontological` | yes | no | - | not exported yet |
+| `cell_line_models_disease` | `cell_line` | `disease` | `experimental` | no | no | - | not exported yet |
+| `cell_line_derived_from_cell_type` | `cell_line` | `cell_type` | `experimental` | yes | no | - | not exported yet |
+| `cell_line_derived_from_tissue` | `cell_line` | `tissue` | `experimental` | yes | no | - | not exported yet |
+| `cell_line_from_organism` | `cell_line` | `organism` | `metadata` | yes | no | - | not exported yet |
+| `cell_line_associated_disease` | `cell_line` | `disease` | `experimental` | no | no | - | not exported yet |
+| `organism_has_gene` | `organism` | `gene` | `genetic` | yes | no | - | not exported yet |
+| `organism_models_disease` | `organism` | `disease` | `experimental` | no | no | - | not exported yet |
+| `organism_has_tissue` | `organism` | `tissue` | `ontological` | yes | no | - | not exported yet |
+| `paper_mentions_gene` | `paper` | `gene` | `literature` | no | yes | 7,177,163 | Europe PMC; graph-valid |
+| `paper_mentions_disease` | `paper` | `disease` | `literature` | no | yes | 6,492,130 | Europe PMC; graph-valid |
+| `paper_mentions_protein` | `paper` | `protein` | `literature` | no | no | - | not exported yet |
+| `paper_mentions_molecule` | `paper` | `molecule` | `literature` | no | no | - | not exported yet |
+| `paper_mentions_mutation` | `paper` | `mutation` | `literature` | no | no | - | not exported yet |
+| `paper_mentions_pathway` | `paper` | `pathway` | `literature` | no | no | - | not exported yet |
+| `paper_produced_dataset` | `paper` | `dataset` | `metadata` | yes | no | - | not exported yet |
+| `paper_cites_paper` | `paper` | `paper` | `literature` | yes | no | - | not exported yet |
+| `dataset_contains_gene` | `dataset` | `gene` | `metadata` | yes | no | - | not exported yet |
+| `dataset_contains_disease` | `dataset` | `disease` | `metadata` | yes | no | - | not exported yet |
+| `dataset_contains_molecule` | `dataset` | `molecule` | `metadata` | yes | no | - | not exported yet |
+| `dataset_contains_cell_type` | `dataset` | `cell_type` | `metadata` | yes | no | - | not exported yet |
+| `dataset_contains_cell_line` | `dataset` | `cell_line` | `metadata` | yes | no | - | not exported yet |
+| `dataset_contains_tissue` | `dataset` | `tissue` | `metadata` | yes | no | - | not exported yet |
+
+### Credibility Score
+
+| Score | Meaning                                                            |
+| ----- | ------------------------------------------------------------------ |
+| `3`   | Established fact (curated DB, no ambiguity)                        |
+| `2`   | Multiple independent evidence (papers from distinct author groups) |
+| `1`   | Single evidence (one paper, possibly same authors)                 |
 
 ### Storage Layer
 
