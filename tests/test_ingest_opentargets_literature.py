@@ -5,7 +5,12 @@ from pathlib import Path
 import pandas as pd
 
 from manage_db import kg_storage
-from manage_db.ingest_opentargets import ingest_drugs, ingest_evidence, ingest_literature
+from manage_db.ingest_opentargets import (
+    ingest_biosample,
+    ingest_drugs,
+    ingest_evidence,
+    ingest_literature,
+)
 
 
 def test_ingest_literature_writes_schema_valid_nodes_and_edges(tmp_path: Path) -> None:
@@ -115,3 +120,27 @@ def test_ingest_drugs_writes_required_molecule_xrefs(tmp_path: Path) -> None:
     assert set(["id", "drugbank_id", "pubchem_cid", "cas_rn", "inchikey", "smiles"]) <= set(molecules.columns)
     assert molecules.loc[0, "id"] == "CHEMBL941"
     assert molecules.loc[0, "smiles"] == "CCO"
+
+
+def test_ingest_biosample_writes_required_node_xrefs(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    biosample_dir = ot_dir / "biosample"
+    biosample_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {"biosampleId": "CL_0000540", "biosampleName": "neuron"},
+            {"biosampleId": "UBERON_0000955", "biosampleName": "brain"},
+        ]
+    ).to_parquet(biosample_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+
+    assert ingest_biosample(ot_dir, kg_dir, root) == {"cell_type": 1, "tissue": 1}
+    cell_types = kg_storage.read_nodes(root, "cell_type")
+    tissues = kg_storage.read_nodes(root, "tissue")
+
+    assert set(["id", "uberon_id", "mesh_id"]) <= set(cell_types.columns)
+    assert set(["id", "bto_id", "mesh_id", "fma_id"]) <= set(tissues.columns)
+    assert cell_types.loc[0, "id"] == "CL_0000540"
+    assert tissues.loc[0, "id"] == "UBERON_0000955"

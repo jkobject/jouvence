@@ -44,9 +44,9 @@ import numpy as np
 import pandas as pd
 
 try:
-    from .kg_schema import Credibility, NodeType
+    from .kg_schema import NODE_TYPES, Credibility, NodeType
 except ImportError:
-    from kg_schema import Credibility, NodeType  # type: ignore[no-redef]
+    from kg_schema import NODE_TYPES, Credibility, NodeType  # type: ignore[no-redef]
 
 from .credibility import EdgeEvidence, score_credibility
 
@@ -218,10 +218,15 @@ def _save_node_df(df: pd.DataFrame, root: kg_storage.KGRoot, node_type: str) -> 
     """Append node DataFrame into the canonical Parquet store."""
     if df.empty:
         return
+    node_df = df.reset_index(drop=True).drop(columns=["node_type"], errors="ignore")
+    info = NODE_TYPES[NodeType(node_type)]
+    for col in info.xref_columns:
+        if col not in node_df.columns:
+            node_df[col] = None
     kg_storage.write_nodes(
         root,
         node_type,
-        df.reset_index(drop=True).drop(columns=["node_type"], errors="ignore"),
+        node_df,
         mode="append",
     )
 
