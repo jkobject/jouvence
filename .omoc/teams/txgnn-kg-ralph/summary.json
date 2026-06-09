@@ -3,11 +3,11 @@
   "task": "Drive remaining CLAUDE.md expanded KG checklist items to validated completion with bounded scratch-first work.",
   "goal_id": "G002",
   "counts": {
-    "completed": 8,
-    "failed": 1,
-    "in_progress": 0,
     "blocked": 0,
-    "pending": 1
+    "completed": 9,
+    "in_progress": 0,
+    "pending": 1,
+    "failed": 1
   },
   "terminal": false,
   "verifier_done": true,
@@ -169,12 +169,29 @@
       "id": "10",
       "subject": "Plan protein node export path",
       "description": "Use current OpenTargets target data and legacy gene/protein mappings to decide the safest path for nodes/protein.parquet and protein remapping before interaction/MoA exports.",
+      "status": "completed",
+      "role": "worker",
+      "owner": "builder",
+      "depends_on": [],
+      "version": 3,
+      "created_at": "2026-06-09T14:48:02.907153Z",
+      "coordination": {
+        "mode": "lightweight"
+      },
+      "verifier_required": false,
+      "completed_at": "2026-06-09T14:53:57.989658Z",
+      "result": "Applied Jérémie's schema decision: protein primary IDs are Ensembl Protein ENSP, not UniProt. Updated manage_db/kg_schema.py NodeType.PROTEIN primary ontology/id_format/example/xrefs and CLAUDE.md node schema/protein-conflation note. Tests passed: tests/test_kg_storage.py and tests/test_credibility.py."
+    },
+    {
+      "id": "11",
+      "subject": "Implement ENSP protein node export",
+      "description": "Use OpenTargets target data to build/stage nodes/protein.parquet with ENSP primary IDs and gene/UniProt xrefs, then validate scratch before GCS promotion.",
       "status": "pending",
       "role": "worker",
       "owner": null,
       "depends_on": [],
       "version": 1,
-      "created_at": "2026-06-09T14:48:02.907153Z",
+      "created_at": "2026-06-09T14:53:58.101247Z",
       "coordination": {
         "mode": "lightweight"
       },
@@ -184,11 +201,11 @@
   "loop": {
     "status": "running",
     "lease": {
-      "owner": "2e949856351f467eb26555447002db68",
-      "acquired_at": "2026-06-09T14:49:13.583098Z",
-      "expires_at": "2026-06-09T15:04:13.583132Z",
-      "heartbeat_at": "2026-06-09T14:49:13.583146Z"
+      "owner": "055fc65e40cb4031b12e0f1ccf77b8ae",
+      "acquired_at": "2026-06-09T14:54:36.407515Z",
+      "expires_at": "2026-06-09T15:09:36.407572Z",
+      "heartbeat_at": "2026-06-09T14:54:36.407598Z"
     },
-    "last_loop_at": "2026-06-09T14:32:42.497415Z"
+    "last_loop_at": "2026-06-09T14:49:13.589313Z"
   }
 }
