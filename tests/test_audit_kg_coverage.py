@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from manage_db.audit_kg_coverage import audit_coverage
+from manage_db.audit_kg_coverage import audit_coverage, main
 from manage_db.kg_schema import NODE_TYPES, RELATIONS, NodeType
 from manage_db.kg_storage import open_kg_root, write_edges, write_nodes
 
@@ -46,3 +46,17 @@ def test_audit_coverage_reports_present_counts_and_missing_schema_files(tmp_path
     assert len(audit.missing_nodes) == len(NODE_TYPES) - 2
     assert len(audit.missing_edges) == len(RELATIONS) - 1
     assert not audit.ok
+
+
+def test_cli_audit_is_informational_by_default(tmp_path: Path) -> None:
+    root = open_kg_root(str(tmp_path / "kg"))
+    write_nodes(root, "gene", _node_frame(NodeType.GENE, ["ENSG1"]))
+
+    assert main([str(tmp_path / "kg")]) == 0
+
+
+def test_cli_can_fail_on_missing_schema_files(tmp_path: Path) -> None:
+    root = open_kg_root(str(tmp_path / "kg"))
+    write_nodes(root, "gene", _node_frame(NodeType.GENE, ["ENSG1"]))
+
+    assert main([str(tmp_path / "kg"), "--fail-on-missing"]) == 1

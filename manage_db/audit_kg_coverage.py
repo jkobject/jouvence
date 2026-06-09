@@ -81,6 +81,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("kg_path", help="Path or gs:// URI to a KG root.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    parser.add_argument(
+        "--fail-on-missing",
+        action="store_true",
+        help="Exit non-zero when expected schema node/edge files are missing.",
+    )
     args = parser.parse_args(argv)
 
     audit = audit_coverage(args.kg_path)
@@ -100,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
             print("\nMissing edge files")
             for relation in audit.missing_edges:
                 print(f"  {relation}")
-    return 0 if audit.ok else 1
+    return 1 if args.fail_on_missing and not audit.ok else 0
 
 
 if __name__ == "__main__":

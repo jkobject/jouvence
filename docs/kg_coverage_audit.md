@@ -5,11 +5,15 @@ Use this before claiming that `gs://jouvencekb/kg/v2` is complete.
 ```bash
 uv run python -m manage_db.audit_kg_coverage gs://jouvencekb/kg/v2
 uv run python -m manage_db.audit_kg_coverage gs://jouvencekb/kg/v2 --json
+uv run python -m manage_db.audit_kg_coverage gs://jouvencekb/kg/v2 --fail-on-missing
 ```
 
 The audit compares physical `nodes/*.parquet` and `edges/*.parquet` files
 against `manage_db/kg_schema.py`. It reports row counts from Parquet metadata,
 so it is fast and does not read whole tables.
+
+By default, this command is informational and exits `0` even when schema files
+are missing. Use `--fail-on-missing` only for strict completeness gates.
 
 This is complementary to dangling-edge validation:
 
