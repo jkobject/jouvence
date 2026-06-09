@@ -1,0 +1,15 @@
+{
+  "id": "9",
+  "subject": "Resolve legacy protein endpoint conflation",
+  "description": "Audit protein-named GCS edge files that currently use gene endpoints, update CLAUDE.md/schema notes, and decide the safe path before interaction/MoA/protein node exports.",
+  "status": "pending",
+  "role": "worker",
+  "owner": null,
+  "depends_on": [],
+  "version": 1,
+  "created_at": "2026-06-09T14:30:37.343664Z",
+  "coordination": {
+    "mode": "lightweight"
+  },
+  "verifier_required": false
+}
