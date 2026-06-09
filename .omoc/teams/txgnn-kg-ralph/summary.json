@@ -3,11 +3,11 @@
   "task": "Drive remaining CLAUDE.md expanded KG checklist items to validated completion with bounded scratch-first work.",
   "goal_id": "G002",
   "counts": {
-    "completed": 9,
+    "pending": 1,
     "failed": 1,
+    "completed": 10,
     "in_progress": 0,
-    "blocked": 0,
-    "pending": 1
+    "blocked": 0
   },
   "terminal": false,
   "verifier_done": true,
@@ -186,12 +186,29 @@
       "id": "11",
       "subject": "Implement ENSP protein node export",
       "description": "Use OpenTargets target data to build/stage nodes/protein.parquet with ENSP primary IDs and gene/UniProt xrefs, then validate scratch before GCS promotion.",
+      "status": "completed",
+      "role": "worker",
+      "owner": "builder",
+      "depends_on": [],
+      "version": 3,
+      "created_at": "2026-06-09T14:53:58.101247Z",
+      "coordination": {
+        "mode": "lightweight"
+      },
+      "verifier_required": false,
+      "completed_at": "2026-06-09T15:06:14.614492Z",
+      "result": "Implemented ENSP protein node export from OpenTargets target.transcripts.translationId. Promoted nodes/protein.parquet with 233,995 ENSP protein nodes and UniProt/gene xrefs. GCS validate PASS: 10 node types, 24 edge types, 3,467,844 nodes, 25,325,918 edges, total_dangling_edges=0, peak RSS about 6.5G."
+    },
+    {
+      "id": "12",
+      "subject": "Plan ENSP protein edge remapping",
+      "description": "Use protein node ensembl_gene_id/uniprot_id xrefs to decide and implement safe remapping for legacy protein-named edges from gene endpoints to ENSP endpoints where unambiguous.",
       "status": "pending",
       "role": "worker",
       "owner": null,
       "depends_on": [],
       "version": 1,
-      "created_at": "2026-06-09T14:53:58.101247Z",
+      "created_at": "2026-06-09T15:06:14.626775Z",
       "coordination": {
         "mode": "lightweight"
       },
@@ -201,11 +218,11 @@
   "loop": {
     "status": "running",
     "lease": {
-      "owner": "8dece48e5172479b91e67f539180df85",
-      "acquired_at": "2026-06-09T14:57:33.428757Z",
-      "expires_at": "2026-06-09T15:12:33.428803Z",
-      "heartbeat_at": "2026-06-09T14:57:33.428823Z"
+      "owner": "7bcaed11077f4f2d88902788db5d3bac",
+      "acquired_at": "2026-06-09T15:07:32.085823Z",
+      "expires_at": "2026-06-09T15:22:32.085863Z",
+      "heartbeat_at": "2026-06-09T15:07:32.085920Z"
     },
-    "last_loop_at": "2026-06-09T14:54:36.413376Z"
+    "last_loop_at": "2026-06-09T14:57:33.433787Z"
   }
 }
