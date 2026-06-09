@@ -330,14 +330,15 @@ def ingest_targets(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     target_path = ot_dir / "target"
     log.info("Loading target dataset from %s", target_path)
 
-    df = _read_parquet_dir(
+    df = _read_parquet_dir_available(
         target_path,
         columns=["id", "approvedSymbol", "approvedName", "biotype",
-                 "proteinIds", "dbXrefs"],
+                 "proteinIds", "dbXrefs", "transcripts"],
     )
     log.info("  %d target rows", len(df))
 
     rows = []
+    protein_rows_by_id: dict[str, dict] = {}
     for _, row in df.iterrows():
         gene_id = str(row["id"]).strip()
         if not gene_id.startswith("ENSG"):
@@ -384,8 +385,28 @@ def ingest_targets(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
             "source":        SOURCE_NAME,
         })
 
+        for transcript in _to_list(row.get("transcripts")):
+            if not isinstance(transcript, dict):
+                continue
+            protein_id = str(transcript.get("translationId") or "").strip()
+            if not protein_id.startswith("ENSP"):
+                continue
+            protein_rows_by_id[protein_id] = {
+                "id": protein_id,
+                "name": protein_id,
+                "ensembl_gene_id": gene_id,
+                "uniprot_id": str(transcript.get("uniprotId") or uniprot_id or "").strip() or None,
+                "refseq_protein": None,
+                "pdb_ids": None,
+                "source": SOURCE_NAME,
+            }
+
     gene_df = pd.DataFrame(rows)
     _save_node_df(gene_df, root, NodeType.GENE.value)
+    if protein_rows_by_id:
+        protein_df = pd.DataFrame(protein_rows_by_id.values())
+        _save_node_df(protein_df, root, NodeType.PROTEIN.value)
+        log.info("  %d protein nodes saved", len(protein_df))
     log.info("  %d gene nodes saved", len(gene_df))
     return len(gene_df)
 

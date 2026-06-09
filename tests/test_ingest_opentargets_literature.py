@@ -14,6 +14,7 @@ from manage_db.ingest_opentargets import (
     ingest_go,
     ingest_pharmacogenomics,
     ingest_literature,
+    ingest_targets,
 )
 
 
@@ -124,6 +125,41 @@ def test_ingest_drugs_writes_required_molecule_xrefs(tmp_path: Path) -> None:
     assert set(["id", "drugbank_id", "pubchem_cid", "cas_rn", "inchikey", "smiles"]) <= set(molecules.columns)
     assert molecules.loc[0, "id"] == "CHEMBL941"
     assert molecules.loc[0, "smiles"] == "CCO"
+
+
+def test_ingest_targets_writes_ensp_protein_nodes(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    target_dir = ot_dir / "target"
+    target_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "id": "ENSG00000139618",
+                "approvedSymbol": "BRCA2",
+                "approvedName": "BRCA2 DNA repair associated",
+                "biotype": "protein_coding",
+                "proteinIds": [{"source": "uniprot_swissprot", "id": "P51587"}],
+                "dbXrefs": [{"source": "HGNC", "id": "HGNC:1101"}],
+                "transcripts": [
+                    {
+                        "transcriptId": "ENST00000380152",
+                        "translationId": "ENSP00000369497",
+                        "uniprotId": "P51587",
+                    }
+                ],
+            }
+        ]
+    ).to_parquet(target_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+
+    assert ingest_targets(ot_dir, kg_dir, root) == 1
+    proteins = kg_storage.read_nodes(root, "protein")
+
+    assert proteins.loc[0, "id"] == "ENSP00000369497"
+    assert proteins.loc[0, "ensembl_gene_id"] == "ENSG00000139618"
+    assert proteins.loc[0, "uniprot_id"] == "P51587"
 
 
 def test_ingest_go_accepts_label_column(tmp_path: Path) -> None:

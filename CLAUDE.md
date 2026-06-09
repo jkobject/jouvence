@@ -60,14 +60,20 @@ from jkobject and a gsutil command access setup with the jkobject project id
 jkobject-1549353370965
 
 ### I1 — bionty/pertdb populated (2026-06-04)
+
 - Run: `python -m manage_db.i1_bionty_pertdb_import` (idempotent)
-- Output: see `i1_run.log` for counts; executed notebook at `notebooks/1_lamindb_instance_setup.executed.ipynb`.
-- HP (Human Phenotype Ontology) is the active Phenotype source (PATO disabled per §7).
+- Output: see `i1_run.log` for counts; executed notebook at
+  `notebooks/1_lamindb_instance_setup.executed.ipynb`.
+- HP (Human Phenotype Ontology) is the active Phenotype source (PATO disabled
+  per §7).
 
 ### I2 — custom records + node sync (2026-06-05)
+
 - Run: `python -m manage_db.i2_custom_records_and_sync` (idempotent).
-- 5 custom `lnschema_txgnn` record types deployed (Paper, Transcript, Enhancer, Dataset, Mutation).
-- Sync mapped 129,375 nodes (existing=125,744, created=30, uncertain=3,601); see `data/txdata/node_entity_mapping.csv`.
+- 5 custom `lnschema_txgnn` record types deployed (Paper, Transcript, Enhancer,
+  Dataset, Mutation).
+- Sync mapped 129,375 nodes (existing=125,744, created=30, uncertain=3,601); see
+  `data/txdata/node_entity_mapping.csv`.
 - Executed notebook: `notebooks/2_manage_db_setup.executed.ipynb`.
 
 ## Data
@@ -131,42 +137,42 @@ KG vision**. It is currently:
 - OpenTargets pharmacogenomics slice added as `mutation` stubs plus
   `mutation_affects_molecule_response` edges.
 
-As of the 2026-06-09 pass, `uv run python -m manage_db.validate_kg
-gs://jouvencekb/kg/v2` reports `total_dangling_edges: 0` across the current
-physical export. This means the current files are graph-valid, not complete:
-many schema-vision node and edge files are still absent.
-The coverage audit currently reports `9 / 15` node files, `24 / 77` edge
-files, `3,233,849` total nodes, and `25,325,918` total edges.
+As of the 2026-06-09 pass,
+`uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2` reports
+`total_dangling_edges: 0` across the current physical export. This means the
+current files are graph-valid, not complete: many schema-vision node and edge
+files are still absent. The coverage audit currently reports `10 / 15` node
+files, `24 / 77` edge files, `3,467,844` total nodes, and `25,325,918` total
+edges.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
 The legacy TxData source conflates `gene/protein` in places, and some relations
-use `protein` as an endpoint type, but there is no dedicated
-`nodes/protein.parquet` or `nodes/transcript.parquet` in the current export.
+use `protein` as an endpoint type, but those legacy edges still physically use
+`gene` endpoints. Dedicated `nodes/protein.parquet` now exists with Ensembl
+Protein (`ENSP`) IDs; `nodes/transcript.parquet` is still absent.
 Current GCS edge files named `*protein*` physically validate through `gene`
 endpoints (`NCBI:` / `ENSG` IDs); they should be treated as legacy
-gene/protein-conflated relations until a dedicated Ensembl Protein (`ENSP`)
-node export and remapping pass exists. Per the 2026-06-09 schema decision,
-`protein` primary IDs are `ENSP...`; UniProt accessions are cross-references.
+gene/protein-conflated relations until a protein-edge remapping pass exists.
 
 ### Node Schema & GCS Coverage
 
-| Node type | Primary ontology / ID namespace | GCS? | Rows | Comment |
-| --- | --- | --- | ---: | --- |
-| `paper` | PubMed (`PMID:12345678`) | yes | 2,958,199 | Europe PMC PMIDs |
-| `gene` | Ensembl (`ENSG00000139618`) | yes | 109,325 | legacy + OpenTargets 26.03 target IDs; expression/evidence stubs added |
-| `transcript` | Ensembl (`ENST00000380152`) | no | - | not exported yet |
-| `protein` | Ensembl Protein (`ENSP00000369497`) | no | - | not exported yet; UniProt is an xref |
-| `pathway` | Reactome / GO (`R-HSA-5633007`, `GO:0008150`) | yes | 48,575 | legacy + OpenTargets Reactome evidence stubs + GO terms |
-| `molecule` | ChEMBL (`CHEMBL941`) | yes | 31,007 | legacy + OpenTargets `drug_molecule` xrefs/properties; pharmacogenomics stubs added |
-| `mutation` | dbSNP (`rs7412`) | yes | 2,429 | OpenTargets pharmacogenomics stubs |
-| `disease` | EFO (`EFO:0000305`) | yes | 48,291 | legacy + OpenTargets disease IDs; disease-phenotype stubs added |
-| `cell_type` | CL (`CL:0000576`) | yes | 3,513 | OpenTargets biosample CL IDs |
-| `tissue` | UBERON (`UBERON:0002107`) | yes | 16,061 | UBERON-derived + OpenTargets biosample |
-| `phenotype` | HP (`HP:0000118`) | yes | 16,449 | HP-derived + OpenTargets HPO stubs |
-| `cell_line` | Cellosaurus (`CVCL_0023`) | no | - | not exported yet |
-| `organism` | NCBI Taxonomy (`9606`) | no | - | not exported yet |
-| `dataset` | DOI / UUID (`DOI:10.1038/s41586-023-06221-2`) | no | - | not exported yet |
-| `enhancer` | ENCODE (`EH38E1516972`) | no | - | not exported yet |
+| Node type    | Primary ontology / ID namespace               | GCS? |      Rows | Comment                                                                             |
+| ------------ | --------------------------------------------- | ---- | --------: | ----------------------------------------------------------------------------------- |
+| `paper`      | PubMed (`PMID:12345678`)                      | yes  | 2,958,199 | Europe PMC PMIDs                                                                    |
+| `gene`       | Ensembl (`ENSG00000139618`)                   | yes  |   109,325 | legacy + OpenTargets 26.03 target IDs; expression/evidence stubs added              |
+| `transcript` | Ensembl (`ENST00000380152`)                   | no   |         - | not exported yet                                                                    |
+| `protein`    | Ensembl Protein (`ENSP00000369497`)           | yes  |   233,995 | OpenTargets 26.03 target translations; UniProt is an xref                           |
+| `pathway`    | Reactome / GO (`R-HSA-5633007`, `GO:0008150`) | yes  |    48,575 | legacy + OpenTargets Reactome evidence stubs + GO terms                             |
+| `molecule`   | ChEMBL (`CHEMBL941`)                          | yes  |    31,007 | legacy + OpenTargets `drug_molecule` xrefs/properties; pharmacogenomics stubs added |
+| `mutation`   | dbSNP (`rs7412`)                              | yes  |     2,429 | OpenTargets pharmacogenomics stubs                                                  |
+| `disease`    | EFO (`EFO:0000305`)                           | yes  |    48,291 | legacy + OpenTargets disease IDs; disease-phenotype stubs added                     |
+| `cell_type`  | CL (`CL:0000576`)                             | yes  |     3,513 | OpenTargets biosample CL IDs                                                        |
+| `tissue`     | UBERON (`UBERON:0002107`)                     | yes  |    16,061 | UBERON-derived + OpenTargets biosample                                              |
+| `phenotype`  | HP (`HP:0000118`)                             | yes  |    16,449 | HP-derived + OpenTargets HPO stubs                                                  |
+| `cell_line`  | Cellosaurus (`CVCL_0023`)                     | no   |         - | not exported yet                                                                    |
+| `organism`   | NCBI Taxonomy (`9606`)                        | no   |         - | not exported yet                                                                    |
+| `dataset`    | DOI / UUID (`DOI:10.1038/s41586-023-06221-2`) | no   |         - | not exported yet                                                                    |
+| `enhancer`   | ENCODE (`EH38E1516972`)                       | no   |         - | not exported yet                                                                    |
 
 ### Edge Schema & GCS Coverage
 
@@ -200,85 +206,85 @@ source, credibility, [additional metadata columns...]
 - maybe = sometimes direct depending on source
 - no = associative / statistical / indirect
 
-| Relation | Source | Target | Kind | Direct? | GCS? | Rows | Comment |
-| --- | --- | --- | --- | --- | --- | ---: | --- |
-| `gene_has_transcript` | `gene` | `transcript` | `central_dogma` | yes | no | - | not exported yet |
-| `transcript_encodes_protein` | `transcript` | `protein` | `central_dogma` | yes | no | - | not exported yet |
-| `gene_encodes_protein` | `gene` | `protein` | `central_dogma` | no | no | - | not exported yet |
-| `transcript_alternative_transcript` | `transcript` | `transcript` | `central_dogma` | yes | no | - | not exported yet |
-| `mutation_in_gene` | `mutation` | `gene` | `genetic` | yes | no | - | not exported yet |
-| `mutation_affects_transcript` | `mutation` | `transcript` | `genetic` | yes | no | - | not exported yet |
-| `mutation_causes_protein_change` | `mutation` | `protein` | `genetic` | yes | no | - | not exported yet |
-| `mutation_overlaps_enhancer` | `mutation` | `enhancer` | `genetic` | yes | no | - | not exported yet |
-| `mutation_associated_disease` | `mutation` | `disease` | `genetic` | no | no | - | not exported yet |
-| `mutation_causes_phenotype` | `mutation` | `phenotype` | `genetic` | no | no | - | not exported yet |
-| `mutation_affects_molecule_response` | `mutation` | `molecule` | `pharmacological` | no | yes | 4,866 | OpenTargets pharmacogenomics |
-| `mutation_associated_cell_type` | `mutation` | `cell_type` | `genetic` | no | no | - | not exported yet |
-| `gene_ortholog_gene` | `gene` | `gene` | `genetic` | yes | no | - | not exported yet |
-| `enhancer_regulates_gene` | `enhancer` | `gene` | `regulatory` | no | no | - | not exported yet |
-| `enhancer_regulates_transcript` | `enhancer` | `transcript` | `regulatory` | yes | no | - | not exported yet |
-| `enhancer_active_in_cell_type` | `enhancer` | `cell_type` | `regulatory` | yes | no | - | not exported yet |
-| `enhancer_active_in_tissue` | `enhancer` | `tissue` | `regulatory` | yes | no | - | not exported yet |
-| `enhancer_associated_disease` | `enhancer` | `disease` | `disease_assoc` | no | no | - | not exported yet |
-| `gene_coexpressed_gene` | `gene` | `gene` | `expression` | no | no | - | not exported yet |
-| `tissue_expresses_gene` | `tissue` | `gene` | `expression` | yes | yes | 3,800,648 | OpenTargets expression |
-| `tissue_expresses_protein` | `tissue` | `protein` | `expression` | yes | yes | 1,538,088 | legacy gene/protein endpoints (`y_type=gene`) |
-| `cell_type_expresses_gene` | `cell_type` | `gene` | `expression` | yes | yes | 1,561,873 | OpenTargets expression |
-| `cell_type_expresses_protein` | `cell_type` | `protein` | `expression` | yes | no | - | not exported yet |
-| `cell_line_expresses_gene` | `cell_line` | `gene` | `experimental` | yes | no | - | not exported yet |
-| `cell_line_expresses_protein` | `cell_line` | `protein` | `experimental` | yes | no | - | not exported yet |
-| `protein_interacts_protein` | `protein` | `protein` | `physical` | yes | yes | 642,150 | legacy gene/protein endpoints (`gene` → `gene`) |
-| `pathway_contains_gene` | `pathway` | `gene` | `pathway` | no | yes | 588,286 | Reactome / OpenTargets GO |
-| `pathway_contains_protein` | `pathway` | `protein` | `pathway` | no | yes | 42,646 | legacy gene/protein endpoints (`y_type=gene`) |
-| `pathway_child_of_pathway` | `pathway` | `pathway` | `ontological` | yes | yes | 147,680 | Reactome hierarchy |
-| `molecule_in_pathway` | `molecule` | `pathway` | `pathway` | no | yes | 1,680 | Metabolic pathway |
-| `molecule_targets_protein` | `molecule` | `protein` | `pharmacological` | yes | yes | 41,239 | legacy gene/protein endpoints (`y_type=gene`); protein resolution pending |
-| `molecule_treats_disease` | `molecule` | `disease` | `pharmacological` | no | yes | 14,135 | Indication (clinical) |
-| `molecule_contraindicates_disease` | `molecule` | `disease` | `pharmacological` | no | yes | 30,675 | Contraindication |
-| `molecule_interacts_molecule` | `molecule` | `molecule` | `pharmacological` | no | yes | 2,676,768 | Drug-drug interaction |
-| `cell_type_responds_to_molecule` | `cell_type` | `molecule` | `pharmacological` | no | no | - | not exported yet |
-| `cell_line_responds_to_molecule` | `cell_line` | `molecule` | `experimental` | yes | no | - | not exported yet |
-| `phenotype_associated_molecule` | `phenotype` | `molecule` | `pharmacological` | no | yes | 64,784 | Side effect / rescue |
-| `disease_associated_gene` | `disease` | `gene` | `disease_assoc` | no | yes | 2,928 | OpenTargets Reactome evidence slice |
-| `disease_associated_protein` | `disease` | `protein` | `disease_assoc` | no | yes | 80,411 | legacy gene/protein endpoints (`y_type=gene`) |
-| `disease_involves_pathway` | `disease` | `pathway` | `disease_assoc` | no | yes | 2,296 | OpenTargets Reactome evidence slice |
-| `disease_associated_mutation` | `disease` | `mutation` | `genetic` | no | no | - | not exported yet |
-| `disease_manifests_in_tissue` | `disease` | `tissue` | `disease_assoc` | no | no | - | not exported yet |
-| `disease_subtype_of_disease` | `disease` | `disease` | `ontological` | yes | yes | 104,809 | EFO / MONDO hierarchy |
-| `disease_comorbid_disease` | `disease` | `disease` | `epidemiological` | no | no | - | not exported yet |
-| `disease_has_phenotype` | `disease` | `phenotype` | `phenotype_assoc` | yes | yes | 241,797 | legacy + OpenTargets HPO |
-| `phenotype_observed_in_tissue` | `phenotype` | `tissue` | `phenotype_assoc` | no | no | - | not exported yet |
-| `phenotype_caused_by_mutation` | `phenotype` | `mutation` | `genetic` | no | no | - | not exported yet |
-| `phenotype_associated_gene` | `phenotype` | `gene` | `phenotype_assoc` | no | no | - | not exported yet |
-| `phenotype_associated_protein` | `phenotype` | `protein` | `phenotype_assoc` | no | yes | 3,330 | legacy gene/protein endpoints (`y_type=gene`) |
-| `phenotype_associated_cell_type` | `phenotype` | `cell_type` | `phenotype_assoc` | no | no | - | not exported yet |
-| `phenotype_subtype_of_phenotype` | `phenotype` | `phenotype` | `ontological` | yes | yes | 37,472 | HPO hierarchy |
-| `tissue_subtype_of_tissue` | `tissue` | `tissue` | `ontological` | yes | yes | 28,064 | UBERON parent-child hierarchy |
-| `cell_type_found_in_tissue` | `cell_type` | `tissue` | `ontological` | yes | no | - | not exported yet |
-| `cell_type_involved_in_disease` | `cell_type` | `disease` | `disease_assoc` | no | no | - | not exported yet |
-| `cell_type_subtype_of_cell_type` | `cell_type` | `cell_type` | `ontological` | yes | no | - | not exported yet |
-| `cell_line_models_disease` | `cell_line` | `disease` | `experimental` | no | no | - | not exported yet |
-| `cell_line_derived_from_cell_type` | `cell_line` | `cell_type` | `experimental` | yes | no | - | not exported yet |
-| `cell_line_derived_from_tissue` | `cell_line` | `tissue` | `experimental` | yes | no | - | not exported yet |
-| `cell_line_from_organism` | `cell_line` | `organism` | `metadata` | yes | no | - | not exported yet |
-| `cell_line_associated_disease` | `cell_line` | `disease` | `experimental` | no | no | - | not exported yet |
-| `organism_has_gene` | `organism` | `gene` | `genetic` | yes | no | - | not exported yet |
-| `organism_models_disease` | `organism` | `disease` | `experimental` | no | no | - | not exported yet |
-| `organism_has_tissue` | `organism` | `tissue` | `ontological` | yes | no | - | not exported yet |
-| `paper_mentions_gene` | `paper` | `gene` | `literature` | no | yes | 7,177,163 | Europe PMC; graph-valid |
-| `paper_mentions_disease` | `paper` | `disease` | `literature` | no | yes | 6,492,130 | Europe PMC; graph-valid |
-| `paper_mentions_protein` | `paper` | `protein` | `literature` | no | no | - | not exported yet |
-| `paper_mentions_molecule` | `paper` | `molecule` | `literature` | no | no | - | not exported yet |
-| `paper_mentions_mutation` | `paper` | `mutation` | `literature` | no | no | - | not exported yet |
-| `paper_mentions_pathway` | `paper` | `pathway` | `literature` | no | no | - | not exported yet |
-| `paper_produced_dataset` | `paper` | `dataset` | `metadata` | yes | no | - | not exported yet |
-| `paper_cites_paper` | `paper` | `paper` | `literature` | yes | no | - | not exported yet |
-| `dataset_contains_gene` | `dataset` | `gene` | `metadata` | yes | no | - | not exported yet |
-| `dataset_contains_disease` | `dataset` | `disease` | `metadata` | yes | no | - | not exported yet |
-| `dataset_contains_molecule` | `dataset` | `molecule` | `metadata` | yes | no | - | not exported yet |
-| `dataset_contains_cell_type` | `dataset` | `cell_type` | `metadata` | yes | no | - | not exported yet |
-| `dataset_contains_cell_line` | `dataset` | `cell_line` | `metadata` | yes | no | - | not exported yet |
-| `dataset_contains_tissue` | `dataset` | `tissue` | `metadata` | yes | no | - | not exported yet |
+| Relation                             | Source       | Target       | Kind              | Direct? | GCS? |      Rows | Comment                                                                   |
+| ------------------------------------ | ------------ | ------------ | ----------------- | ------- | ---- | --------: | ------------------------------------------------------------------------- |
+| `gene_has_transcript`                | `gene`       | `transcript` | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
+| `transcript_encodes_protein`         | `transcript` | `protein`    | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
+| `gene_encodes_protein`               | `gene`       | `protein`    | `central_dogma`   | no      | no   |         - | not exported yet                                                          |
+| `transcript_alternative_transcript`  | `transcript` | `transcript` | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
+| `mutation_in_gene`                   | `mutation`   | `gene`       | `genetic`         | yes     | no   |         - | not exported yet                                                          |
+| `mutation_affects_transcript`        | `mutation`   | `transcript` | `genetic`         | yes     | no   |         - | not exported yet                                                          |
+| `mutation_causes_protein_change`     | `mutation`   | `protein`    | `genetic`         | yes     | no   |         - | not exported yet                                                          |
+| `mutation_overlaps_enhancer`         | `mutation`   | `enhancer`   | `genetic`         | yes     | no   |         - | not exported yet                                                          |
+| `mutation_associated_disease`        | `mutation`   | `disease`    | `genetic`         | no      | no   |         - | not exported yet                                                          |
+| `mutation_causes_phenotype`          | `mutation`   | `phenotype`  | `genetic`         | no      | no   |         - | not exported yet                                                          |
+| `mutation_affects_molecule_response` | `mutation`   | `molecule`   | `pharmacological` | no      | yes  |     4,866 | OpenTargets pharmacogenomics                                              |
+| `mutation_associated_cell_type`      | `mutation`   | `cell_type`  | `genetic`         | no      | no   |         - | not exported yet                                                          |
+| `gene_ortholog_gene`                 | `gene`       | `gene`       | `genetic`         | yes     | no   |         - | not exported yet                                                          |
+| `enhancer_regulates_gene`            | `enhancer`   | `gene`       | `regulatory`      | no      | no   |         - | not exported yet                                                          |
+| `enhancer_regulates_transcript`      | `enhancer`   | `transcript` | `regulatory`      | yes     | no   |         - | not exported yet                                                          |
+| `enhancer_active_in_cell_type`       | `enhancer`   | `cell_type`  | `regulatory`      | yes     | no   |         - | not exported yet                                                          |
+| `enhancer_active_in_tissue`          | `enhancer`   | `tissue`     | `regulatory`      | yes     | no   |         - | not exported yet                                                          |
+| `enhancer_associated_disease`        | `enhancer`   | `disease`    | `disease_assoc`   | no      | no   |         - | not exported yet                                                          |
+| `gene_coexpressed_gene`              | `gene`       | `gene`       | `expression`      | no      | no   |         - | not exported yet                                                          |
+| `tissue_expresses_gene`              | `tissue`     | `gene`       | `expression`      | yes     | yes  | 3,800,648 | OpenTargets expression                                                    |
+| `tissue_expresses_protein`           | `tissue`     | `protein`    | `expression`      | yes     | yes  | 1,538,088 | legacy gene/protein endpoints (`y_type=gene`)                             |
+| `cell_type_expresses_gene`           | `cell_type`  | `gene`       | `expression`      | yes     | yes  | 1,561,873 | OpenTargets expression                                                    |
+| `cell_type_expresses_protein`        | `cell_type`  | `protein`    | `expression`      | yes     | no   |         - | not exported yet                                                          |
+| `cell_line_expresses_gene`           | `cell_line`  | `gene`       | `experimental`    | yes     | no   |         - | not exported yet                                                          |
+| `cell_line_expresses_protein`        | `cell_line`  | `protein`    | `experimental`    | yes     | no   |         - | not exported yet                                                          |
+| `protein_interacts_protein`          | `protein`    | `protein`    | `physical`        | yes     | yes  |   642,150 | legacy gene/protein endpoints (`gene` → `gene`)                           |
+| `pathway_contains_gene`              | `pathway`    | `gene`       | `pathway`         | no      | yes  |   588,286 | Reactome / OpenTargets GO                                                 |
+| `pathway_contains_protein`           | `pathway`    | `protein`    | `pathway`         | no      | yes  |    42,646 | legacy gene/protein endpoints (`y_type=gene`)                             |
+| `pathway_child_of_pathway`           | `pathway`    | `pathway`    | `ontological`     | yes     | yes  |   147,680 | Reactome hierarchy                                                        |
+| `molecule_in_pathway`                | `molecule`   | `pathway`    | `pathway`         | no      | yes  |     1,680 | Metabolic pathway                                                         |
+| `molecule_targets_protein`           | `molecule`   | `protein`    | `pharmacological` | yes     | yes  |    41,239 | legacy gene/protein endpoints (`y_type=gene`); protein resolution pending |
+| `molecule_treats_disease`            | `molecule`   | `disease`    | `pharmacological` | no      | yes  |    14,135 | Indication (clinical)                                                     |
+| `molecule_contraindicates_disease`   | `molecule`   | `disease`    | `pharmacological` | no      | yes  |    30,675 | Contraindication                                                          |
+| `molecule_interacts_molecule`        | `molecule`   | `molecule`   | `pharmacological` | no      | yes  | 2,676,768 | Drug-drug interaction                                                     |
+| `cell_type_responds_to_molecule`     | `cell_type`  | `molecule`   | `pharmacological` | no      | no   |         - | not exported yet                                                          |
+| `cell_line_responds_to_molecule`     | `cell_line`  | `molecule`   | `experimental`    | yes     | no   |         - | not exported yet                                                          |
+| `phenotype_associated_molecule`      | `phenotype`  | `molecule`   | `pharmacological` | no      | yes  |    64,784 | Side effect / rescue                                                      |
+| `disease_associated_gene`            | `disease`    | `gene`       | `disease_assoc`   | no      | yes  |     2,928 | OpenTargets Reactome evidence slice                                       |
+| `disease_associated_protein`         | `disease`    | `protein`    | `disease_assoc`   | no      | yes  |    80,411 | legacy gene/protein endpoints (`y_type=gene`)                             |
+| `disease_involves_pathway`           | `disease`    | `pathway`    | `disease_assoc`   | no      | yes  |     2,296 | OpenTargets Reactome evidence slice                                       |
+| `disease_associated_mutation`        | `disease`    | `mutation`   | `genetic`         | no      | no   |         - | not exported yet                                                          |
+| `disease_manifests_in_tissue`        | `disease`    | `tissue`     | `disease_assoc`   | no      | no   |         - | not exported yet                                                          |
+| `disease_subtype_of_disease`         | `disease`    | `disease`    | `ontological`     | yes     | yes  |   104,809 | EFO / MONDO hierarchy                                                     |
+| `disease_comorbid_disease`           | `disease`    | `disease`    | `epidemiological` | no      | no   |         - | not exported yet                                                          |
+| `disease_has_phenotype`              | `disease`    | `phenotype`  | `phenotype_assoc` | yes     | yes  |   241,797 | legacy + OpenTargets HPO                                                  |
+| `phenotype_observed_in_tissue`       | `phenotype`  | `tissue`     | `phenotype_assoc` | no      | no   |         - | not exported yet                                                          |
+| `phenotype_caused_by_mutation`       | `phenotype`  | `mutation`   | `genetic`         | no      | no   |         - | not exported yet                                                          |
+| `phenotype_associated_gene`          | `phenotype`  | `gene`       | `phenotype_assoc` | no      | no   |         - | not exported yet                                                          |
+| `phenotype_associated_protein`       | `phenotype`  | `protein`    | `phenotype_assoc` | no      | yes  |     3,330 | legacy gene/protein endpoints (`y_type=gene`)                             |
+| `phenotype_associated_cell_type`     | `phenotype`  | `cell_type`  | `phenotype_assoc` | no      | no   |         - | not exported yet                                                          |
+| `phenotype_subtype_of_phenotype`     | `phenotype`  | `phenotype`  | `ontological`     | yes     | yes  |    37,472 | HPO hierarchy                                                             |
+| `tissue_subtype_of_tissue`           | `tissue`     | `tissue`     | `ontological`     | yes     | yes  |    28,064 | UBERON parent-child hierarchy                                             |
+| `cell_type_found_in_tissue`          | `cell_type`  | `tissue`     | `ontological`     | yes     | no   |         - | not exported yet                                                          |
+| `cell_type_involved_in_disease`      | `cell_type`  | `disease`    | `disease_assoc`   | no      | no   |         - | not exported yet                                                          |
+| `cell_type_subtype_of_cell_type`     | `cell_type`  | `cell_type`  | `ontological`     | yes     | no   |         - | not exported yet                                                          |
+| `cell_line_models_disease`           | `cell_line`  | `disease`    | `experimental`    | no      | no   |         - | not exported yet                                                          |
+| `cell_line_derived_from_cell_type`   | `cell_line`  | `cell_type`  | `experimental`    | yes     | no   |         - | not exported yet                                                          |
+| `cell_line_derived_from_tissue`      | `cell_line`  | `tissue`     | `experimental`    | yes     | no   |         - | not exported yet                                                          |
+| `cell_line_from_organism`            | `cell_line`  | `organism`   | `metadata`        | yes     | no   |         - | not exported yet                                                          |
+| `cell_line_associated_disease`       | `cell_line`  | `disease`    | `experimental`    | no      | no   |         - | not exported yet                                                          |
+| `organism_has_gene`                  | `organism`   | `gene`       | `genetic`         | yes     | no   |         - | not exported yet                                                          |
+| `organism_models_disease`            | `organism`   | `disease`    | `experimental`    | no      | no   |         - | not exported yet                                                          |
+| `organism_has_tissue`                | `organism`   | `tissue`     | `ontological`     | yes     | no   |         - | not exported yet                                                          |
+| `paper_mentions_gene`                | `paper`      | `gene`       | `literature`      | no      | yes  | 7,177,163 | Europe PMC; graph-valid                                                   |
+| `paper_mentions_disease`             | `paper`      | `disease`    | `literature`      | no      | yes  | 6,492,130 | Europe PMC; graph-valid                                                   |
+| `paper_mentions_protein`             | `paper`      | `protein`    | `literature`      | no      | no   |         - | not exported yet                                                          |
+| `paper_mentions_molecule`            | `paper`      | `molecule`   | `literature`      | no      | no   |         - | not exported yet                                                          |
+| `paper_mentions_mutation`            | `paper`      | `mutation`   | `literature`      | no      | no   |         - | not exported yet                                                          |
+| `paper_mentions_pathway`             | `paper`      | `pathway`    | `literature`      | no      | no   |         - | not exported yet                                                          |
+| `paper_produced_dataset`             | `paper`      | `dataset`    | `metadata`        | yes     | no   |         - | not exported yet                                                          |
+| `paper_cites_paper`                  | `paper`      | `paper`      | `literature`      | yes     | no   |         - | not exported yet                                                          |
+| `dataset_contains_gene`              | `dataset`    | `gene`       | `metadata`        | yes     | no   |         - | not exported yet                                                          |
+| `dataset_contains_disease`           | `dataset`    | `disease`    | `metadata`        | yes     | no   |         - | not exported yet                                                          |
+| `dataset_contains_molecule`          | `dataset`    | `molecule`   | `metadata`        | yes     | no   |         - | not exported yet                                                          |
+| `dataset_contains_cell_type`         | `dataset`    | `cell_type`  | `metadata`        | yes     | no   |         - | not exported yet                                                          |
+| `dataset_contains_cell_line`         | `dataset`    | `cell_line`  | `metadata`        | yes     | no   |         - | not exported yet                                                          |
+| `dataset_contains_tissue`            | `dataset`    | `tissue`     | `metadata`        | yes     | no   |         - | not exported yet                                                          |
 
 ### Credibility Score
 
@@ -375,14 +381,13 @@ does **not** yet reflect a complete OpenTargets run/merge.
 ### Phase 5 — Additional sources ⚠️ (partially implemented, mostly pending export)
 
 Additional OpenTargets-derived functions exist, but the corresponding node/edge
-files are missing from the current canonical export unless listed in the
-Current Export Reality section above.
+files are missing from the current canonical export unless listed in the Current
+Export Reality section above.
 
-- [x] `ingest_disease_phenotype`: OpenTargets HPO slice merged and audited
-      with normalized `MONDO:` / `HP:` endpoints.
-- [ ] PARTIAL: `ingest_expression` added OpenTargets `tissue_expresses_gene`
-      and `cell_type_expresses_gene`; `cell_type_expresses_protein` remains
-      pending.
+- [x] `ingest_disease_phenotype`: OpenTargets HPO slice merged and audited with
+      normalized `MONDO:` / `HP:` endpoints.
+- [ ] PARTIAL: `ingest_expression` added OpenTargets `tissue_expresses_gene` and
+      `cell_type_expresses_gene`; `cell_type_expresses_protein` remains pending.
 - [x] `ingest_biosample`: OpenTargets `cell_type` nodes are present in the
       canonical export.
 - [x] `ingest_pharmacogenomics`: OpenTargets pharmacogenomics slice merged as
@@ -391,6 +396,9 @@ Current Export Reality section above.
       variant graph remains pending.
 - [ ] `ingest_enhancers`: smoke-tested only; enhancer nodes and enhancer
       regulatory edges remain pending.
+- [ ] Add source features: for each source, download and add their real feature
+      (e.g. genes get their sequence, same for transcripts, molecules, proteins,
+      enhancers) for paper, get their abstract and discussion.
 
 ### Phase 6 — Edge credibility pipeline ✅ complete
 
@@ -411,10 +419,14 @@ data/kg/
   edges/{relation_name}.parquet
 ```
 
-- `manage_db/kg_storage.py` centralises pyarrow/fsspec writes, append deduplication, and provenance/metadata helpers.
-- `manage_db/ingest_opentargets.py` and `manage_db/kg_migrate.py` now flow through the storage layer for local paths and `gs://` URIs.
-- `manage_db/export_kg.py` exports legacy `data/kg` layouts into `kg/v2/`, writing provenance and `SUMMARY.md` for reproducibility.
-- `tests/test_kg_storage.py` covers atomic writes, schema validation, provenance, and an optional GCS smoke round-trip.
+- `manage_db/kg_storage.py` centralises pyarrow/fsspec writes, append
+  deduplication, and provenance/metadata helpers.
+- `manage_db/ingest_opentargets.py` and `manage_db/kg_migrate.py` now flow
+  through the storage layer for local paths and `gs://` URIs.
+- `manage_db/export_kg.py` exports legacy `data/kg` layouts into `kg/v2/`,
+  writing provenance and `SUMMARY.md` for reproducibility.
+- `tests/test_kg_storage.py` covers atomic writes, schema validation,
+  provenance, and an optional GCS smoke round-trip.
 - Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2`; paper, Reactome,
   molecule/MoA, biosample, and expression slices were later added. Current GCS
   layout has 8 node files and 23 edge files and validates with zero dangling
@@ -422,26 +434,30 @@ data/kg/
 
 ### Phase 8 — KGLoader + graph export ✅ (complete)
 
-- `txgnn.KGLoader(data_dir)` scans node/edge parquets and builds stable node ID maps.
-- `KGLoader.validate()` reports node counts, edge counts, and dangling-edge counts.
-- `KGLoader.edge_index_frames()` exports integer edge tables keyed by canonical edge type.
-- `to_pyg()` → `torch_geometric.data.HeteroData` when optional PyG deps are installed.
+- `txgnn.KGLoader(data_dir)` scans node/edge parquets and builds stable node ID
+  maps.
+- `KGLoader.validate()` reports node counts, edge counts, and dangling-edge
+  counts.
+- `KGLoader.edge_index_frames()` exports integer edge tables keyed by canonical
+  edge type.
+- `to_pyg()` → `torch_geometric.data.HeteroData` when optional PyG deps are
+  installed.
 - `to_dgl()` → `dgl.heterograph` when optional DGL deps are installed.
-- `txgnn.__init__` uses lazy heavy imports so `from txgnn import KGLoader` works without importing DGL.
+- `txgnn.__init__` uses lazy heavy imports so `from txgnn import KGLoader` works
+  without importing DGL.
 
 ### Phase 9 — Validation
 
 - [x] Dangling edge checks (`KGLoader.validate()`)
 - [x] Schema coverage audit CLI:
       `uv run python -m manage_db.audit_kg_coverage gs://jouvencekb/kg/v2`
-      reports physical node/edge file coverage against `kg_schema.py`.
-      Current GCS export: 8/15 node files, 23/77 edge files. See
+      reports physical node/edge file coverage against `kg_schema.py`. Current
+      GCS export: 8/15 node files, 23/77 edge files. See
       `docs/kg_coverage_audit.md`.
 - [x] Remote GCS validation after paper, OpenTargets ID-space merge,
       biosample/expression, and disease-phenotype promotion:
-      `uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2`
-      reports `3,233,849` nodes, `25,325,918` edges, and
-      `total_dangling_edges: 0`.
+      `uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2` reports
+      `3,467,844` nodes, `25,325,918` edges, and `total_dangling_edges: 0`.
 - [ ] Node ontology coverage stats
 - [ ] Final TxGNN model smoke test on the VPS. This must be a tiny model and
       must run under explicit systemd limits: at most `CPUQuota=200%` and
