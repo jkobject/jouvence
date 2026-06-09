@@ -3,13 +3,13 @@
   "task": "Drive remaining CLAUDE.md expanded KG checklist items to validated completion with bounded scratch-first work.",
   "goal_id": "G002",
   "counts": {
-    "blocked": 0,
-    "completed": 5,
     "failed": 1,
+    "blocked": 0,
+    "completed": 7,
     "in_progress": 0,
-    "pending": 0
+    "pending": 1
   },
-  "terminal": true,
+  "terminal": false,
   "verifier_done": true,
   "tasks": [
     {
@@ -113,11 +113,65 @@
       "verifier_required": false,
       "completed_at": "2026-06-09T14:08:50.268583Z",
       "error": "GO scratch ingest still too slow after schema/chunking fix; stopped before validation/promotion"
+    },
+    {
+      "id": "7",
+      "subject": "Recover OpenTargets GO merge",
+      "description": "Profile and fix the target+GO scratch ingest performance regression, then rerun scratch validation and promote only if validated.",
+      "status": "completed",
+      "role": "worker",
+      "owner": "builder",
+      "depends_on": [],
+      "version": 3,
+      "created_at": "2026-06-09T14:18:05.028034Z",
+      "coordination": {
+        "mode": "lightweight"
+      },
+      "verifier_required": false,
+      "completed_at": "2026-06-09T14:28:31.712518Z",
+      "result": "Recovered and merged OpenTargets target+GO. Optimized dedup_edges fast path for no-evidence edge tables; pathway_contains_gene write dropped from stuck CPU loop to 8.6s. Promoted nodes/gene.parquet, nodes/pathway.parquet, and edges/pathway_contains_gene.parquet. GCS validate PASS: 3,233,849 nodes, 25,325,918 edges, total_dangling_edges=0, peak RSS about 6.3G."
+    },
+    {
+      "id": "8",
+      "subject": "Select next post-GO KG slice",
+      "description": "Choose and start the next CLAUDE.md checklist slice after target+GO, preferring bounded scratch-first work and avoiding known semantic endpoint mismatches.",
+      "status": "completed",
+      "role": "worker",
+      "owner": "builder",
+      "depends_on": [],
+      "version": 3,
+      "created_at": "2026-06-09T14:29:46.072059Z",
+      "coordination": {
+        "mode": "lightweight"
+      },
+      "verifier_required": false,
+      "completed_at": "2026-06-09T14:30:54.489859Z",
+      "result": "Selected next safe work item after target+GO: resolve legacy protein endpoint conflation before running interaction/MoA/protein-node exports. Current GCS protein-named relations use gene endpoints, so blindly ingesting interaction would compound semantic mismatch."
+    },
+    {
+      "id": "9",
+      "subject": "Resolve legacy protein endpoint conflation",
+      "description": "Audit protein-named GCS edge files that currently use gene endpoints, update CLAUDE.md/schema notes, and decide the safe path before interaction/MoA/protein node exports.",
+      "status": "pending",
+      "role": "worker",
+      "owner": null,
+      "depends_on": [],
+      "version": 1,
+      "created_at": "2026-06-09T14:30:37.343664Z",
+      "coordination": {
+        "mode": "lightweight"
+      },
+      "verifier_required": false
     }
   ],
   "loop": {
-    "status": "idle",
-    "lease": {},
+    "status": "running",
+    "lease": {
+      "owner": "49466db58b3645e39e1a6c708395fb6b",
+      "acquired_at": "2026-06-09T14:32:42.489809Z",
+      "expires_at": "2026-06-09T14:47:42.489872Z",
+      "heartbeat_at": "2026-06-09T14:32:42.489886Z"
+    },
     "last_loop_at": "2026-06-09T12:41:54.418711Z"
   }
 }
