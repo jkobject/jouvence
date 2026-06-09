@@ -121,6 +121,8 @@ KG vision**. It is currently:
   `paper_mentions_gene` / `paper_mentions_disease` edges).
 - OpenTargets Reactome evidence slice added as `disease_associated_gene` and
   `disease_involves_pathway`.
+- OpenTargets ChEMBL molecule nodes and mechanism-of-action target edges added
+  from the local Phase 4/5 slice.
 
 As of the 2026-06-09 pass, `uv run python -m manage_db.validate_kg
 gs://jouvencekb/kg/v2` reports `total_dangling_edges: 0` across the current
@@ -137,8 +139,8 @@ use `protein` as an endpoint type, but there is no dedicated
 | Node type | Rows | Status |
 | --- | ---: | --- |
 | `disease` | 45,407 | present; legacy + OpenTargets disease IDs |
-| `gene` | 57,857 | present; legacy + OpenTargets Ensembl IDs |
-| `molecule` | 8,775 | present; legacy molecule/drug IDs |
+| `gene` | 57,860 | present; legacy + OpenTargets Ensembl IDs |
+| `molecule` | 31,005 | present; legacy + OpenTargets ChEMBL molecule IDs |
 | `paper` | 2,958,199 | present; Europe PMC PMIDs |
 | `pathway` | 48,021 | present; legacy + OpenTargets Reactome evidence stubs |
 | `phenotype` | 15,311 | present; HP-derived |
@@ -160,7 +162,7 @@ Missing node files from the schema vision:
 | `molecule_contraindicates_disease` | 30,675 | present |
 | `molecule_in_pathway` | 1,680 | present |
 | `molecule_interacts_molecule` | 2,676,768 | present |
-| `molecule_targets_protein` | 26,680 | present |
+| `molecule_targets_protein` | 41,239 | present; includes OpenTargets MoA rows with Ensembl gene endpoints pending protein resolution |
 | `molecule_treats_disease` | 14,135 | present |
 | `paper_mentions_disease` | 6,492,130 | present; graph-valid |
 | `paper_mentions_gene` | 7,177,163 | present; graph-valid |
