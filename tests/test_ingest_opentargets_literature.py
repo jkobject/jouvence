@@ -11,6 +11,7 @@ from manage_db.ingest_opentargets import (
     ingest_drugs,
     ingest_evidence,
     ingest_expression,
+    ingest_go,
     ingest_pharmacogenomics,
     ingest_literature,
 )
@@ -123,6 +124,39 @@ def test_ingest_drugs_writes_required_molecule_xrefs(tmp_path: Path) -> None:
     assert set(["id", "drugbank_id", "pubchem_cid", "cas_rn", "inchikey", "smiles"]) <= set(molecules.columns)
     assert molecules.loc[0, "id"] == "CHEMBL941"
     assert molecules.loc[0, "smiles"] == "CCO"
+
+
+def test_ingest_go_accepts_label_column(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    go_dir = ot_dir / "go"
+    target_dir = ot_dir / "target"
+    go_dir.mkdir(parents=True)
+    target_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {"id": "GO:0008150", "label": "biological_process"},
+        ]
+    ).to_parquet(go_dir / "go.parquet", index=False)
+    pd.DataFrame(
+        [
+            {
+                "id": "ENSG00000139618",
+                "go": [{"id": "GO:0008150", "evidence": "IDA", "aspect": "P"}],
+            }
+        ]
+    ).to_parquet(target_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+
+    assert ingest_go(ot_dir, kg_dir, root) == (1, 1)
+    pathways = kg_storage.read_nodes(root, "pathway")
+    edges = kg_storage.read_edges(root, "pathway_contains_gene")
+
+    assert pathways.loc[0, "id"] == "GO:0008150"
+    assert pathways.loc[0, "name"] == "biological_process"
+    assert edges.loc[0, "x_id"] == "GO:0008150"
+    assert edges.loc[0, "y_id"] == "ENSG00000139618"
 
 
 def test_ingest_biosample_writes_required_node_xrefs(tmp_path: Path) -> None:

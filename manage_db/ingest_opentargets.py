@@ -890,7 +890,7 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
 def ingest_go(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int, int]:
     """Ingest GO annotations → pathway (GO) nodes + pathway_contains_gene edges.
 
-    OT's go/ directory only contains GO term definitions (id, name).
+    OT's go/ directory only contains GO term definitions (id, name/label).
     The gene↔GO associations live in target.go (a list-of-structs per gene).
     Strategy:
       1. Load go/ for term name lookup.
@@ -904,9 +904,9 @@ def ingest_go(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int
     # ── Step 1: build GO term name index ─────────────────────────────────────
     go_names: dict[str, str] = {}
     if go_path.exists():
-        df_go = _read_parquet_dir(go_path, columns=["id", "name"])
+        df_go = _read_parquet_dir_available(go_path, columns=["id", "name", "label"])
         for _, r in df_go.iterrows():
-            go_names[str(r["id"]).strip()] = str(r.get("name") or "")
+            go_names[str(r["id"]).strip()] = str(r.get("name") or r.get("label") or "")
         log.info("  Loaded %d GO term names", len(go_names))
     else:
         log.warning("'go' dataset not found in %s — term names will be empty", ot_dir)
@@ -917,65 +917,88 @@ def ingest_go(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int
 
     log.info("Extracting GO associations from target.go  (chunked)")
 
-    pathway_rows: list[dict] = []
-    edge_rows: list[dict] = []
+    chunks_base = out_dir / ".chunks"
+    pathway_chunks = chunks_base / "go_pathway"
+    edge_chunks = chunks_base / "pathway_contains_gene"
     seen_pathways: set[str] = set()
 
-    for chunk in _read_parquet_dir_chunked(
-        target_path,
-        columns=["id", "go"],
-        chunksize=50_000,
-    ):
-        for _, row in chunk.iterrows():
-            gene_id = str(row.get("id") or "").strip()
-            if not gene_id.startswith("ENSG"):
-                continue
+    import pyarrow.parquet as _pq
 
-            go_entries = _to_list(row.get("go"))
+    for target_file in sorted(target_path.glob("*.parquet")):
+        try:
+            batches = _pq.ParquetFile(target_file).iter_batches(
+                batch_size=10_000,
+                columns=["id", "go"],
+            )
+        except Exception as exc:
+            log.warning("Could not read %s: %s", target_file, exc)
+            continue
+        for batch in batches:
+            data = batch.to_pydict()
+            gene_ids = data.get("id", [])
+            go_lists = data.get("go", [])
 
-            for entry in go_entries:
-                if not isinstance(entry, dict):
+            pathway_rows: list[dict] = []
+            edge_rows: list[dict] = []
+            for gene_id, go_entries in zip(gene_ids, go_lists, strict=False):
+                gene_id = str(gene_id or "").strip()
+                if not gene_id.startswith("ENSG"):
                     continue
-                go_id    = str(entry.get("id") or "").strip()
-                evidence = str(entry.get("evidence") or "").strip()
-                aspect   = str(entry.get("aspect") or "").strip()
 
-                if not go_id:
-                    continue
+                for entry in _to_list(go_entries):
+                    if not isinstance(entry, dict):
+                        continue
+                    go_id    = str(entry.get("id") or "").strip()
+                    evidence = str(entry.get("evidence") or "").strip()
+                    aspect   = str(entry.get("aspect") or "").strip()
 
-                if go_id not in seen_pathways:
-                    seen_pathways.add(go_id)
-                    pathway_rows.append({
-                        "id":     go_id,
-                        "name":   go_names.get(go_id, ""),
-                        "aspect": aspect,
-                        "go_id":  go_id,
-                        "source": SOURCE_NAME,
-                    })
+                    if not go_id:
+                        continue
 
-                cred = (
-                    Credibility.ESTABLISHED_FACT
-                    if evidence in ("IDA", "IMP", "IGI", "IEP", "EXP", "TAS", "IC")
-                    else Credibility.SINGLE_EVIDENCE
-                )
-                edge_rows.append(_make_edge(
-                    x_id=go_id,   x_type=NodeType.PATHWAY.value,
-                    y_id=gene_id, y_type=NodeType.GENE.value,
-                    relation="pathway_contains_gene",
-                    display_relation="contains gene",
-                    source="OpenTargets/GO",
-                    credibility=cred,
-                    go_evidence=evidence,
-                    go_aspect=aspect,
-                ))
+                    if go_id not in seen_pathways:
+                        seen_pathways.add(go_id)
+                        pathway_rows.append({
+                            "id":     go_id,
+                            "name":   go_names.get(go_id, ""),
+                            "aspect": aspect,
+                            "go_id":  go_id,
+                            "source": SOURCE_NAME,
+                        })
 
-    if pathway_rows:
-        _save_node_df(pd.DataFrame(pathway_rows), root, NodeType.PATHWAY.value)
-    if edge_rows:
-        _save_edge_df(pd.DataFrame(edge_rows), root, "pathway_contains_gene")
+                    cred = (
+                        Credibility.ESTABLISHED_FACT
+                        if evidence in ("IDA", "IMP", "IGI", "IEP", "EXP", "TAS", "IC")
+                        else Credibility.SINGLE_EVIDENCE
+                    )
+                    edge_rows.append(_make_edge(
+                        x_id=go_id,   x_type=NodeType.PATHWAY.value,
+                        y_id=gene_id, y_type=NodeType.GENE.value,
+                        relation="pathway_contains_gene",
+                        display_relation="contains gene",
+                        source="OpenTargets/GO",
+                        credibility=cred,
+                        go_evidence=evidence,
+                        go_aspect=aspect,
+                    ))
 
-    log.info("  %d GO pathway nodes, %d pathway→gene edges", len(pathway_rows), len(edge_rows))
-    return len(pathway_rows), len(edge_rows)
+            if pathway_rows:
+                _write_chunk(pd.DataFrame(pathway_rows), pathway_chunks)
+            if edge_rows:
+                _write_chunk(pd.DataFrame(edge_rows), edge_chunks)
+
+    n_pathways = _finalize_chunks(
+        pathway_chunks,
+        lambda df: _save_node_df(df, root, NodeType.PATHWAY.value),
+        dedup_cols=["id"],
+    )
+    n_edges = _finalize_chunks(
+        edge_chunks,
+        lambda df: _save_edge_df(df, root, "pathway_contains_gene"),
+        dedup_cols=["x_id", "y_id", "relation", "source", "go_evidence"],
+    )
+
+    log.info("  %d GO pathway nodes, %d pathway→gene edges", n_pathways, n_edges)
+    return n_pathways, n_edges
 
 
 # ---------------------------------------------------------------------------
