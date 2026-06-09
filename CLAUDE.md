@@ -142,7 +142,7 @@ As of the 2026-06-09 pass,
 `total_dangling_edges: 0` across the current physical export. This means the
 current files are graph-valid, not complete: many schema-vision node and edge
 files are still absent. The coverage audit currently reports `10 / 15` node
-files, `24 / 77` edge files, `3,467,844` total nodes, and `25,325,918` total
+files, `25 / 77` edge files, `3,467,844` total nodes, and `25,559,913` total
 edges.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
@@ -153,6 +153,12 @@ Protein (`ENSP`) IDs; `nodes/transcript.parquet` is still absent.
 Current GCS edge files named `*protein*` physically validate through `gene`
 endpoints (`NCBI:` / `ENSG` IDs); they should be treated as legacy
 gene/protein-conflated relations until a protein-edge remapping pass exists.
+The first ENSP remapping audit found this is not safely one-to-one: most legacy
+protein endpoints are `NCBI:` IDs, and many Ensembl genes have multiple ENSP
+translations. Only `1,528` sampled `molecule_targets_protein` endpoints were
+unambiguously mappable to a single ENSP, so the next safe edge is
+`gene_encodes_protein` from the new `nodes/protein.parquet`, not blind rewrites
+of legacy protein-named edges.
 
 ### Node Schema & GCS Coverage
 
@@ -210,7 +216,7 @@ source, credibility, [additional metadata columns...]
 | ------------------------------------ | ------------ | ------------ | ----------------- | ------- | ---- | --------: | ------------------------------------------------------------------------- |
 | `gene_has_transcript`                | `gene`       | `transcript` | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
 | `transcript_encodes_protein`         | `transcript` | `protein`    | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
-| `gene_encodes_protein`               | `gene`       | `protein`    | `central_dogma`   | no      | no   |         - | not exported yet                                                          |
+| `gene_encodes_protein`               | `gene`       | `protein`    | `central_dogma`   | no      | yes  |   233,995 | OpenTargets ENSG→ENSP translations                                        |
 | `transcript_alternative_transcript`  | `transcript` | `transcript` | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
 | `mutation_in_gene`                   | `mutation`   | `gene`       | `genetic`         | yes     | no   |         - | not exported yet                                                          |
 | `mutation_affects_transcript`        | `mutation`   | `transcript` | `genetic`         | yes     | no   |         - | not exported yet                                                          |
@@ -457,7 +463,7 @@ data/kg/
 - [x] Remote GCS validation after paper, OpenTargets ID-space merge,
       biosample/expression, and disease-phenotype promotion:
       `uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2` reports
-      `3,467,844` nodes, `25,325,918` edges, and `total_dangling_edges: 0`.
+      `3,467,844` nodes, `25,559,913` edges, and `total_dangling_edges: 0`.
 - [ ] Node ontology coverage stats
 - [ ] Final TxGNN model smoke test on the VPS. This must be a tiny model and
       must run under explicit systemd limits: at most `CPUQuota=200%` and
