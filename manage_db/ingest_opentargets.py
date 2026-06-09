@@ -338,7 +338,10 @@ def ingest_targets(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     log.info("  %d target rows", len(df))
 
     rows = []
+    transcript_rows_by_id: dict[str, dict] = {}
     protein_rows_by_id: dict[str, dict] = {}
+    gene_transcript_edges: list[dict] = []
+    transcript_protein_edges: list[dict] = []
     for _, row in df.iterrows():
         gene_id = str(row["id"]).strip()
         if not gene_id.startswith("ENSG"):
@@ -388,7 +391,29 @@ def ingest_targets(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
         for transcript in _to_list(row.get("transcripts")):
             if not isinstance(transcript, dict):
                 continue
+            transcript_id = str(transcript.get("transcriptId") or "").strip()
             protein_id = str(transcript.get("translationId") or "").strip()
+            if transcript_id.startswith("ENST"):
+                transcript_rows_by_id[transcript_id] = {
+                    "id": transcript_id,
+                    "name": transcript_id,
+                    "ensembl_gene_id": gene_id,
+                    "protein_id": protein_id if protein_id.startswith("ENSP") else None,
+                    "refseq_mrna": None,
+                    "ccds_id": None,
+                    "source": SOURCE_NAME,
+                }
+                gene_transcript_edges.append(_make_edge(
+                    x_id=gene_id,
+                    x_type=NodeType.GENE.value,
+                    y_id=transcript_id,
+                    y_type=NodeType.TRANSCRIPT.value,
+                    relation="gene_has_transcript",
+                    display_relation="has transcript",
+                    source="OpenTargets/target",
+                    credibility=Credibility.ESTABLISHED_FACT,
+                    transcript_biotype=str(transcript.get("biotype") or "").strip(),
+                ))
             if not protein_id.startswith("ENSP"):
                 continue
             protein_rows_by_id[protein_id] = {
@@ -400,13 +425,34 @@ def ingest_targets(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
                 "pdb_ids": None,
                 "source": SOURCE_NAME,
             }
+            if transcript_id.startswith("ENST"):
+                transcript_protein_edges.append(_make_edge(
+                    x_id=transcript_id,
+                    x_type=NodeType.TRANSCRIPT.value,
+                    y_id=protein_id,
+                    y_type=NodeType.PROTEIN.value,
+                    relation="transcript_encodes_protein",
+                    display_relation="encodes protein",
+                    source="OpenTargets/target",
+                    credibility=Credibility.ESTABLISHED_FACT,
+                ))
 
     gene_df = pd.DataFrame(rows)
     _save_node_df(gene_df, root, NodeType.GENE.value)
+    if transcript_rows_by_id:
+        transcript_df = pd.DataFrame(transcript_rows_by_id.values())
+        _save_node_df(transcript_df, root, NodeType.TRANSCRIPT.value)
+        log.info("  %d transcript nodes saved", len(transcript_df))
     if protein_rows_by_id:
         protein_df = pd.DataFrame(protein_rows_by_id.values())
         _save_node_df(protein_df, root, NodeType.PROTEIN.value)
         log.info("  %d protein nodes saved", len(protein_df))
+    if gene_transcript_edges:
+        _save_edge_df(pd.DataFrame(gene_transcript_edges), root, "gene_has_transcript")
+        log.info("  %d gene→transcript edges saved", len(gene_transcript_edges))
+    if transcript_protein_edges:
+        _save_edge_df(pd.DataFrame(transcript_protein_edges), root, "transcript_encodes_protein")
+        log.info("  %d transcript→protein edges saved", len(transcript_protein_edges))
     log.info("  %d gene nodes saved", len(gene_df))
     return len(gene_df)
 

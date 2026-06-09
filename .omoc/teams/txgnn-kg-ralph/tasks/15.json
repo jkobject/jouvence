@@ -1,0 +1,20 @@
+{
+  "id": "15",
+  "subject": "Plan OpenTargets variants merge",
+  "description": "Stage OpenTargets variants in scratch and decide a bounded path for mutation_in_gene, mutation_affects_transcript, and mutation_causes_protein_change using existing mutation/transcript/protein nodes.",
+  "status": "in_progress",
+  "role": "worker",
+  "owner": "builder",
+  "depends_on": [],
+  "version": 2,
+  "created_at": "2026-06-09T15:43:52.784502Z",
+  "coordination": {
+    "mode": "lightweight"
+  },
+  "verifier_required": false,
+  "claim": {
+    "owner": "builder",
+    "token": "10f003425dde4ae6aacbc12a7cc4778d",
+    "leased_until": "2026-06-09T21:44:39.461061Z"
+  }
+}

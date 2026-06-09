@@ -155,11 +155,21 @@ def test_ingest_targets_writes_ensp_protein_nodes(tmp_path: Path) -> None:
     root = kg_storage.open_kg_root(str(kg_dir))
 
     assert ingest_targets(ot_dir, kg_dir, root) == 1
+    transcripts = kg_storage.read_nodes(root, "transcript")
     proteins = kg_storage.read_nodes(root, "protein")
+    gene_transcript = kg_storage.read_edges(root, "gene_has_transcript")
+    transcript_protein = kg_storage.read_edges(root, "transcript_encodes_protein")
 
+    assert transcripts.loc[0, "id"] == "ENST00000380152"
+    assert transcripts.loc[0, "ensembl_gene_id"] == "ENSG00000139618"
+    assert transcripts.loc[0, "protein_id"] == "ENSP00000369497"
     assert proteins.loc[0, "id"] == "ENSP00000369497"
     assert proteins.loc[0, "ensembl_gene_id"] == "ENSG00000139618"
     assert proteins.loc[0, "uniprot_id"] == "P51587"
+    assert gene_transcript.loc[0, "x_id"] == "ENSG00000139618"
+    assert gene_transcript.loc[0, "y_id"] == "ENST00000380152"
+    assert transcript_protein.loc[0, "x_id"] == "ENST00000380152"
+    assert transcript_protein.loc[0, "y_id"] == "ENSP00000369497"
 
 
 def test_ingest_go_accepts_label_column(tmp_path: Path) -> None:

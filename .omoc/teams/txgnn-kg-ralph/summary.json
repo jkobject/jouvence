@@ -4,10 +4,10 @@
   "goal_id": "G002",
   "counts": {
     "failed": 1,
-    "completed": 12,
+    "blocked": 0,
     "pending": 1,
     "in_progress": 0,
-    "blocked": 0
+    "completed": 12
   },
   "terminal": false,
   "verifier_done": true,
@@ -252,11 +252,11 @@
   "loop": {
     "status": "running",
     "lease": {
-      "owner": "87e8b9b5530f4c87b93315accb17a3fa",
-      "acquired_at": "2026-06-09T15:26:47.628784Z",
-      "expires_at": "2026-06-09T15:41:47.628822Z",
-      "heartbeat_at": "2026-06-09T15:26:47.628880Z"
+      "owner": "clawd",
+      "acquired_at": "2026-06-09T15:35:31.762298Z",
+      "expires_at": "2026-06-09T21:35:31.762332Z",
+      "heartbeat_at": "2026-06-09T15:35:31.762365Z"
     },
-    "last_loop_at": "2026-06-09T15:07:32.094551Z"
+    "last_loop_at": "2026-06-09T15:26:47.635494Z"
   }
 }

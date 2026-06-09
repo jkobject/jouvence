@@ -141,8 +141,8 @@ As of the 2026-06-09 pass,
 `uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2` reports
 `total_dangling_edges: 0` across the current physical export. This means the
 current files are graph-valid, not complete: many schema-vision node and edge
-files are still absent. The coverage audit currently reports `10 / 15` node
-files, `25 / 77` edge files, `3,467,844` total nodes, and `25,559,913` total
+files are still absent. The coverage audit currently reports `11 / 15` node
+files, `27 / 77` edge files, `3,975,209` total nodes, and `26,301,273` total
 edges.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
@@ -166,7 +166,7 @@ of legacy protein-named edges.
 | ------------ | --------------------------------------------- | ---- | --------: | ----------------------------------------------------------------------------------- |
 | `paper`      | PubMed (`PMID:12345678`)                      | yes  | 2,958,199 | Europe PMC PMIDs                                                                    |
 | `gene`       | Ensembl (`ENSG00000139618`)                   | yes  |   109,325 | legacy + OpenTargets 26.03 target IDs; expression/evidence stubs added              |
-| `transcript` | Ensembl (`ENST00000380152`)                   | no   |         - | not exported yet                                                                    |
+| `transcript` | Ensembl (`ENST00000380152`)                   | yes  |   507,365 | OpenTargets 26.03 target transcripts                                                |
 | `protein`    | Ensembl Protein (`ENSP00000369497`)           | yes  |   233,995 | OpenTargets 26.03 target translations; UniProt is an xref                           |
 | `pathway`    | Reactome / GO (`R-HSA-5633007`, `GO:0008150`) | yes  |    48,575 | legacy + OpenTargets Reactome evidence stubs + GO terms                             |
 | `molecule`   | ChEMBL (`CHEMBL941`)                          | yes  |    31,007 | legacy + OpenTargets `drug_molecule` xrefs/properties; pharmacogenomics stubs added |
@@ -214,8 +214,8 @@ source, credibility, [additional metadata columns...]
 
 | Relation                             | Source       | Target       | Kind              | Direct? | GCS? |      Rows | Comment                                                                   |
 | ------------------------------------ | ------------ | ------------ | ----------------- | ------- | ---- | --------: | ------------------------------------------------------------------------- |
-| `gene_has_transcript`                | `gene`       | `transcript` | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
-| `transcript_encodes_protein`         | `transcript` | `protein`    | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
+| `gene_has_transcript`                | `gene`       | `transcript` | `central_dogma`   | yes     | yes  |   507,365 | OpenTargets target transcripts                                             |
+| `transcript_encodes_protein`         | `transcript` | `protein`    | `central_dogma`   | yes     | yes  |   233,995 | OpenTargets ENST→ENSP translations                                         |
 | `gene_encodes_protein`               | `gene`       | `protein`    | `central_dogma`   | no      | yes  |   233,995 | OpenTargets ENSG→ENSP translations                                        |
 | `transcript_alternative_transcript`  | `transcript` | `transcript` | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
 | `mutation_in_gene`                   | `mutation`   | `gene`       | `genetic`         | yes     | no   |         - | not exported yet                                                          |
@@ -463,7 +463,7 @@ data/kg/
 - [x] Remote GCS validation after paper, OpenTargets ID-space merge,
       biosample/expression, and disease-phenotype promotion:
       `uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2` reports
-      `3,467,844` nodes, `25,559,913` edges, and `total_dangling_edges: 0`.
+      `3,975,209` nodes, `26,301,273` edges, and `total_dangling_edges: 0`.
 - [ ] Node ontology coverage stats
 - [ ] Final TxGNN model smoke test on the VPS. This must be a tiny model and
       must run under explicit systemd limits: at most `CPUQuota=200%` and

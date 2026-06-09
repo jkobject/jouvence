@@ -119,6 +119,8 @@ NODE_TYPES: dict[NodeType, NodeTypeInfo] = {
         bionty_registry=None,
         example_id="ENST00000380152",
         xref_columns=(
+            "ensembl_gene_id",  # parent Ensembl gene
+            "protein_id",  # encoded Ensembl Protein ENSP ID, when translated
             "refseq_mrna",  # RefSeq NM_ accession
             "ccds_id",  # CCDS identifier
         ),
