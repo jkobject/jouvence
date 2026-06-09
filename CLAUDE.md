@@ -142,6 +142,10 @@ files, `3,233,849` total nodes, and `25,325,918` total edges.
 The legacy TxData source conflates `gene/protein` in places, and some relations
 use `protein` as an endpoint type, but there is no dedicated
 `nodes/protein.parquet` or `nodes/transcript.parquet` in the current export.
+Current GCS edge files named `*protein*` physically validate through `gene`
+endpoints (`NCBI:` / `ENSG` IDs); they should be treated as legacy
+gene/protein-conflated relations until a dedicated UniProt protein node export
+and remapping pass exists.
 
 ### Node Schema & GCS Coverage
 
@@ -217,17 +221,17 @@ source, credibility, [additional metadata columns...]
 | `enhancer_associated_disease` | `enhancer` | `disease` | `disease_assoc` | no | no | - | not exported yet |
 | `gene_coexpressed_gene` | `gene` | `gene` | `expression` | no | no | - | not exported yet |
 | `tissue_expresses_gene` | `tissue` | `gene` | `expression` | yes | yes | 3,800,648 | OpenTargets expression |
-| `tissue_expresses_protein` | `tissue` | `protein` | `expression` | yes | yes | 1,538,088 | HPA / proteomics |
+| `tissue_expresses_protein` | `tissue` | `protein` | `expression` | yes | yes | 1,538,088 | legacy gene/protein endpoints (`y_type=gene`) |
 | `cell_type_expresses_gene` | `cell_type` | `gene` | `expression` | yes | yes | 1,561,873 | OpenTargets expression |
 | `cell_type_expresses_protein` | `cell_type` | `protein` | `expression` | yes | no | - | not exported yet |
 | `cell_line_expresses_gene` | `cell_line` | `gene` | `experimental` | yes | no | - | not exported yet |
 | `cell_line_expresses_protein` | `cell_line` | `protein` | `experimental` | yes | no | - | not exported yet |
-| `protein_interacts_protein` | `protein` | `protein` | `physical` | yes | yes | 642,150 | PPI (STRING, IntAct...) |
+| `protein_interacts_protein` | `protein` | `protein` | `physical` | yes | yes | 642,150 | legacy gene/protein endpoints (`gene` → `gene`) |
 | `pathway_contains_gene` | `pathway` | `gene` | `pathway` | no | yes | 588,286 | Reactome / OpenTargets GO |
-| `pathway_contains_protein` | `pathway` | `protein` | `pathway` | no | yes | 42,646 | Reactome / KEGG |
+| `pathway_contains_protein` | `pathway` | `protein` | `pathway` | no | yes | 42,646 | legacy gene/protein endpoints (`y_type=gene`) |
 | `pathway_child_of_pathway` | `pathway` | `pathway` | `ontological` | yes | yes | 147,680 | Reactome hierarchy |
 | `molecule_in_pathway` | `molecule` | `pathway` | `pathway` | no | yes | 1,680 | Metabolic pathway |
-| `molecule_targets_protein` | `molecule` | `protein` | `pharmacological` | yes | yes | 41,239 | legacy + OpenTargets MoA rows; protein resolution still imperfect |
+| `molecule_targets_protein` | `molecule` | `protein` | `pharmacological` | yes | yes | 41,239 | legacy gene/protein endpoints (`y_type=gene`); protein resolution pending |
 | `molecule_treats_disease` | `molecule` | `disease` | `pharmacological` | no | yes | 14,135 | Indication (clinical) |
 | `molecule_contraindicates_disease` | `molecule` | `disease` | `pharmacological` | no | yes | 30,675 | Contraindication |
 | `molecule_interacts_molecule` | `molecule` | `molecule` | `pharmacological` | no | yes | 2,676,768 | Drug-drug interaction |
@@ -235,7 +239,7 @@ source, credibility, [additional metadata columns...]
 | `cell_line_responds_to_molecule` | `cell_line` | `molecule` | `experimental` | yes | no | - | not exported yet |
 | `phenotype_associated_molecule` | `phenotype` | `molecule` | `pharmacological` | no | yes | 64,784 | Side effect / rescue |
 | `disease_associated_gene` | `disease` | `gene` | `disease_assoc` | no | yes | 2,928 | OpenTargets Reactome evidence slice |
-| `disease_associated_protein` | `disease` | `protein` | `disease_assoc` | no | yes | 80,411 | Proteomics / genetics |
+| `disease_associated_protein` | `disease` | `protein` | `disease_assoc` | no | yes | 80,411 | legacy gene/protein endpoints (`y_type=gene`) |
 | `disease_involves_pathway` | `disease` | `pathway` | `disease_assoc` | no | yes | 2,296 | OpenTargets Reactome evidence slice |
 | `disease_associated_mutation` | `disease` | `mutation` | `genetic` | no | no | - | not exported yet |
 | `disease_manifests_in_tissue` | `disease` | `tissue` | `disease_assoc` | no | no | - | not exported yet |
@@ -245,7 +249,7 @@ source, credibility, [additional metadata columns...]
 | `phenotype_observed_in_tissue` | `phenotype` | `tissue` | `phenotype_assoc` | no | no | - | not exported yet |
 | `phenotype_caused_by_mutation` | `phenotype` | `mutation` | `genetic` | no | no | - | not exported yet |
 | `phenotype_associated_gene` | `phenotype` | `gene` | `phenotype_assoc` | no | no | - | not exported yet |
-| `phenotype_associated_protein` | `phenotype` | `protein` | `phenotype_assoc` | no | yes | 3,330 | Inferred via gene |
+| `phenotype_associated_protein` | `phenotype` | `protein` | `phenotype_assoc` | no | yes | 3,330 | legacy gene/protein endpoints (`y_type=gene`) |
 | `phenotype_associated_cell_type` | `phenotype` | `cell_type` | `phenotype_assoc` | no | no | - | not exported yet |
 | `phenotype_subtype_of_phenotype` | `phenotype` | `phenotype` | `ontological` | yes | yes | 37,472 | HPO hierarchy |
 | `tissue_subtype_of_tissue` | `tissue` | `tissue` | `ontological` | yes | yes | 28,064 | UBERON parent-child hierarchy |
