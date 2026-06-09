@@ -17,7 +17,7 @@ alongside the primary ID (see ``NodeTypeInfo.xref_columns``).
   ----------   ------------------   -----------------------
   gene         Ensembl              ENSG00000139618
   transcript   Ensembl              ENST00000380152
-  protein      UniProt              P38398
+  protein      Ensembl Protein      ENSP00000369497
   disease      EFO                  EFO:0000305
   cell_type    CL (Cell Ontology)   CL:0000576
   tissue       UBERON               UBERON:0002107
@@ -125,12 +125,13 @@ NODE_TYPES: dict[NodeType, NodeTypeInfo] = {
     ),
     NodeType.PROTEIN: NodeTypeInfo(
         node_type=NodeType.PROTEIN,
-        primary_ontology="UniProt",
-        id_format="[A-Z][0-9][A-Z0-9]{3}[0-9]",
+        primary_ontology="Ensembl Protein",
+        id_format="ENSP[0-9]{11}",
         bionty_registry=None,
-        example_id="P38398",
+        example_id="ENSP00000369497",
         xref_columns=(
             "ensembl_gene_id",  # parent Ensembl gene
+            "uniprot_id",  # UniProt accession, when available
             "refseq_protein",  # RefSeq NP_ accession
             "pdb_ids",  # pipe-separated PDB structure IDs
         ),

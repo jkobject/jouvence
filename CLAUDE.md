@@ -144,8 +144,9 @@ use `protein` as an endpoint type, but there is no dedicated
 `nodes/protein.parquet` or `nodes/transcript.parquet` in the current export.
 Current GCS edge files named `*protein*` physically validate through `gene`
 endpoints (`NCBI:` / `ENSG` IDs); they should be treated as legacy
-gene/protein-conflated relations until a dedicated UniProt protein node export
-and remapping pass exists.
+gene/protein-conflated relations until a dedicated Ensembl Protein (`ENSP`)
+node export and remapping pass exists. Per the 2026-06-09 schema decision,
+`protein` primary IDs are `ENSP...`; UniProt accessions are cross-references.
 
 ### Node Schema & GCS Coverage
 
@@ -154,7 +155,7 @@ and remapping pass exists.
 | `paper` | PubMed (`PMID:12345678`) | yes | 2,958,199 | Europe PMC PMIDs |
 | `gene` | Ensembl (`ENSG00000139618`) | yes | 109,325 | legacy + OpenTargets 26.03 target IDs; expression/evidence stubs added |
 | `transcript` | Ensembl (`ENST00000380152`) | no | - | not exported yet |
-| `protein` | UniProt (`P38398`) | no | - | not exported yet |
+| `protein` | Ensembl Protein (`ENSP00000369497`) | no | - | not exported yet; UniProt is an xref |
 | `pathway` | Reactome / GO (`R-HSA-5633007`, `GO:0008150`) | yes | 48,575 | legacy + OpenTargets Reactome evidence stubs + GO terms |
 | `molecule` | ChEMBL (`CHEMBL941`) | yes | 31,007 | legacy + OpenTargets `drug_molecule` xrefs/properties; pharmacogenomics stubs added |
 | `mutation` | dbSNP (`rs7412`) | yes | 2,429 | OpenTargets pharmacogenomics stubs |
