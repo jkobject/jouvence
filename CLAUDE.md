@@ -383,10 +383,13 @@ implementation plan. The first implementation tranche adds `manage_db.kg_evidenc
 `manage_db.audit_edge_evidence`, `manage_db.backfill_edge_evidence`, and
 Reactome evidence support for `disease_associated_gene` /
 `disease_involves_pathway`. Canonical evidence files now exist at
-`evidence/disease_associated_gene.parquet` (`2,928` support records) and
-`evidence/disease_involves_pathway.parquet` (`2,296` support records), with
-zero unsupported/orphan records in
-`.omoc/reports/hermes-reactome-evidence-audit-*.json`.
+`evidence/disease_associated_gene.parquet` (`2,928` support records),
+`evidence/disease_involves_pathway.parquet` (`2,296` support records), and
+`evidence/mutation_affects_molecule_response.parquet` (`18,595` support records:
+`5,543` OpenTargets pharmacogenomics source-record supports + `13,052` PMID
+paper supports). Audits report zero unsupported/orphan records in
+`.omoc/reports/hermes-reactome-evidence-audit-*.json` and
+`.omoc/reports/hermes-pgx-evidence-audit-*.json`.
 
 ### Storage Layer
 

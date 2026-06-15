@@ -130,9 +130,10 @@ Prioritize relations that already exist and have source rows:
 1. `mutation_associated_gene` from GWAS/L2G/credible-set inputs.
 2. `mutation_associated_disease` from known-variant/GWAS disease evidence.
 3. `mutation_causes_protein_change` from variant protein-change inputs.
-4. `disease_associated_gene` and `disease_involves_pathway` from Reactome evidence. ✅ First canonical evidence backfill complete: `2,928` and `2,296` support rows respectively, audited with zero unsupported/orphan records.
-5. `molecule_treats_disease`, `molecule_contraindicates_disease`, `molecule_targets_protein` from `known_drug` / `mechanismOfAction` / ChEMBL-like sources.
-6. `enhancer_regulates_gene` and enhancer context edges from enhancer-to-gene/activity sources.
+4. `disease_associated_gene` and `disease_involves_pathway` from Reactome evidence. ✅ Canonical evidence backfill complete: `2,928` and `2,296` support rows respectively, audited with zero unsupported/orphan records.
+5. `mutation_affects_molecule_response` from OpenTargets pharmacogenomics. ✅ Canonical source-aware evidence backfill complete: `18,595` support rows (`5,543` source-record supports + `13,052` PMID paper supports), audited with zero unsupported/orphan records.
+6. `molecule_treats_disease`, `molecule_contraindicates_disease`, `molecule_targets_protein` from `known_drug` / `mechanismOfAction` / ChEMBL-like sources.
+7. `enhancer_regulates_gene` and enhancer context edges from enhancer-to-gene/activity sources.
 
 ### Phase E3 — Recompute collapsed edge credibility from support
 
