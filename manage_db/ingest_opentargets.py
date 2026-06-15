@@ -35,7 +35,9 @@ Usage
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import sqlite3
 import sys
 from pathlib import Path
 from typing import Iterator
@@ -44,8 +46,10 @@ import numpy as np
 import pandas as pd
 
 try:
+    from .kg_ids import normalize_disease_id, normalize_ontology_curie
     from .kg_schema import NODE_TYPES, Credibility, NodeType
 except ImportError:
+    from kg_ids import normalize_disease_id, normalize_ontology_curie  # type: ignore[no-redef]
     from kg_schema import NODE_TYPES, Credibility, NodeType  # type: ignore[no-redef]
 
 from .credibility import EdgeEvidence, score_credibility
@@ -138,6 +142,53 @@ EVIDENCE_GENE_DISEASE_RELATIONS.update({
     "crispr",
 })
 
+EVIDENCE_BACKED_VARIANT_DATATYPES: set[str] = {
+    "genetic_association",
+    "ot_genetics_portal",
+    "gwas_credible_sets",
+    "gene_burden",
+    "eva",
+    "eva_somatic",
+    "clingen",
+    "uniprot_variants",
+    "somatic_mutation",
+    "intogen",
+}
+
+VARIANT_EVIDENCE_ID_COLUMNS: tuple[str, ...] = (
+    "variantId",
+    "variantRsId",
+    "variantRsIds",
+    "rsId",
+    "rsIds",
+    "leadVariantId",
+    "tagVariantId",
+)
+
+GWAS_CREDIBLE_SET_EVIDENCE_DIR = "evidence_gwas_credible_sets"
+GWAS_EVIDENCE_COLUMNS: tuple[str, ...] = (
+    "studyLocusId",
+    "diseaseId",
+    "datatypeId",
+    "datasourceId",
+    "score",
+    "resourceScore",
+    "targetId",
+)
+GWAS_CREDIBLE_SET_COLUMNS: tuple[str, ...] = (
+    "studyLocusId",
+    "variantId",
+    "studyId",
+    "studyType",
+    "pValueMantissa",
+    "pValueExponent",
+    "beta",
+    "standardError",
+    "confidence",
+    "finemappingMethod",
+)
+GWAS_L2G_COLUMNS: tuple[str, ...] = ("studyLocusId", "geneId", "score")
+
 
 # ---------------------------------------------------------------------------
 # Misc helpers
@@ -152,6 +203,51 @@ def _to_list(val) -> list:
         return list(val)
     except TypeError:
         return [val] if val else []
+
+
+def _first_scalar(values) -> str | None:
+    """Return the first non-empty scalar from a nested/list-like value."""
+    if isinstance(values, str):
+        text = values.strip()
+        return text if text and text != "nan" else None
+    for value in _to_list(values):
+        if isinstance(value, dict):
+            for key in ("variantId", "variantRsId", "rsId", "id"):
+                nested = _first_scalar(value.get(key))
+                if nested:
+                    return nested
+            continue
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text and text != "nan":
+            return text
+    return None
+
+
+def _variant_id_from_evidence_row(row: pd.Series) -> str | None:
+    """Extract a usable mutation ID from an OpenTargets evidence row."""
+    for col in VARIANT_EVIDENCE_ID_COLUMNS:
+        if col in row.index:
+            variant_id = _first_scalar(row.get(col))
+            if variant_id:
+                return variant_id
+
+    # Some OpenTargets genetics rows encode lead/tag variants inside nested
+    # locus structs. Keep this intentionally conservative: only direct variant
+    # identifiers are accepted, never target/gene IDs.
+    for col in ("studyLocusId", "locus", "credibleSet", "credibleSets"):
+        if col not in row.index:
+            continue
+        value = row.get(col)
+        for entry in _to_list(value):
+            if not isinstance(entry, dict):
+                continue
+            for key in VARIANT_EVIDENCE_ID_COLUMNS:
+                variant_id = _first_scalar(entry.get(key))
+                if variant_id:
+                    return variant_id
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +281,17 @@ def _read_parquet_dir_available(path: Path, columns: list[str]) -> pd.DataFrame:
     schema_fields = {field.name for field in pq.read_schema(files[0])}
     available = [column for column in columns if column in schema_fields]
     return _read_parquet_dir(path, columns=available)
+
+
+def _parquet_available_columns(path: Path, columns: list[str]) -> list[str]:
+    """Return requested columns that are present in the first parquet schema."""
+    import pyarrow.parquet as pq
+
+    files = sorted(path.glob("*.parquet"))
+    if not files:
+        raise FileNotFoundError(f"No parquet files found in {path}")
+    schema_fields = {field.name for field in pq.read_schema(files[0])}
+    return [column for column in columns if column in schema_fields]
 
 
 def _read_parquet_dir_chunked(
@@ -238,15 +345,11 @@ def _normalize_uberon_id(value: str) -> str:
 
 
 def _normalize_mondo_id(value: str) -> str:
-    if value.startswith("MONDO_"):
-        return "MONDO:" + value.removeprefix("MONDO_")
-    return value
+    return normalize_ontology_curie(value) or value
 
 
 def _normalize_hp_id(value: str) -> str:
-    if value.startswith("HP_"):
-        return "HP:" + value.removeprefix("HP_")
-    return value
+    return normalize_ontology_curie(value) or value
 
 
 def _write_chunk(df: pd.DataFrame, chunk_dir: Path) -> None:
@@ -274,6 +377,148 @@ def _finalize_chunks(
     write_fn(combined.reset_index(drop=True))
     shutil.rmtree(chunk_dir)
     return len(combined)
+
+
+def _finalize_edge_chunks_streaming(
+    chunk_dir: Path,
+    root: kg_storage.KGRoot,
+    relation: str,
+    dedup_cols: list[str],
+) -> int:
+    """Stream chunked edge Parquets into one edge file without concat OOM."""
+    import shutil
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    files = sorted(chunk_dir.glob("*.parquet"))
+    if not files:
+        return 0
+
+    root._ensure_dir("edges")
+    out_path = root._edge_internal(relation)
+    tmp_path = f"{out_path}.tmp"
+    seen_hashes: set[int] = set()
+    n_written = 0
+    writer = None
+
+    try:
+        with root.fs.open(tmp_path, "wb") as fh:
+            for file in files:
+                df = pd.read_parquet(file)
+                if df.empty:
+                    continue
+                df = df.drop_duplicates(subset=dedup_cols, keep="first")
+                row_hashes = pd.util.hash_pandas_object(
+                    df[dedup_cols],
+                    index=False,
+                ).astype("uint64")
+                keep = []
+                for row_hash in row_hashes:
+                    key = int(row_hash)
+                    if key in seen_hashes:
+                        keep.append(False)
+                    else:
+                        seen_hashes.add(key)
+                        keep.append(True)
+                df = df.loc[keep].reset_index(drop=True)
+                if df.empty:
+                    continue
+
+                table = pa.Table.from_pandas(df, preserve_index=False)
+                if writer is None:
+                    writer = pq.ParquetWriter(fh, table.schema)
+                table = table.cast(writer.schema, safe=False)
+                writer.write_table(table)
+                n_written += len(df)
+            if writer is not None:
+                writer.close()
+                writer = None
+
+        if n_written:
+            if root.fs.exists(out_path):
+                root.fs.rm(out_path)
+            root.fs.mv(tmp_path, out_path)
+        else:
+            root.fs.rm(tmp_path)
+    finally:
+        if writer is not None:
+            writer.close()
+        if root.fs.exists(tmp_path):
+            root.fs.rm(tmp_path)
+
+    shutil.rmtree(chunk_dir)
+    return n_written
+
+
+
+def _finalize_node_chunks_streaming(
+    chunk_dir: Path,
+    root: kg_storage.KGRoot,
+    node_type: str,
+    dedup_cols: list[str],
+) -> int:
+    """Stream chunked node Parquets into one node file without concat OOM."""
+    import shutil
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    files = sorted(chunk_dir.glob("*.parquet"))
+    if not files:
+        return 0
+
+    root._ensure_dir("nodes")
+    out_path = root._node_internal(node_type)
+    tmp_path = f"{out_path}.tmp"
+    seen_hashes: set[int] = set()
+    n_written = 0
+    writer = None
+
+    try:
+        with root.fs.open(tmp_path, "wb") as fh:
+            for file in files:
+                df = pd.read_parquet(file)
+                if df.empty:
+                    continue
+                df = df.drop_duplicates(subset=dedup_cols, keep="first")
+                row_hashes = pd.util.hash_pandas_object(
+                    df[dedup_cols],
+                    index=False,
+                ).astype("uint64")
+                keep = []
+                for row_hash in row_hashes:
+                    key = int(row_hash)
+                    if key in seen_hashes:
+                        keep.append(False)
+                    else:
+                        seen_hashes.add(key)
+                        keep.append(True)
+                df = df.loc[keep].reset_index(drop=True)
+                if df.empty:
+                    continue
+                table = pa.Table.from_pandas(df, preserve_index=False)
+                if writer is None:
+                    writer = pq.ParquetWriter(fh, table.schema)
+                table = table.cast(writer.schema, safe=False)
+                writer.write_table(table)
+                n_written += len(df)
+            if writer is not None:
+                writer.close()
+                writer = None
+
+        if n_written:
+            if root.fs.exists(out_path):
+                root.fs.rm(out_path)
+            root.fs.mv(tmp_path, out_path)
+        else:
+            root.fs.rm(tmp_path)
+    finally:
+        if writer is not None:
+            writer.close()
+        if root.fs.exists(tmp_path):
+            root.fs.rm(tmp_path)
+
+    shutil.rmtree(chunk_dir)
+    return n_written
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +561,16 @@ def _credibility_from_score(score: float, datatype: str) -> int:
             datatype=datatype,
         )
     ])
+
+
+def _existing_node_ids(root: kg_storage.KGRoot, node_type: NodeType) -> set[str]:
+    """Read existing node IDs for endpoint stub avoidance."""
+    try:
+        return set(
+            kg_storage.read_nodes(root, node_type.value, columns=["id"])["id"].astype(str)
+        )
+    except Exception:
+        return set()
 
 
 # ---------------------------------------------------------------------------
@@ -478,7 +733,7 @@ def ingest_diseases(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int
 
     rows = []
     for _, row in df.iterrows():
-        efo_id = str(row["id"]).strip()
+        efo_id = normalize_disease_id(row["id"]) or str(row["id"]).strip()
 
         # Cross-references (dbXRefs is a list of plain strings like 'MONDO:0000510')
         mondo_id = omim_id = doid_id = icd10_code = mesh_id = hp_id = None
@@ -517,9 +772,9 @@ def ingest_diseases(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int
     # Also save disease hierarchy edges (parents)
     hier_rows = []
     for _, row in df.iterrows():
-        child_id = str(row["id"]).strip()
+        child_id = normalize_disease_id(row["id"]) or str(row["id"]).strip()
         for parent_id in _to_list(row.get("parents")):
-                parent_id = str(parent_id).strip()
+                parent_id = normalize_disease_id(parent_id) or str(parent_id).strip()
                 if parent_id and parent_id != child_id:
                     hier_rows.append(_make_edge(
                         x_id=child_id, x_type=NodeType.DISEASE.value,
@@ -745,7 +1000,7 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
 
             for _, row in chunk.iterrows():
                 target_id  = str(row.get("targetId") or "").strip()
-                disease_id = str(row.get("diseaseId") or "").strip()
+                disease_id = normalize_disease_id(row.get("diseaseId")) or ""
                 dtype      = str(row.get("datatypeId") or "").strip()
                 dsource    = str(row.get("datasourceId") or dtype).strip()
                 score      = float(row.get("score") or 0.0)
@@ -1164,7 +1419,7 @@ def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
 
         for _, row in chunk.iterrows():
             target_id  = str(row.get("targetId") or "").strip()
-            disease_id = str(row.get("diseaseId") or "").strip()
+            disease_id = normalize_disease_id(row.get("diseaseId")) or ""
             pmids      = _to_list(row.get("literature"))
             year       = row.get("publicationYear")
 
@@ -1341,7 +1596,7 @@ def ingest_indication(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
         # approvedIndications: list of disease EFO IDs
         approved = _to_list(row.get("approvedIndications"))
         for disease_id in approved:
-                disease_id = str(disease_id).strip()
+                disease_id = normalize_disease_id(disease_id) or ""
                 if disease_id:
                     treat_rows.append(_make_edge(
                         x_id=chembl_id, x_type=NodeType.MOLECULE.value,
@@ -1357,7 +1612,7 @@ def ingest_indication(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
         for ind in _to_list(row.get("indications")):
                 if not isinstance(ind, dict):
                     continue
-                disease_id = str(ind.get("disease") or "").strip()
+                disease_id = normalize_disease_id(ind.get("disease")) or ""
                 max_phase = ind.get("maxPhaseForIndication") or 0
                 if not disease_id:
                     continue
@@ -1450,6 +1705,244 @@ def ingest_mechanism_of_action(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
 
 
 # ---------------------------------------------------------------------------
+# 11. Target essentiality → cell-line nodes + DepMap context edges
+# ---------------------------------------------------------------------------
+
+def _target_essentiality_dataset_id() -> str:
+    return "OpenTargets:target_essentiality:26.03"
+
+
+def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
+    """Ingest OpenTargets DepMap target essentiality context.
+
+    Source: ``target_essentiality``. This conservatively extracts only explicit
+    cellular-model identifiers and endpoint IDs present in the source rows.
+    It does not infer Cellosaurus IDs or enhancer IDs.
+    """
+
+    te_dir = ot_dir / "target_essentiality"
+    if not te_dir.exists():
+        raise FileNotFoundError(te_dir)
+
+    chunks_base = out_dir / ".chunks" / "target_essentiality"
+    cell_line_chunks = chunks_base / "cell_line"
+    expr_chunks = chunks_base / "cell_line_expresses_gene"
+    tissue_chunks = chunks_base / "cell_line_derived_from_tissue"
+    disease_chunks = chunks_base / "cell_line_associated_disease"
+    dataset_cell_line_chunks = chunks_base / "dataset_contains_cell_line"
+    dataset_gene_chunks = chunks_base / "dataset_contains_gene"
+    dataset_tissue_chunks = chunks_base / "dataset_contains_tissue"
+    dataset_disease_chunks = chunks_base / "dataset_contains_disease"
+
+    dataset_id = _target_essentiality_dataset_id()
+    kg_storage.write_nodes(
+        root,
+        NodeType.DATASET.value,
+        pd.DataFrame([
+            {
+                "id": dataset_id,
+                "name": "OpenTargets Target - DepMap essentiality 26.03",
+                "source": "OpenTargets/target_essentiality",
+            }
+        ]),
+        mode="append",
+    )
+
+    seen_cell_lines: set[str] = set()
+
+    for chunk in _read_parquet_dir_chunked(
+        te_dir,
+        columns=["id", "geneEssentiality"],
+        chunksize=25_000,
+    ):
+        cell_line_rows: list[dict[str, object]] = []
+        expr_rows: list[dict[str, object]] = []
+        tissue_rows: list[dict[str, object]] = []
+        disease_rows: list[dict[str, object]] = []
+        dataset_cell_line_rows: list[dict[str, object]] = []
+        dataset_gene_rows: list[dict[str, object]] = []
+        dataset_tissue_rows: list[dict[str, object]] = []
+        dataset_disease_rows: list[dict[str, object]] = []
+
+        for _, row in chunk.iterrows():
+            gene_id = str(row.get("id") or "").strip()
+            if not gene_id.startswith("ENSG"):
+                continue
+            dataset_gene_rows.append(_make_edge(
+                x_id=dataset_id,
+                x_type=NodeType.DATASET.value,
+                y_id=gene_id,
+                y_type=NodeType.GENE.value,
+                relation="dataset_contains_gene",
+                display_relation="contains gene",
+                source="OpenTargets/target_essentiality",
+                credibility=Credibility.ESTABLISHED_FACT,
+            ))
+
+            for essentiality in _to_list(row.get("geneEssentiality")):
+                if not isinstance(essentiality, dict):
+                    continue
+                is_essential = essentiality.get("isEssential")
+                for depmap in _to_list(essentiality.get("depMapEssentiality")):
+                    if not isinstance(depmap, dict):
+                        continue
+                    tissue_id = normalize_ontology_curie(depmap.get("tissueId")) or ""
+                    tissue_name = str(depmap.get("tissueName") or "").strip()
+                    if tissue_id.startswith("UBERON:"):
+                        dataset_tissue_rows.append(_make_edge(
+                            x_id=dataset_id,
+                            x_type=NodeType.DATASET.value,
+                            y_id=tissue_id,
+                            y_type=NodeType.TISSUE.value,
+                            relation="dataset_contains_tissue",
+                            display_relation="contains tissue",
+                            source="OpenTargets/target_essentiality",
+                            credibility=Credibility.ESTABLISHED_FACT,
+                        ))
+
+                    for screen in _to_list(depmap.get("screens")):
+                        if not isinstance(screen, dict):
+                            continue
+                        depmap_id = str(screen.get("depmapId") or "").strip()
+                        if not depmap_id:
+                            continue
+                        cell_line_id = depmap_id
+                        cell_line_name = str(screen.get("cellLineName") or "").strip()
+                        disease_id = normalize_disease_id(screen.get("diseaseCellLineId")) or ""
+                        # OpenTargets/DepMap often stores SIDM cell-model IDs
+                        # in diseaseCellLineId. SIDM is not a disease ontology;
+                        # emitting it as a disease endpoint creates true dangling
+                        # KG edges. Keep only ontology-backed disease CURIEs.
+                        if disease_id and not disease_id.startswith(("EFO:", "MONDO:", "Orphanet:", "HP:", "DOID:")):
+                            disease_id = ""
+                        gene_effect = screen.get("geneEffect")
+                        expression = screen.get("expression")
+
+                        if cell_line_id not in seen_cell_lines:
+                            seen_cell_lines.add(cell_line_id)
+                            cell_line_rows.append({
+                                "id": cell_line_id,
+                                "ccle_name": cell_line_name or None,
+                                "cosmic_id": None,
+                                "efo_id": disease_id or None,
+                                "name": cell_line_name or cell_line_id,
+                                "source": "OpenTargets/target_essentiality",
+                            })
+                        dataset_cell_line_rows.append(_make_edge(
+                            x_id=dataset_id,
+                            x_type=NodeType.DATASET.value,
+                            y_id=cell_line_id,
+                            y_type=NodeType.CELL_LINE.value,
+                            relation="dataset_contains_cell_line",
+                            display_relation="contains cell line",
+                            source="OpenTargets/target_essentiality",
+                            credibility=Credibility.ESTABLISHED_FACT,
+                        ))
+
+                        expr_rows.append(_make_edge(
+                            x_id=cell_line_id,
+                            x_type=NodeType.CELL_LINE.value,
+                            y_id=gene_id,
+                            y_type=NodeType.GENE.value,
+                            relation="cell_line_expresses_gene",
+                            display_relation="expresses gene",
+                            source="OpenTargets/DepMap",
+                            credibility=Credibility.ESTABLISHED_FACT,
+                            gene_effect=gene_effect,
+                            expression=expression,
+                            is_essential=is_essential,
+                        ))
+
+                        if tissue_id.startswith("UBERON:"):
+                            tissue_rows.append(_make_edge(
+                                x_id=cell_line_id,
+                                x_type=NodeType.CELL_LINE.value,
+                                y_id=tissue_id,
+                                y_type=NodeType.TISSUE.value,
+                                relation="cell_line_derived_from_tissue",
+                                display_relation="derived from tissue",
+                                source="OpenTargets/DepMap",
+                                credibility=Credibility.ESTABLISHED_FACT,
+                                tissue_name=tissue_name,
+                            ))
+
+                        if disease_id:
+                            disease_rows.append(_make_edge(
+                                x_id=cell_line_id,
+                                x_type=NodeType.CELL_LINE.value,
+                                y_id=disease_id,
+                                y_type=NodeType.DISEASE.value,
+                                relation="cell_line_associated_disease",
+                                display_relation="associated disease",
+                                source="OpenTargets/DepMap",
+                                credibility=Credibility.ESTABLISHED_FACT,
+                                disease_from_source=screen.get("diseaseFromSource"),
+                            ))
+                            dataset_disease_rows.append(_make_edge(
+                                x_id=dataset_id,
+                                x_type=NodeType.DATASET.value,
+                                y_id=disease_id,
+                                y_type=NodeType.DISEASE.value,
+                                relation="dataset_contains_disease",
+                                display_relation="contains disease",
+                                source="OpenTargets/target_essentiality",
+                                credibility=Credibility.ESTABLISHED_FACT,
+                            ))
+
+        for df, chunk_dir in [
+            (pd.DataFrame(cell_line_rows), cell_line_chunks),
+            (pd.DataFrame(expr_rows), expr_chunks),
+            (pd.DataFrame(tissue_rows), tissue_chunks),
+            (pd.DataFrame(disease_rows), disease_chunks),
+            (pd.DataFrame(dataset_cell_line_rows), dataset_cell_line_chunks),
+            (pd.DataFrame(dataset_gene_rows), dataset_gene_chunks),
+            (pd.DataFrame(dataset_tissue_rows), dataset_tissue_chunks),
+            (pd.DataFrame(dataset_disease_rows), dataset_disease_chunks),
+        ]:
+            if not df.empty:
+                _write_chunk(df, chunk_dir)
+
+    results: dict[str, int] = {}
+    results["cell_line"] = _finalize_chunks(
+        cell_line_chunks,
+        lambda df: kg_storage.write_nodes(root, NodeType.CELL_LINE.value, df, mode="overwrite"),
+        dedup_cols=["id"],
+    )
+    results["cell_line_expresses_gene"] = _finalize_edge_chunks_streaming(
+        expr_chunks,
+        root,
+        "cell_line_expresses_gene",
+        dedup_cols=["x_id", "y_id", "relation", "source"],
+    )
+    results["cell_line_derived_from_tissue"] = _finalize_edge_chunks_streaming(
+        tissue_chunks,
+        root,
+        "cell_line_derived_from_tissue",
+        dedup_cols=["x_id", "y_id", "relation", "source"],
+    )
+    results["cell_line_associated_disease"] = _finalize_edge_chunks_streaming(
+        disease_chunks,
+        root,
+        "cell_line_associated_disease",
+        dedup_cols=["x_id", "y_id", "relation", "source"],
+    )
+    for relation, chunk_dir in [
+        ("dataset_contains_cell_line", dataset_cell_line_chunks),
+        ("dataset_contains_gene", dataset_gene_chunks),
+        ("dataset_contains_tissue", dataset_tissue_chunks),
+        ("dataset_contains_disease", dataset_disease_chunks),
+    ]:
+        results[relation] = _finalize_edge_chunks_streaming(
+            chunk_dir,
+            root,
+            relation,
+            dedup_cols=["x_id", "y_id", "relation", "source"],
+        )
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Top-level orchestrator
 # ---------------------------------------------------------------------------
 
@@ -1464,6 +1957,7 @@ ALL_DATASETS = [
     "literature",        # pseudo-name: reads from evidence_europepmc
     "drug_indication",
     "drug_mechanism_of_action",
+    "target_essentiality",
 ]
 
 # ---------------------------------------------------------------------------
@@ -1920,6 +2414,34 @@ def ingest_pharmacogenomics(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot
 # Phase 5e — Variant (mutation nodes + consequence edges)
 # ---------------------------------------------------------------------------
 
+def _build_uniprot_to_ensp(root: kg_storage.KGRoot) -> dict[str, str]:
+    """Return unambiguous UniProt accession → ENSP node ID mappings."""
+    try:
+        protein_df = kg_storage.read_nodes(
+            root,
+            NodeType.PROTEIN.value,
+            columns=["id", "uniprot_id"],
+        )
+    except Exception as exc:
+        log.warning("Could not read protein nodes for UniProt→ENSP mapping: %s", exc)
+        return {}
+
+    if "uniprot_id" not in protein_df.columns:
+        return {}
+
+    protein_map = protein_df[["id", "uniprot_id"]].dropna()
+    protein_map = protein_map[
+        (protein_map["id"].astype(str).str.startswith("ENSP"))
+        & (protein_map["uniprot_id"].astype(str).str.strip() != "")
+    ].copy()
+    grouped = protein_map.groupby("uniprot_id")["id"].nunique()
+    unique_uniprots = set(grouped[grouped == 1].index)
+    protein_map = protein_map[protein_map["uniprot_id"].isin(unique_uniprots)]
+    mapping = dict(zip(protein_map["uniprot_id"], protein_map["id"], strict=False))
+    log.info("Loaded %d unambiguous UniProt→ENSP mappings", len(mapping))
+    return mapping
+
+
 def ingest_variants(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
     """Ingest variant data → mutation nodes + gene/transcript/protein edges.
 
@@ -1930,13 +2452,15 @@ def ingest_variants(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
       ``nodes/mutation.parquet``
       ``edges/mutation_in_gene.parquet``              (→ ENSG via targetId)
       ``edges/mutation_affects_transcript.parquet``   (→ ENST via transcriptId)
-      ``edges/mutation_causes_protein_change.parquet`` (→ UniProt, only if aminoAcidChange)
+      ``edges/mutation_causes_protein_change.parquet`` (→ ENSP via UniProt xref, only if aminoAcidChange)
 
     Uses per-chunk flushing to avoid OOM on large files.
     """
     var_dir = ot_dir / "variant"
     if not var_dir.exists():
         raise FileNotFoundError(var_dir)
+
+    uniprot_to_ensp = _build_uniprot_to_ensp(root)
 
     chunks_base   = out_dir / ".chunks" / "variants"
     mut_chunks    = chunks_base / "mutation"
@@ -1950,22 +2474,20 @@ def ingest_variants(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
         "transcriptConsequences",
     ]
 
-    for chunk in _read_parquet_dir_chunked(var_dir, columns=var_cols, chunksize=500_000):
+    for chunk in _read_parquet_dir_chunked(var_dir, columns=var_cols, chunksize=25_000):
         # ── Mutation nodes (fully vectorized) ───────────────────────────────
         mut_df = chunk.rename(columns={
-            "variantId":       "id",
-            "hgvsId":          "hgvs_id",
-            "referenceAllele": "ref_allele",
-            "alternateAllele": "alt_allele",
-        })[["id", "hgvs_id", "rsIds", "chromosome", "position",
-            "ref_allele", "alt_allele"]].copy()
+            "variantId": "id",
+            "hgvsId": "hgvs",
+        })[["id", "hgvs", "rsIds"]].copy()
 
         # First rsId element as alias (list column → scalar)
-        mut_df["rs_id"] = mut_df["rsIds"].apply(
+        mut_df["clinvar_id"] = mut_df["rsIds"].apply(
             lambda x: list(x)[0] if x is not None and hasattr(x, "__len__") and len(x) > 0 else None
         )
+        mut_df["gnomad_id"] = mut_df["id"]
         # Human-readable name: prefer HGVS, fall back to variantId
-        mut_df["name"] = mut_df["hgvs_id"].combine_first(mut_df["id"])
+        mut_df["name"] = mut_df["hgvs"].combine_first(mut_df["id"])
         mut_df["source"] = SOURCE_NAME
         mut_df = mut_df.drop(columns=["rsIds"])
         # Drop rows with missing variantId
@@ -2026,7 +2548,7 @@ def ingest_variants(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
         else:
             _write_chunk(pd.DataFrame(), tx_chunks)
 
-        # Protein-change edges  (mutation → UniProt, only if aminoAcidChange set)
+        # Protein-change edges  (mutation → ENSP via UniProt xref, only if aminoAcidChange set)
         if "aminoAcidChange" in tc_exp.columns and "uniprotAccessions" in tc_exp.columns:
             aa_mask = (
                 tc_exp["aminoAcidChange"].notna()
@@ -2041,8 +2563,11 @@ def ingest_variants(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                 valid_up = prot_tc["uniprotAccessions"].str.len() > 0
                 prot_tc = prot_tc[valid_up]
                 if len(prot_tc) > 0:
+                    prot_tc["ensp_id"] = prot_tc["uniprotAccessions"].map(uniprot_to_ensp)
+                    prot_tc = prot_tc.dropna(subset=["ensp_id"])
+                if len(prot_tc) > 0:
                     p = prot_tc.rename(columns={
-                        "variantId": "x_id", "uniprotAccessions": "y_id"
+                        "variantId": "x_id", "ensp_id": "y_id"
                     }).copy()
                     p["x_type"]          = NodeType.MUTATION.value
                     p["y_type"]          = NodeType.PROTEIN.value
@@ -2051,7 +2576,8 @@ def ingest_variants(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                     p["source"]          = SOURCE_NAME
                     p["credibility"]     = int(Credibility.ESTABLISHED_FACT)
                     p["amino_acid_change"] = p["aminoAcidChange"]
-                    p = p.drop(columns=["aminoAcidChange"])
+                    p["uniprot_id"] = p["uniprotAccessions"]
+                    p = p.drop(columns=["aminoAcidChange", "uniprotAccessions"])
                     _write_chunk(p, prot_chunks)
                     continue
         _write_chunk(pd.DataFrame(), prot_chunks)
@@ -2099,6 +2625,553 @@ def ingest_variants(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
         dedup_cols=dedup_edge,
     )
     return results
+
+
+def ingest_variant_protein_changes(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
+    """Ingest only mutation→ENSP protein-change edges from OpenTargets variants.
+
+    The full variant graph is extremely dense: a one-file smoke emitted more
+    than 11M gene and transcript consequence edges. This bounded slice keeps
+    the graph-valid protein consequence signal without promoting those full
+    gene/transcript relations.
+    """
+    var_dir = ot_dir / "variant"
+    if not var_dir.exists():
+        raise FileNotFoundError(var_dir)
+
+    uniprot_to_ensp = _build_uniprot_to_ensp(root)
+    chunks_base = out_dir / ".chunks" / "variant_protein_change"
+    mut_chunks = chunks_base / "mutation"
+    edge_chunks = chunks_base / "mutation_causes_protein_change"
+    var_cols = ["variantId", "hgvsId", "rsIds", "transcriptConsequences"]
+
+    for chunk in _read_parquet_dir_chunked(var_dir, columns=var_cols, chunksize=5_000):
+        edge_rows: list[dict[str, object]] = []
+        for row in chunk.itertuples(index=False):
+            variant_id = getattr(row, "variantId", None)
+            consequences = _to_list(getattr(row, "transcriptConsequences", None))
+            if not isinstance(variant_id, str) or not consequences:
+                continue
+            for consequence in consequences:
+                if not isinstance(consequence, dict):
+                    continue
+                aa_change = consequence.get("aminoAcidChange")
+                if aa_change is None or str(aa_change).strip() in {"", "nan"}:
+                    continue
+                for uniprot_id in _to_list(consequence.get("uniprotAccessions")):
+                    ensp_id = uniprot_to_ensp.get(uniprot_id)
+                    if not ensp_id:
+                        continue
+                    edge_rows.append({
+                        "x_id": variant_id,
+                        "x_type": NodeType.MUTATION.value,
+                        "y_id": ensp_id,
+                        "y_type": NodeType.PROTEIN.value,
+                        "relation": "mutation_causes_protein_change",
+                        "display_relation": "causes protein change",
+                        "source": SOURCE_NAME,
+                        "credibility": int(Credibility.ESTABLISHED_FACT),
+                        "amino_acid_change": aa_change,
+                        "uniprot_id": uniprot_id,
+                    })
+
+        if not edge_rows:
+            _write_chunk(pd.DataFrame(), mut_chunks)
+            _write_chunk(pd.DataFrame(), edge_chunks)
+            continue
+
+        edge_df = pd.DataFrame(edge_rows)
+        _write_chunk(edge_df, edge_chunks)
+
+        mutation_ids = set(edge_df["x_id"].astype(str))
+        mut_df = chunk.rename(columns={"variantId": "id", "hgvsId": "hgvs"})[
+            ["id", "hgvs", "rsIds"]
+        ].copy()
+        mut_df = mut_df[mut_df["id"].astype(str).isin(mutation_ids)]
+        mut_df["clinvar_id"] = mut_df["rsIds"].apply(
+            lambda x: list(x)[0] if x is not None and hasattr(x, "__len__") and len(x) > 0 else None
+        )
+        mut_df["gnomad_id"] = mut_df["id"]
+        mut_df["name"] = mut_df["hgvs"].combine_first(mut_df["id"])
+        mut_df["source"] = SOURCE_NAME
+        mut_df = mut_df.drop(columns=["rsIds"])
+        _write_chunk(mut_df, mut_chunks)
+
+    dedup_edge = ["x_id", "y_id", "relation", "source"]
+    results: dict[str, int] = {}
+    results["mutation"] = _finalize_chunks(
+        mut_chunks,
+        lambda df: kg_storage.write_nodes(
+            root,
+            NodeType.MUTATION.value,
+            df,
+            mode="append",
+        ),
+        dedup_cols=["id"],
+    )
+    results["mutation_causes_protein_change"] = _finalize_chunks(
+        edge_chunks,
+        lambda df: kg_storage.write_edges(
+            root,
+            "mutation_causes_protein_change",
+            df,
+            mode="overwrite",
+        ),
+        dedup_cols=dedup_edge,
+    )
+    return results
+
+
+def _sqlite_jsonable(value):
+    if value is None:
+        return None
+    if isinstance(value, float) and pd.isna(value):
+        return None
+    if isinstance(value, (list, tuple, dict, np.ndarray)):
+        payload = value.tolist() if isinstance(value, np.ndarray) else value
+        return json.dumps(payload, sort_keys=True)
+    return value
+
+
+def _sqlite_insert_chunk(
+    conn: sqlite3.Connection,
+    table: str,
+    chunk: pd.DataFrame,
+    columns: list[str],
+) -> None:
+    if chunk.empty:
+        return
+    projected = chunk.reindex(columns=columns).copy()
+    for column in projected.columns:
+        if projected[column].dtype == "object":
+            projected[column] = projected[column].map(_sqlite_jsonable)
+    projected.to_sql(table, conn, if_exists="append", index=False)
+
+
+def _build_gwas_evidence_sqlite(
+    ot_dir: Path,
+    db_path: Path,
+    *,
+    chunksize: int = 100_000,
+) -> int:
+    evidence_dir = ot_dir / GWAS_CREDIBLE_SET_EVIDENCE_DIR
+    if not evidence_dir.exists():
+        return 0
+
+    if db_path.exists():
+        db_path.unlink()
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode=OFF")
+    conn.execute("PRAGMA synchronous=OFF")
+    conn.execute("PRAGMA temp_store=FILE")
+    conn.execute(
+        """
+        CREATE TABLE evidence (
+            studyLocusId TEXT NOT NULL,
+            diseaseId TEXT NOT NULL,
+            datatypeId TEXT,
+            datasourceId TEXT,
+            score REAL,
+            resourceScore REAL,
+            targetId TEXT
+        )
+        """
+    )
+
+    available = _parquet_available_columns(evidence_dir, list(GWAS_EVIDENCE_COLUMNS))
+    if "studyLocusId" not in available or "diseaseId" not in available:
+        conn.close()
+        return 0
+
+    n_rows = 0
+    for chunk in _read_parquet_dir_chunked(evidence_dir, columns=available, chunksize=chunksize):
+        chunk = chunk[chunk["studyLocusId"].notna() & chunk["diseaseId"].notna()].copy()
+        if "datasourceId" in chunk.columns:
+            chunk = chunk[
+                chunk["datasourceId"].fillna("gwas_credible_sets").astype(str).eq("gwas_credible_sets")
+            ]
+        if chunk.empty:
+            continue
+        _sqlite_insert_chunk(conn, "evidence", chunk, list(GWAS_EVIDENCE_COLUMNS))
+        n_rows += len(chunk)
+
+    conn.execute("CREATE INDEX evidence_locus_idx ON evidence(studyLocusId)")
+    conn.commit()
+    conn.close()
+    return n_rows
+
+
+def _build_l2g_sqlite(
+    ot_dir: Path,
+    db_path: Path,
+    *,
+    score_min: float = 0.75,
+    chunksize: int = 100_000,
+) -> int:
+    l2g_dir = ot_dir / "l2g_prediction"
+    if not l2g_dir.exists():
+        return 0
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS l2g (
+            studyLocusId TEXT NOT NULL,
+            geneId TEXT NOT NULL,
+            score REAL
+        )
+        """
+    )
+    available = _parquet_available_columns(l2g_dir, list(GWAS_L2G_COLUMNS))
+    if not set(GWAS_L2G_COLUMNS).issubset(available):
+        conn.close()
+        return 0
+
+    n_rows = 0
+    for chunk in _read_parquet_dir_chunked(l2g_dir, columns=available, chunksize=chunksize):
+        chunk = chunk[
+            chunk["studyLocusId"].notna()
+            & chunk["geneId"].notna()
+            & chunk["score"].fillna(0.0).astype(float).ge(score_min)
+        ].copy()
+        if chunk.empty:
+            continue
+        _sqlite_insert_chunk(conn, "l2g", chunk, list(GWAS_L2G_COLUMNS))
+        n_rows += len(chunk)
+
+    conn.execute("CREATE INDEX IF NOT EXISTS l2g_locus_idx ON l2g(studyLocusId)")
+    conn.commit()
+    conn.close()
+    return n_rows
+
+
+def _fetch_sqlite_rows_for_loci(
+    conn: sqlite3.Connection,
+    table: str,
+    loci: list[str],
+) -> pd.DataFrame:
+    if not loci:
+        return pd.DataFrame()
+    conn.execute("DROP TABLE IF EXISTS tmp_loci")
+    conn.execute("CREATE TEMP TABLE tmp_loci (studyLocusId TEXT PRIMARY KEY)")
+    conn.executemany(
+        "INSERT OR IGNORE INTO tmp_loci(studyLocusId) VALUES (?)",
+        [(locus,) for locus in loci],
+    )
+    return pd.read_sql_query(
+        f"SELECT {table}.* FROM {table} JOIN tmp_loci USING(studyLocusId)",
+        conn,
+    )
+
+
+def _ingest_gwas_credible_set_join(
+    ot_dir: Path,
+    chunks_base: Path,
+    seen_diseases: set[str],
+    seen_genes: set[str],
+    *,
+    pvalue_exponent_max: int = -8,
+    l2g_score_min: float = 0.75,
+    emit_l2g_edges: bool = True,
+    chunksize: int = 100_000,
+) -> dict[str, int]:
+    credible_dir = ot_dir / "credible_set"
+    evidence_dir = ot_dir / GWAS_CREDIBLE_SET_EVIDENCE_DIR
+    if not credible_dir.exists() or not evidence_dir.exists():
+        return {}
+
+    chunks_base.mkdir(parents=True, exist_ok=True)
+    db_path = chunks_base / "gwas_join.sqlite"
+    evidence_rows = _build_gwas_evidence_sqlite(ot_dir, db_path, chunksize=chunksize)
+    if not evidence_rows:
+        return {}
+    l2g_rows = (
+        _build_l2g_sqlite(ot_dir, db_path, score_min=l2g_score_min, chunksize=chunksize)
+        if emit_l2g_edges
+        else 0
+    )
+
+    mut_chunks = chunks_base / "mutation"
+    disease_chunks = chunks_base / "mutation_associated_disease"
+    mutation_gene_chunks = chunks_base / "mutation_associated_gene"
+    available = _parquet_available_columns(credible_dir, list(GWAS_CREDIBLE_SET_COLUMNS))
+    if "studyLocusId" not in available or "variantId" not in available:
+        return {}
+
+    conn = sqlite3.connect(db_path)
+    for credible in _read_parquet_dir_chunked(credible_dir, columns=available, chunksize=chunksize):
+        credible = credible[credible["studyLocusId"].notna() & credible["variantId"].notna()].copy()
+        if "pValueExponent" in credible.columns:
+            pval = pd.to_numeric(credible["pValueExponent"], errors="coerce")
+            credible = credible[pval.isna() | pval.le(pvalue_exponent_max)]
+        if credible.empty:
+            continue
+
+        loci = sorted(credible["studyLocusId"].astype(str).unique())
+        evidence = _fetch_sqlite_rows_for_loci(conn, "evidence", loci)
+        if evidence.empty:
+            continue
+        joined = credible.merge(evidence, on="studyLocusId", how="inner")
+        if joined.empty:
+            continue
+
+        mutation_rows: list[dict[str, object]] = []
+        disease_rows: list[dict[str, object]] = []
+        for _, row in joined.iterrows():
+            variant_id = str(row.get("variantId") or "").strip()
+            disease_id = normalize_disease_id(row.get("diseaseId")) or ""
+            if not variant_id or not disease_id:
+                continue
+            dtype = str(row.get("datatypeId") or "gwas_credible_sets")
+            source_id = str(row.get("datasourceId") or "ot_genetics_portal")
+            score = float(row.get("score") or row.get("resourceScore") or 0.0)
+            seen_diseases.add(disease_id)
+            rs_name = variant_id if variant_id.startswith("rs") else None
+            mutation_rows.append({
+                "id": variant_id,
+                "hgvs": None,
+                "clinvar_id": rs_name,
+                "gnomad_id": variant_id if not variant_id.startswith("rs") else None,
+                "name": rs_name or variant_id,
+                "source": f"OpenTargets/{source_id}",
+            })
+            disease_rows.append(_make_edge(
+                x_id=variant_id,
+                x_type=NodeType.MUTATION.value,
+                y_id=disease_id,
+                y_type=NodeType.DISEASE.value,
+                relation="mutation_associated_disease",
+                display_relation="associated disease",
+                source=f"OpenTargets/{source_id}",
+                credibility=_credibility_from_score(score, dtype),
+                score=round(score, 4),
+                datatype=dtype,
+                studyLocusId=str(row.get("studyLocusId")),
+            ))
+
+        if mutation_rows:
+            _write_chunk(pd.DataFrame(mutation_rows), mut_chunks)
+        if disease_rows:
+            _write_chunk(pd.DataFrame(disease_rows), disease_chunks)
+
+        if emit_l2g_edges and l2g_rows:
+            l2g = _fetch_sqlite_rows_for_loci(conn, "l2g", loci)
+            if l2g.empty:
+                continue
+            variants = credible[["studyLocusId", "variantId"]].drop_duplicates()
+            l2g_joined = l2g.merge(variants, on="studyLocusId", how="inner")
+            gene_rows: list[dict[str, object]] = []
+            for _, row in l2g_joined.iterrows():
+                variant_id = str(row.get("variantId") or "").strip()
+                gene_id = str(row.get("geneId") or "").strip()
+                if not variant_id or not gene_id:
+                    continue
+                seen_genes.add(gene_id)
+                score = float(row.get("score") or 0.0)
+                gene_rows.append(_make_edge(
+                    x_id=variant_id,
+                    x_type=NodeType.MUTATION.value,
+                    y_id=gene_id,
+                    y_type=NodeType.GENE.value,
+                    relation="mutation_associated_gene",
+                    display_relation="associated gene",
+                    source="OpenTargets/l2g",
+                    credibility=_credibility_from_score(score, "l2g"),
+                    score=round(score, 4),
+                    datatype="l2g",
+                    studyLocusId=str(row.get("studyLocusId")),
+                ))
+            if gene_rows:
+                _write_chunk(pd.DataFrame(gene_rows), mutation_gene_chunks)
+
+    conn.close()
+    return {"gwas_evidence_rows": evidence_rows}
+
+
+def ingest_evidence_backed_variants(
+    ot_dir: Path,
+    out_dir: Path,
+    root: kg_storage.KGRoot,
+) -> dict[str, int]:
+    """Ingest variant nodes/edges only when backed by OpenTargets evidence.
+
+    This is the sparse counterpart to the raw ``variant/`` consequence graph:
+    it keeps variants that appear in high-value evidence datasets such as GWAS,
+    credible sets, ClinVar/EVA, gene burden, somatic mutation, and UniProt
+    variant evidence. It deliberately ignores plain consequence annotations
+    without disease/phenotype/cell-context signal.
+    """
+    import pyarrow.parquet as _pq
+
+    ev_dirs = sorted(ot_dir.glob("evidence_*"))
+    if not ev_dirs:
+        log.warning("No 'evidence_*' datasets found in %s", ot_dir)
+        return {}
+
+    chunks_base = out_dir / ".chunks" / "evidence_backed_variants"
+    mut_chunks = chunks_base / "mutation"
+    disease_chunks = chunks_base / "mutation_associated_disease"
+    mutation_gene_chunks = chunks_base / "mutation_associated_gene"
+    seen_mutations: dict[str, dict[str, object]] = {}
+    seen_diseases: set[str] = set()
+    seen_genes: set[str] = set()
+
+    base_cols = ["diseaseId", "datatypeId", "datasourceId", "score"]
+    optional_cols = list(VARIANT_EVIDENCE_ID_COLUMNS) + [
+        "studyLocusId",
+        "locus",
+        "credibleSet",
+        "credibleSets",
+    ]
+
+    for ev_path in ev_dirs:
+        if ev_path.name == GWAS_CREDIBLE_SET_EVIDENCE_DIR:
+            continue
+        parquet_files = sorted(ev_path.glob("*.parquet"))
+        if not parquet_files:
+            continue
+        try:
+            schema_fields = {field.name for field in _pq.read_schema(parquet_files[0])}
+        except Exception as exc:
+            log.warning("Could not read schema for %s: %s", ev_path, exc)
+            continue
+
+        cols = [col for col in base_cols + optional_cols if col in schema_fields]
+        if "diseaseId" not in cols or "datatypeId" not in cols:
+            continue
+        if not any(col in schema_fields for col in optional_cols):
+            continue
+
+        log.info("  Processing evidence-backed variants from %s", ev_path.name)
+        for chunk in _read_parquet_dir_chunked(ev_path, columns=cols, chunksize=100_000):
+            disease_rows: list[dict[str, object]] = []
+            mutation_rows: list[dict[str, object]] = []
+
+            for _, row in chunk.iterrows():
+                dtype = str(row.get("datatypeId") or "").strip()
+                if dtype not in EVIDENCE_BACKED_VARIANT_DATATYPES:
+                    continue
+
+                disease_id = normalize_disease_id(row.get("diseaseId")) or ""
+                if not disease_id:
+                    continue
+                seen_diseases.add(disease_id)
+
+                variant_id = _variant_id_from_evidence_row(row)
+                if not variant_id:
+                    continue
+
+                source_id = str(row.get("datasourceId") or dtype).strip()
+                score = float(row.get("score") or 0.0)
+                cred = _credibility_from_score(score, dtype)
+
+                rs_name = variant_id if variant_id.startswith("rs") else None
+                seen_mutations.setdefault(
+                    variant_id,
+                    {
+                        "id": variant_id,
+                        "hgvs": None,
+                        "clinvar_id": rs_name,
+                        "gnomad_id": variant_id if not variant_id.startswith("rs") else None,
+                        "name": rs_name or variant_id,
+                        "source": f"OpenTargets/{source_id}",
+                    },
+                )
+                mutation_rows.append(seen_mutations[variant_id])
+                disease_rows.append(_make_edge(
+                    x_id=variant_id,
+                    x_type=NodeType.MUTATION.value,
+                    y_id=disease_id,
+                    y_type=NodeType.DISEASE.value,
+                    relation="mutation_associated_disease",
+                    display_relation="associated disease",
+                    source=f"OpenTargets/{source_id}",
+                    credibility=cred,
+                    score=round(score, 4),
+                    datatype=dtype,
+                ))
+
+            if mutation_rows:
+                _write_chunk(pd.DataFrame(mutation_rows), mut_chunks)
+            if disease_rows:
+                _write_chunk(pd.DataFrame(disease_rows), disease_chunks)
+
+    _ingest_gwas_credible_set_join(ot_dir, chunks_base, seen_diseases, seen_genes)
+
+    dedup_edge = ["x_id", "y_id", "relation", "source", "datatype"]
+    results: dict[str, int] = {}
+    if seen_diseases:
+        existing_disease_ids = {
+            normalize_disease_id(node_id) or node_id
+            for node_id in _existing_node_ids(root, NodeType.DISEASE)
+        }
+        missing_disease_ids = sorted(seen_diseases - existing_disease_ids)
+        if missing_disease_ids:
+            kg_storage.write_nodes(
+                root,
+                NodeType.DISEASE.value,
+                pd.DataFrame(
+                    {
+                        "id": disease_id,
+                        "mondo_id": disease_id if disease_id.startswith("MONDO:") else None,
+                        "omim_id": None,
+                        "doid_id": None,
+                        "icd10_code": None,
+                        "mesh_id": None,
+                        "hp_id": disease_id if disease_id.startswith("HP:") else None,
+                        "name": disease_id,
+                        "source": "OpenTargets/evidence",
+                    }
+                    for disease_id in missing_disease_ids
+                ),
+                mode="append",
+            )
+            results["disease"] = len(missing_disease_ids)
+    if seen_genes:
+        existing_gene_ids = _existing_node_ids(root, NodeType.GENE)
+        missing_gene_ids = sorted(seen_genes - existing_gene_ids)
+        if missing_gene_ids:
+            kg_storage.write_nodes(
+                root,
+                NodeType.GENE.value,
+                pd.DataFrame(
+                    {
+                        "id": gene_id,
+                        "ncbi_gene_id": None,
+                        "hgnc_id": None,
+                        "uniprot_id": None,
+                        "gene_name": None,
+                        "name": gene_id,
+                        "source": "OpenTargets/l2g",
+                    }
+                    for gene_id in missing_gene_ids
+                ),
+                mode="append",
+            )
+            results["gene"] = len(missing_gene_ids)
+    results["mutation"] = _finalize_chunks(
+        mut_chunks,
+        lambda df: kg_storage.write_nodes(
+            root,
+            NodeType.MUTATION.value,
+            df,
+            mode="append",
+        ),
+        dedup_cols=["id"],
+    )
+    results["mutation_associated_disease"] = _finalize_edge_chunks_streaming(
+        disease_chunks,
+        root,
+        "mutation_associated_disease",
+        dedup_edge,
+    )
+    results["mutation_associated_gene"] = _finalize_edge_chunks_streaming(
+        mutation_gene_chunks,
+        root,
+        "mutation_associated_gene",
+        ["x_id", "y_id", "relation", "source", "datatype", "studyLocusId"],
+    )
+    return {key: value for key, value in results.items() if value}
 
 
 # ---------------------------------------------------------------------------
@@ -2183,6 +3256,7 @@ def ingest_enhancers(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> di
             t = chunk.loc[tis_mask, ["intervalId", "biosampleId"]].rename(
                 columns={"intervalId": "x_id", "biosampleId": "y_id"}
             ).copy()
+            t["y_id"] = t["y_id"].map(lambda value: normalize_ontology_curie(value) or value)
             t["x_type"]          = NodeType.ENHANCER.value
             t["y_type"]          = NodeType.TISSUE.value
             t["relation"]        = "enhancer_active_in_tissue"
@@ -2197,6 +3271,7 @@ def ingest_enhancers(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> di
             c = chunk.loc[ct_mask, ["intervalId", "biosampleId"]].rename(
                 columns={"intervalId": "x_id", "biosampleId": "y_id"}
             ).copy()
+            c["y_id"] = c["y_id"].map(lambda value: normalize_ontology_curie(value) or value)
             c["x_type"]          = NodeType.ENHANCER.value
             c["y_type"]          = NodeType.CELL_TYPE.value
             c["relation"]        = "enhancer_active_in_cell_type"
@@ -2206,44 +3281,28 @@ def ingest_enhancers(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> di
             _write_chunk(c, ct_edge_chks)
 
     results: dict[str, int] = {}
-    results["enhancer"] = _finalize_chunks(
+    results["enhancer"] = _finalize_node_chunks_streaming(
         enh_node_chks,
-        lambda df: kg_storage.write_nodes(
-            root,
-            NodeType.ENHANCER.value,
-            df,
-            mode="overwrite",
-        ),
+        root,
+        NodeType.ENHANCER.value,
         dedup_cols=["id"],
     )
-    results["enhancer_regulates_gene"] = _finalize_chunks(
+    results["enhancer_regulates_gene"] = _finalize_edge_chunks_streaming(
         gene_edge_chks,
-        lambda df: kg_storage.write_edges(
-            root,
-            "enhancer_regulates_gene",
-            df,
-            mode="overwrite",
-        ),
+        root,
+        "enhancer_regulates_gene",
         dedup_cols=dedup_edge,
     )
-    results["enhancer_active_in_tissue"] = _finalize_chunks(
+    results["enhancer_active_in_tissue"] = _finalize_edge_chunks_streaming(
         tis_edge_chks,
-        lambda df: kg_storage.write_edges(
-            root,
-            "enhancer_active_in_tissue",
-            df,
-            mode="overwrite",
-        ),
+        root,
+        "enhancer_active_in_tissue",
         dedup_cols=dedup_edge,
     )
-    results["enhancer_active_in_cell_type"] = _finalize_chunks(
+    results["enhancer_active_in_cell_type"] = _finalize_edge_chunks_streaming(
         ct_edge_chks,
-        lambda df: kg_storage.write_edges(
-            root,
-            "enhancer_active_in_cell_type",
-            df,
-            mode="overwrite",
-        ),
+        root,
+        "enhancer_active_in_cell_type",
         dedup_cols=dedup_edge,
     )
     return results
@@ -2268,12 +3327,15 @@ DATASET_FUNCTIONS = {
     "indication":               ingest_indication,  # alias
     "drug_mechanism_of_action": ingest_mechanism_of_action,
     "mechanismOfAction":        ingest_mechanism_of_action,  # alias
+    "target_essentiality":      ingest_target_essentiality,
     # Phase 5 additions
     "disease_phenotype":        ingest_disease_phenotype,
     "expression":               ingest_expression,
     "biosample":                ingest_biosample,
     "pharmacogenomics":         ingest_pharmacogenomics,
-    "variant":                  ingest_variants,
+    "variant":                  ingest_variant_protein_changes,
+    "evidence_backed_variant":  ingest_evidence_backed_variants,
+    "known_variant":            ingest_evidence_backed_variants,
     "enhancer_to_gene":         ingest_enhancers,
     "enhancers":                ingest_enhancers,  # alias
 }

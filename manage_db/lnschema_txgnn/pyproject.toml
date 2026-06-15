@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lnschema-txgnn"
 version = "0.1.0"
-description = "Custom LaminDB schema for TxGNN — paper, transcript, enhancer, dataset, mutation registries"
+description = "Custom LaminDB schema for TxGNN exact-ID KG registries"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

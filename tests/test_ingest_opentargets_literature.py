@@ -10,11 +10,15 @@ from manage_db.ingest_opentargets import (
     ingest_disease_phenotype,
     ingest_drugs,
     ingest_evidence,
+    ingest_evidence_backed_variants,
     ingest_expression,
+    ingest_target_essentiality,
     ingest_go,
     ingest_pharmacogenomics,
     ingest_literature,
     ingest_targets,
+    ingest_variants,
+    ingest_variant_protein_changes,
 )
 
 
@@ -327,3 +331,287 @@ def test_ingest_pharmacogenomics_adds_endpoint_stubs(tmp_path: Path) -> None:
     assert set(mutations["id"]) == {"1_12345_A_G"}
     assert mutations.loc[0, "name"] == "rs123"
     assert set(molecules["id"]) == {"CHEMBL123"}
+
+
+def test_ingest_variants_maps_protein_change_to_ensp(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    var_dir = ot_dir / "variant"
+    var_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "variantId": "1_12345_A_G",
+                "hgvsId": "HGVS:1",
+                "rsIds": ["rs123"],
+                "chromosome": "1",
+                "position": 12345,
+                "referenceAllele": "A",
+                "alternateAllele": "G",
+                "mostSevereConsequenceId": "SO:0001583",
+                "transcriptConsequences": [
+                    {
+                        "isEnsemblCanonical": True,
+                        "targetId": "ENSG00000123456",
+                        "transcriptId": "ENST00000123456",
+                        "uniprotAccessions": ["P12345"],
+                        "aminoAcidChange": "A1G",
+                    }
+                ],
+            },
+        ]
+    ).to_parquet(var_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+    kg_storage.write_nodes(
+        root,
+        "protein",
+        pd.DataFrame(
+            [
+                {
+                    "id": "ENSP00000123456",
+                    "name": "protein",
+                    "ensembl_gene_id": "ENSG00000123456",
+                    "uniprot_id": "P12345",
+                    "refseq_protein": None,
+                    "pdb_ids": None,
+                    "source": "test",
+                },
+            ]
+        ),
+    )
+
+    assert ingest_variants(ot_dir, kg_dir, root)["mutation_causes_protein_change"] == 1
+    edges = kg_storage.read_edges(root, "mutation_causes_protein_change")
+
+    assert edges.loc[0, "x_id"] == "1_12345_A_G"
+    assert edges.loc[0, "y_id"] == "ENSP00000123456"
+    assert edges.loc[0, "y_type"] == "protein"
+
+
+def test_ingest_variant_protein_changes(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    var_dir = ot_dir / "variant"
+    var_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "variantId": "1_12345_A_G",
+                "hgvsId": "HGVS:1",
+                "rsIds": ["rs123"],
+                "chromosome": "1",
+                "position": 12345,
+                "referenceAllele": "A",
+                "alternateAllele": "G",
+                "mostSevereConsequenceId": "SO:0001583",
+                "transcriptConsequences": [
+                    {
+                        "isEnsemblCanonical": True,
+                        "targetId": "ENSG00000123456",
+                        "transcriptId": "ENST00000123456",
+                        "uniprotAccessions": ["P12345"],
+                        "aminoAcidChange": "A1G",
+                    }
+                ],
+            },
+        ]
+    ).to_parquet(var_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+    kg_storage.write_nodes(
+        root,
+        "protein",
+        pd.DataFrame(
+            [
+                {
+                    "id": "ENSP00000123456",
+                    "name": "protein",
+                    "ensembl_gene_id": "ENSG00000123456",
+                    "uniprot_id": "P12345",
+                    "refseq_protein": None,
+                    "pdb_ids": None,
+                    "source": "test",
+                },
+            ]
+        ),
+    )
+
+    res = ingest_variant_protein_changes(ot_dir, kg_dir, root)
+    assert res["mutation"] == 1
+    assert res["mutation_causes_protein_change"] == 1
+
+    edges = kg_storage.read_edges(root, "mutation_causes_protein_change")
+    assert edges.loc[0, "x_id"] == "1_12345_A_G"
+    assert edges.loc[0, "y_id"] == "ENSP00000123456"
+    assert edges.loc[0, "y_type"] == "protein"
+
+
+def test_ingest_evidence_backed_variants_keeps_only_variant_evidence(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    evidence_dir = ot_dir / "evidence_eva"
+    evidence_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "targetId": "ENSG00000123456",
+                "diseaseId": "EFO:0000305",
+                "datatypeId": "eva",
+                "datasourceId": "eva",
+                "variantId": "1_12345_A_G",
+                "variantRsId": "rs123",
+                "score": 0.82,
+            },
+            {
+                "targetId": "ENSG00000999999",
+                "diseaseId": "EFO:0000400",
+                "datatypeId": "literature",
+                "datasourceId": "europepmc",
+                "variantId": "1_99999_A_T",
+                "score": 0.5,
+            },
+        ]
+    ).to_parquet(evidence_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+
+    res = ingest_evidence_backed_variants(ot_dir, kg_dir, root)
+
+    assert res["disease"] == 1
+    assert res["mutation"] == 1
+    assert res["mutation_associated_disease"] == 1
+    mutations = kg_storage.read_nodes(root, "mutation")
+    diseases = kg_storage.read_nodes(root, "disease")
+    edges = kg_storage.read_edges(root, "mutation_associated_disease")
+
+    assert set(mutations["id"]) == {"1_12345_A_G"}
+    assert mutations.loc[0, "gnomad_id"] == "1_12345_A_G"
+    assert set(diseases["id"]) == {"EFO:0000305"}
+    assert edges.loc[0, "x_id"] == "1_12345_A_G"
+    assert edges.loc[0, "y_id"] == "EFO:0000305"
+    assert edges.loc[0, "datatype"] == "eva"
+
+
+def test_ingest_evidence_backed_variants_joins_gwas_credible_sets(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    evidence_dir = ot_dir / "evidence_gwas_credible_sets"
+    credible_dir = ot_dir / "credible_set"
+    l2g_dir = ot_dir / "l2g_prediction"
+    evidence_dir.mkdir(parents=True)
+    credible_dir.mkdir(parents=True)
+    l2g_dir.mkdir(parents=True)
+
+    pd.DataFrame(
+        [
+            {
+                "studyLocusId": "SL1",
+                "diseaseId": "EFO:0000305",
+                "datatypeId": "genetic_association",
+                "datasourceId": "gwas_credible_sets",
+                "score": 0.83,
+                "targetId": "ENSG00000123456",
+            }
+        ]
+    ).to_parquet(evidence_dir / "part-000.parquet", index=False)
+    pd.DataFrame(
+        [
+            {
+                "studyLocusId": "SL1",
+                "variantId": "1_12345_A_G",
+                "studyId": "GCST1",
+                "pValueExponent": -9,
+            }
+        ]
+    ).to_parquet(credible_dir / "part-000.parquet", index=False)
+    pd.DataFrame(
+        [
+            {
+                "studyLocusId": "SL1",
+                "geneId": "ENSG00000123456",
+                "score": 0.91,
+            }
+        ]
+    ).to_parquet(l2g_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+
+    res = ingest_evidence_backed_variants(ot_dir, kg_dir, root)
+
+    assert res["disease"] == 1
+    assert res["gene"] == 1
+    assert res["mutation"] == 1
+    assert res["mutation_associated_disease"] == 1
+    assert res["mutation_associated_gene"] == 1
+
+    mutation_edges = kg_storage.read_edges(root, "mutation_associated_disease")
+    assert mutation_edges.loc[0, "x_id"] == "1_12345_A_G"
+    assert mutation_edges.loc[0, "x_type"] == "mutation"
+    assert mutation_edges.loc[0, "y_id"] == "EFO:0000305"
+    assert mutation_edges.loc[0, "y_type"] == "disease"
+
+    gene_edges = kg_storage.read_edges(root, "mutation_associated_gene")
+    assert gene_edges.loc[0, "x_id"] == "1_12345_A_G"
+    assert gene_edges.loc[0, "x_type"] == "mutation"
+    assert gene_edges.loc[0, "y_id"] == "ENSG00000123456"
+    assert gene_edges.loc[0, "y_type"] == "gene"
+
+
+
+def test_ingest_target_essentiality_writes_cell_line_context(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    te_dir = ot_dir / "target_essentiality"
+    te_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "id": "ENSG00000123456",
+                "geneEssentiality": [
+                    {
+                        "isEssential": True,
+                        "depMapEssentiality": [
+                            {
+                                "tissueId": "UBERON_0002367",
+                                "tissueName": "prostate gland",
+                                "screens": [
+                                    {
+                                        "depmapId": "ACH-000001",
+                                        "cellLineName": "A549",
+                                        "diseaseFromSource": "lung carcinoma",
+                                        "diseaseCellLineId": "EFO_0001071",
+                                        "geneEffect": -1.2,
+                                        "expression": 4.5,
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    ).to_parquet(te_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+    results = ingest_target_essentiality(ot_dir, kg_dir, root)
+
+    assert results["cell_line"] == 1
+    assert results["cell_line_expresses_gene"] == 1
+    assert results["cell_line_derived_from_tissue"] == 1
+    assert results["cell_line_associated_disease"] == 1
+
+    cell_lines = kg_storage.read_nodes(root, "cell_line")
+    assert cell_lines.loc[0, "id"] == "ACH-000001"
+    assert cell_lines.loc[0, "ccle_name"] == "A549"
+
+    tissue_edges = kg_storage.read_edges(root, "cell_line_derived_from_tissue")
+    assert tissue_edges.loc[0, "x_id"] == "ACH-000001"
+    assert tissue_edges.loc[0, "y_id"] == "UBERON:0002367"
+
+    disease_edges = kg_storage.read_edges(root, "cell_line_associated_disease")
+    assert disease_edges.loc[0, "y_id"] == "EFO:0001071"
+
+    dataset_edges = kg_storage.read_edges(root, "dataset_contains_cell_line")
+    assert dataset_edges.loc[0, "x_type"] == "dataset"
+    assert dataset_edges.loc[0, "y_type"] == "cell_line"

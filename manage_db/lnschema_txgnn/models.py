@@ -1,4 +1,4 @@
-"""Custom LaminDB record types for TxGNN node types not covered by bionty.
+"""Custom LaminDB record types for TxGNN node types outside bionty doctrine.
 
 Primary-ontology mapping
 ------------------------
@@ -7,12 +7,22 @@ Additional identifiers from other namespaces are stored as nullable
 cross-reference (xref) fields, matching the ``xref_columns`` declared in
 ``kg_schema.NodeTypeInfo``.
 
+Protein nodes are dedicated Ensembl Protein (ENSP) translation-product
+records. ``bt.Protein`` exists but is UniProt-centric, so TxGNN keeps ENSP as
+the custom ``lnschema_txgnn.Protein.ensembl_protein_id`` primary identifier and
+stores UniProt as an xref.
+
 For node types already covered by bionty (Gene → bionty.Gene,
-Disease → bionty.Disease, CellType → bionty.CellType,
-Tissue → bionty.Tissue, Phenotype → bionty.Phenotype,
-CellLine → bionty.CellLine, Organism → bionty.Organism),
-this module provides *extension* mixins (``*XrefMixin``) that can be used
-if you need to store the xref columns in a custom table.
+CellType → bionty.CellType, Tissue → bionty.Tissue,
+Phenotype → bionty.Phenotype, CellLine → bionty.CellLine,
+Organism → bionty.Organism), this module provides *extension* mixins
+(``*XrefMixin``) that can be used if you need to store the xref columns in a
+custom table.
+
+Disease nodes are an intentional exception for TxGNN KG parity. The live
+Jouvence ``bionty.Disease`` source is MONDO-backed, while OpenTargets evidence
+uses EFO/OBA/HP/etc. disease-like IDs. ``lnschema_txgnn.Disease`` stores the
+source ontology ID directly without asserting a MONDO equivalence.
 """
 
 from __future__ import annotations
@@ -100,6 +110,146 @@ class Transcript(SQLRecord, TracksRun, TracksUpdates):
     """Transcript biotype (e.g., ``"protein_coding"``, ``"lncRNA"``)."""
     is_canonical: bool = BooleanField(default=False, db_default=False)
     """Whether this is the canonical / MANE Select transcript for its gene."""
+
+
+class Protein(SQLRecord, TracksRun, TracksUpdates):
+    """An Ensembl protein translation product.
+
+    Node type:        ``protein``
+    Primary ontology: Ensembl Protein (ENSP…)
+    Xref columns:     ensembl_gene_id, uniprot_id, refseq_protein, pdb_ids
+    """
+
+    class Meta(SQLRecord.Meta, TracksRun.Meta, TracksUpdates.Meta):
+        abstract = False
+        app_label = "lnschema_txgnn"
+
+    uid: str = CharField(
+        max_length=12, editable=False, unique=True, db_index=True, default=base62_12
+    )
+    """Universal id, generated automatically."""
+
+    # Primary identifier
+    ensembl_protein_id: str = CharField(max_length=64, db_index=True, unique=True)
+    """Ensembl protein ID (e.g., ``"ENSP00000369497"``). Primary identifier."""
+
+    # Cross-reference identifiers
+    ensembl_gene_id: str | None = CharField(max_length=64, null=True, db_index=True)
+    """Parent Ensembl gene ID (e.g., ``"ENSG00000139618"``)."""
+    uniprot_id: str | None = CharField(max_length=16, null=True, db_index=True)
+    """Canonical UniProt accession (e.g., ``"P51587"``)."""
+    refseq_protein: str | None = CharField(max_length=64, null=True, db_index=True)
+    """RefSeq protein accession (e.g., ``"NP_000483.3"``)."""
+    pdb_ids: str | None = TextField(null=True)
+    """Pipe-separated PDB structure IDs for this protein, when available."""
+
+
+class Disease(SQLRecord, TracksRun, TracksUpdates):
+    """A KG disease-like term stored by source ontology ID.
+
+    Node type:        ``disease``
+    Primary ontology: source ontology CURIE (often EFO or MONDO)
+    Xref columns:     mondo_id, omim_id, doid_id, icd10_code, mesh_id, hp_id
+    """
+
+    class Meta(SQLRecord.Meta, TracksRun.Meta, TracksUpdates.Meta):
+        abstract = False
+        app_label = "lnschema_txgnn"
+
+    uid: str = CharField(
+        max_length=12, editable=False, unique=True, db_index=True, default=base62_12
+    )
+    """Universal id, generated automatically."""
+
+    ontology_id: str = CharField(max_length=64, db_index=True, unique=True)
+    """Source ontology ID (e.g., ``"EFO:0000305"`` or ``"MONDO:0007254"``)."""
+    source_ontology: str | None = CharField(max_length=32, null=True, db_index=True)
+    """Ontology prefix parsed from ``ontology_id`` (e.g., ``"EFO"``)."""
+    name: str | None = CharField(max_length=512, null=True, db_index=True)
+    """Human-readable label, when exported in the KG node table."""
+
+    mondo_id: str | None = CharField(max_length=32, null=True, db_index=True)
+    omim_id: str | None = CharField(max_length=16, null=True, db_index=True)
+    doid_id: str | None = CharField(max_length=32, null=True, db_index=True)
+    icd10_code: str | None = CharField(max_length=16, null=True, db_index=True)
+    mesh_id: str | None = CharField(max_length=16, null=True, db_index=True)
+    hp_id: str | None = CharField(max_length=32, null=True, db_index=True)
+
+
+class Gene(SQLRecord, TracksRun, TracksUpdates):
+    """A KG gene exact-ID record keyed by Ensembl gene ID."""
+
+    class Meta(SQLRecord.Meta, TracksRun.Meta, TracksUpdates.Meta):
+        abstract = False
+        app_label = "lnschema_txgnn"
+
+    uid: str = CharField(
+        max_length=12, editable=False, unique=True, db_index=True, default=base62_12
+    )
+    ensembl_gene_id: str = CharField(max_length=64, db_index=True, unique=True)
+    symbol: str | None = CharField(max_length=128, null=True, db_index=True)
+    name: str | None = CharField(max_length=512, null=True, db_index=True)
+    ncbi_gene_id: str | None = CharField(max_length=64, null=True, db_index=True)
+    hgnc_id: str | None = CharField(max_length=64, null=True, db_index=True)
+    uniprot_id: str | None = CharField(max_length=64, null=True, db_index=True)
+
+
+class Molecule(SQLRecord, TracksRun, TracksUpdates):
+    """A KG molecule exact-ID record keyed by ChEMBL ID."""
+
+    class Meta(SQLRecord.Meta, TracksRun.Meta, TracksUpdates.Meta):
+        abstract = False
+        app_label = "lnschema_txgnn"
+
+    uid: str = CharField(
+        max_length=12, editable=False, unique=True, db_index=True, default=base62_12
+    )
+    chembl_id: str = CharField(max_length=64, db_index=True, unique=True)
+    ontology_id: str | None = CharField(max_length=64, null=True, db_index=True)
+    name: str | None = CharField(max_length=512, null=True, db_index=True)
+    inchikey: str | None = CharField(max_length=64, null=True, db_index=True)
+
+
+class Pathway(SQLRecord, TracksRun, TracksUpdates):
+    """A KG pathway exact-ID record keyed by source ontology ID."""
+
+    class Meta(SQLRecord.Meta, TracksRun.Meta, TracksUpdates.Meta):
+        abstract = False
+        app_label = "lnschema_txgnn"
+
+    uid: str = CharField(
+        max_length=12, editable=False, unique=True, db_index=True, default=base62_12
+    )
+    ontology_id: str = CharField(max_length=64, db_index=True, unique=True)
+    name: str | None = CharField(max_length=512, null=True, db_index=True)
+
+
+class Tissue(SQLRecord, TracksRun, TracksUpdates):
+    """A KG tissue exact-ID record keyed by source ontology ID."""
+
+    class Meta(SQLRecord.Meta, TracksRun.Meta, TracksUpdates.Meta):
+        abstract = False
+        app_label = "lnschema_txgnn"
+
+    uid: str = CharField(
+        max_length=12, editable=False, unique=True, db_index=True, default=base62_12
+    )
+    ontology_id: str = CharField(max_length=64, db_index=True, unique=True)
+    name: str | None = CharField(max_length=512, null=True, db_index=True)
+
+
+class CellType(SQLRecord, TracksRun, TracksUpdates):
+    """A KG cell type exact-ID record keyed by source ontology ID."""
+
+    class Meta(SQLRecord.Meta, TracksRun.Meta, TracksUpdates.Meta):
+        abstract = False
+        app_label = "lnschema_txgnn"
+
+    uid: str = CharField(
+        max_length=12, editable=False, unique=True, db_index=True, default=base62_12
+    )
+    ontology_id: str = CharField(max_length=64, db_index=True, unique=True)
+    name: str | None = CharField(max_length=512, null=True, db_index=True)
 
 
 class Enhancer(SQLRecord, TracksRun, TracksUpdates):

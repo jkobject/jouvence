@@ -229,9 +229,9 @@ NODE_TYPES: dict[NodeType, NodeTypeInfo] = {
     NodeType.ORGANISM: NodeTypeInfo(
         node_type=NodeType.ORGANISM,
         primary_ontology="NCBI Taxonomy",
-        id_format="<int>",
+        id_format="NCBITaxon:<int>",
         bionty_registry="bionty.Organism",
-        example_id="9606",
+        example_id="NCBITaxon:9606",
         xref_columns=("gbif_id",),  # GBIF species ID
     ),
     NodeType.CELL_LINE: NodeTypeInfo(
@@ -370,6 +370,14 @@ RELATIONS: list[Relation] = [
         RelationKind.GENETIC,
         True,
         "Genomic position",
+    ),
+    Relation(
+        "mutation_associated_gene",
+        NodeType.MUTATION,
+        NodeType.GENE,
+        RelationKind.GENETIC,
+        False,
+        "Locus-to-gene prediction",
     ),
     Relation(
         "mutation_affects_transcript",
@@ -656,14 +664,6 @@ RELATIONS: list[Relation] = [
         RelationKind.DISEASE_ASSOC,
         False,
         "Pathway enrichment",
-    ),
-    Relation(
-        "disease_associated_mutation",
-        NodeType.DISEASE,
-        NodeType.MUTATION,
-        RelationKind.GENETIC,
-        False,
-        "ClinVar / GWAS",
     ),
     Relation(
         "disease_manifests_in_tissue",
@@ -1056,7 +1056,10 @@ XREF_RESOLUTION: list[XrefResolution] = [
         node_type=NodeType.PROTEIN,
         xref_column="ensembl_gene_id",
         from_namespace="Ensembl Gene ID",
-        description="Ensembl Gene ID → UniProt accession via Ensembl BioMart (swissprot)",
+        description=(
+            "Parent Ensembl Gene ID xref for ENSP translation-product proteins; "
+            "UniProt remains an optional xref, not the protein primary ID"
+        ),
         url_template="https://rest.ensembl.org/xrefs/id/{id}?content-type=application/json&external_db=Uniprot/SWISSPROT",
     ),
     XrefResolution(

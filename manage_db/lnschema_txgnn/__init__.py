@@ -14,8 +14,15 @@ Registries:
 .. autosummary::
    :toctree: .
 
+   Gene
+   Molecule
+   Pathway
+   Tissue
+   CellType
    Paper
    Transcript
+   Protein
+   Disease
    Enhancer
    Dataset
    Mutation
@@ -28,12 +35,19 @@ from lamindb_setup import _check_instance_setup
 
 _check_instance_setup(from_module="lnschema_txgnn")
 
-from .models import Dataset, Enhancer, Mutation, Paper, Transcript
+from .models import CellType, Dataset, Disease, Enhancer, Gene, Molecule, Mutation, Paper, Pathway, Protein, Tissue, Transcript
 
 __all__ = [
+    "CellType",
     "Dataset",
+    "Disease",
     "Enhancer",
+    "Gene",
+    "Molecule",
     "Mutation",
     "Paper",
+    "Pathway",
+    "Protein",
+    "Tissue",
     "Transcript",
 ]

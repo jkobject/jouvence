@@ -204,8 +204,14 @@ def _custom_registries() -> list[tuple[str, Any]]:
     import lnschema_txgnn as lnt
 
     return [
+        ("lnschema_txgnn.Gene", lnt.Gene),
+        ("lnschema_txgnn.Molecule", lnt.Molecule),
+        ("lnschema_txgnn.Pathway", lnt.Pathway),
+        ("lnschema_txgnn.Tissue", lnt.Tissue),
+        ("lnschema_txgnn.CellType", lnt.CellType),
         ("lnschema_txgnn.Paper", lnt.Paper),
         ("lnschema_txgnn.Transcript", lnt.Transcript),
+        ("lnschema_txgnn.Disease", lnt.Disease),
         ("lnschema_txgnn.Enhancer", lnt.Enhancer),
         ("lnschema_txgnn.Dataset", lnt.Dataset),
         ("lnschema_txgnn.Mutation", lnt.Mutation),
