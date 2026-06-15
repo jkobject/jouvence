@@ -183,7 +183,7 @@ KG vision**. It is currently:
   `mutation_affects_molecule_response` edges.
 
 As of the 2026-06-15 remaining-slices promotion, the canonical export under
-`/mnt/gcs/jouvencekb/kg/v2` contains all `15 / 15` node files and `40 / 77`
+`/mnt/gcs/jouvencekb/kg/v2` contains all `15 / 15` node files and `40 / 80`
 edge files, with `55,365,186` total nodes and `144,155,654` total edges. The
 largest new slice is `enhancer` (`48,808,144` nodes) plus enhancer regulatory
 edges. The default `manage_db.validate_kg` path is now an exact DuckDB anti-join
@@ -209,7 +209,7 @@ history stays in the phase notes below.
 **Current verified baseline**
 
 - Canonical KG root: `/mnt/gcs/jouvencekb/kg/v2`.
-- Coverage: `15 / 15` node files and `40 / 77` edge files from `kg_schema.py`.
+- Coverage: `15 / 15` node files and `40 / 80` edge files from `kg_schema.py`.
 - Scale: `55,365,186` nodes and `144,155,654` edges.
 - Full DuckDB validation: `total_dangling_edges=0` under systemd limits; see
   `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
@@ -258,9 +258,11 @@ history stays in the phase notes below.
   phenotype-indexed/inverted relations.
 - Phenotype causality direction is mutation→phenotype. Keep
   `phenotype_caused_by_mutation` only as deprecated compatibility metadata in
-  favor of `mutation_causes_phenotype`; treat
-  `phenotype_associated_gene`/`protein`/`molecule` as non-causal association or
-  legacy index edges, not as phenotype-causes-* assertions.
+  favor of `mutation_causes_phenotype`. Phenotype association direction is
+  entity→phenotype: use `gene_associated_phenotype`,
+  `protein_associated_phenotype`, and `molecule_associated_phenotype` for new
+  exports. Existing `phenotype_associated_gene`/`protein`/`molecule` names stay
+  only as deprecated/legacy compatibility indexes for already-promoted files.
 - Candidate `protein_interacts_with_enhancer` and
   `protein_interacts_with_transcript` are documented as `CANDIDATE_RELATIONS`,
   not canonical `RELATIONS`; add them only after selecting TF/ChIP/ENCODE or
@@ -269,19 +271,71 @@ history stays in the phase notes below.
   preserves those canonical endpoints; do not remap ENSG/NCBI gene endpoints to
   ENSP proteins without a dedicated endpoint migration.
 
-**What's next**
+### TxGNN KG active backlog / what's next
 
-1. Continue evidence backfill/source-aware ingestion, starting with
-   `mutation_associated_disease`, then clinical indication/contraindication and
-   enhancer/cell-line/expression supports. Each evidence tranche is done only
-   after `audit_edge_evidence` reports zero unsupported/orphan records.
-2. Add source feature tables, separate from graph edges: sequences for genes,
-   transcripts, proteins, and enhancers; molecule structure/descriptors; paper
-   title/abstract/sections/full text where licensed; embeddings later.
-3. Decide the protein-endpoint migration plan for legacy gene/protein-conflated
-   relations before rewriting any canonical edge endpoints.
-4. Re-run full KG validation, evidence audit, and LaminDB parity after any
-   canonical GCS promotion.
+Keep this as the maintainable active task list. The phase notes below are
+history; when they disagree, this backlog and the coverage/evidence tables above
+are the current handoff. Do not write canonical GCS from routine documentation
+updates.
+
+**Verified current state (read-only audit, 2026-06-15)**
+
+- Canonical GCS/FUSE root: `/mnt/gcs/jouvencekb/kg/v2`.
+- Physical coverage: all `15 / 15` schema node files and `40 / 80` schema edge
+  files are present; remaining missing edges are unresolved schema/vision
+  relations, not empty placeholders to create.
+- Parquet-metadata counts from the mounted canonical root: `55,365,186` nodes
+  and `144,155,654` edges.
+- Evidence files present: `6` relations, `777,886` total support rows.
+- Evidence audit passes with zero unsupported/orphan records for:
+  `disease_associated_gene` (`2,928`), `disease_involves_pathway` (`2,296`),
+  `mutation_affects_molecule_response` (`18,595` support rows for `4,866`
+  collapsed edges), `mutation_associated_gene` (`535,093`),
+  `mutation_causes_protein_change` (`177,735`), and
+  `molecule_targets_protein` (`41,239`).
+
+**Unresolved schema/modeling work**
+
+1. Evidence/source provenance still missing for canonical
+   `mutation_associated_disease`, `molecule_treats_disease`,
+   `molecule_contraindicates_disease`, enhancer regulatory/context edges,
+   expression edges, DepMap/cell-line edges, organism/dataset edges, and legacy
+   literature index edges. Backfill source-aware evidence before using these as
+   fully explainable assertions.
+2. `mutation_in_gene`, `mutation_affects_transcript`,
+   `mutation_overlaps_enhancer`, `mutation_causes_phenotype`, and
+   `mutation_associated_cell_type` remain unpromoted because each needs stricter
+   locus/consequence/context semantics than the dense OpenTargets variant smoke
+   output provided.
+3. Several canonical `*protein*` relations still physically use `gene`
+   endpoints. Keep their evidence tied to current canonical endpoints until a
+   deliberate ENSG/NCBI→ENSP endpoint migration policy exists.
+4. Deprecated/legacy/candidate relations in
+   `docs/evidence_and_edge_schema_plan.md` should stay readable but should not
+   be expanded without an explicit compatibility or source-selection decision.
+5. Source feature tables are still future work and should remain separate from
+   graph edges: sequence/features for genes, transcripts, proteins, enhancers;
+   molecule structures/descriptors; paper title/abstract/full text where
+   licensed; embeddings later.
+
+**Next safe tranches**
+
+1. Build evidence locally for `mutation_associated_disease`, preserving source
+   row IDs, studies, genetic-association scores, p-values/effect sizes,
+   directions, and paper IDs where present. Promote only after
+   `audit_edge_evidence --relations mutation_associated_disease` has zero
+   unsupported/orphan records.
+2. Build separate clinical evidence tranches for `molecule_treats_disease` and
+   `molecule_contraindicates_disease`; audit treatment and contraindication
+   independently to avoid polarity errors.
+3. Add source-aware evidence for enhancer regulatory/context edges, then
+   expression/cell-line/DepMap edges, using the same local-build → endpoint
+   validation → evidence audit → explicit promotion pattern.
+4. Only after evidence/source tranches are stable, revisit expanded OpenTargets
+   `interaction`, `clinical_indication`, and richer `mechanismOfAction` merges
+   from archived audit/source caches.
+5. After any canonical promotion, re-run coverage audit, full DuckDB KG
+   validation, targeted evidence audit, and LaminDB/custom registry parity.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
 The legacy TxData source conflates `gene/protein` in places, and some relations
@@ -364,14 +418,15 @@ primary biological assertion.
 | `gene_has_transcript`                | `gene`       | `transcript` | `central_dogma`   | yes     | yes  |   507,365 | OpenTargets target transcripts                                             |
 | `transcript_encodes_protein`         | `transcript` | `protein`    | `central_dogma`   | yes     | yes  |   233,995 | OpenTargets ENST→ENSP translations                                         |
 | `gene_encodes_protein`               | `gene`       | `protein`    | `central_dogma`   | no      | yes  |   233,995 | deprecated/derived shortcut kept for compatibility; prefer transcript path |
-| `transcript_alternative_transcript`  | `transcript` | `transcript` | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
+| `transcript_alternative_transcript`  | `transcript` | `transcript` | `central_dogma`   | yes     | no   |         - | TODEL/deprecated ambiguous isoform shortcut; use shared `gene_has_transcript` + transcript metadata |
 | `mutation_in_gene`                   | `mutation`   | `gene`       | `genetic`         | yes     | no   |         - | physical locus/containment only; do not conflate with L2G association      |
-| `mutation_associated_gene`           | `mutation`   | `gene`       | `genetic`         | no      | yes  |   535,093 | OpenTargets L2G/GWAS association; promoted 2026-06-10 with zero dangling endpoints |
-| `mutation_affects_transcript`        | `mutation`   | `transcript` | `genetic`         | yes     | no   |         - | 26.03 `variant` staged; smoke shows full relation is too dense for blind promotion |
-| `mutation_causes_protein_change`     | `mutation`   | `protein`    | `genetic`         | yes     | yes  |   177,735 | promoted 2026-06-10 from bounded variant scratch; ENSP protein endpoints             |
-| `mutation_overlaps_enhancer`         | `mutation`   | `enhancer`   | `genetic`         | yes     | no   |         - | not exported yet                                                          |
-| `mutation_associated_disease`        | `mutation`   | `disease`    | `genetic`         | no      | yes  | 4,656,171 | OpenTargets known-variant + GWAS disease evidence promoted 2026-06-11 with zero dangling endpoints |
-| `mutation_causes_phenotype`          | `mutation`   | `phenotype`  | `genetic`         | no      | no   |         - | not exported; preferred forward phenotype-causality direction             |
+| `mutation_associated_gene`           | `mutation`   | `gene`       | `genetic`         | no      | yes  |   535,093 | OpenTargets L2G/GWAS association; canonical edge + evidence files exist with zero unsupported support |
+| `mutation_affects_transcript`        | `mutation`   | `transcript` | `genetic`         | yes     | no   |         - | active schema relation; needs bounded transcript consequence evidence policy |
+| `mutation_causes_protein_change`     | `mutation`   | `protein`    | `genetic`         | yes     | yes  |   177,735 | active; canonical edge + evidence files exist; ENSP protein endpoints      |
+| `mutation_overlaps_enhancer`         | `mutation`   | `enhancer`   | `genetic`         | yes     | no   |         - | active schema relation; needs bounded interval-overlap/provenance policy before promotion |
+| `mutation_associated_disease`        | `mutation`   | `disease`    | `genetic`         | no      | yes  | 4,656,171 | active canonical OpenTargets known-variant + GWAS disease edges; evidence backfill still next tranche |
+| `mutation_causes_phenotype`          | `mutation`   | `phenotype`  | `genetic`         | no      | no   |         - | active preferred forward phenotype-causality direction; not exported yet  |
+| `gene_associated_phenotype`          | `gene`       | `phenotype`  | `phenotype_assoc` | no      | no   |         - | preferred non-causal HPO gene→phenotype association direction             |
 | `mutation_affects_molecule_response` | `mutation`   | `molecule`   | `pharmacological` | no      | yes  |     4,866 | OpenTargets pharmacogenomics                                              |
 | `mutation_associated_cell_type`      | `mutation`   | `cell_type`  | `genetic`         | no      | no   |         - | TODEL/deprecated candidate unless a concrete eQTL/cell-type source is selected |
 | `gene_ortholog_gene`                 | `gene`       | `gene`       | `genetic`         | yes     | no   |         - | not exported yet                                                          |
@@ -398,7 +453,8 @@ primary biological assertion.
 | `molecule_interacts_molecule`        | `molecule`   | `molecule`   | `pharmacological` | no      | yes  | 2,676,768 | Drug-drug interaction                                                     |
 | `cell_type_responds_to_molecule`     | `cell_type`  | `molecule`   | `pharmacological` | no      | no   |         - | not exported yet                                                          |
 | `cell_line_responds_to_molecule`     | `cell_line`  | `molecule`   | `experimental`    | yes     | no   |         - | not exported yet                                                          |
-| `phenotype_associated_molecule`      | `phenotype`  | `molecule`   | `pharmacological` | no      | yes  |    64,784 | legacy phenotype-indexed side-effect/rescue index; non-causal             |
+| `phenotype_associated_molecule`      | `phenotype`  | `molecule`   | `pharmacological` | no      | yes  |    64,784 | legacy indexed file only; preferred direction is `molecule_associated_phenotype` |
+| `molecule_associated_phenotype`      | `molecule`   | `phenotype`  | `pharmacological` | no      | no   |         - | preferred non-causal molecule→phenotype side-effect/rescue direction      |
 | `disease_associated_gene`            | `disease`    | `gene`       | `disease_assoc`   | no      | yes  |     2,928 | OpenTargets Reactome evidence slice                                       |
 | `disease_associated_protein`         | `disease`    | `protein`    | `disease_assoc`   | no      | yes  |    80,411 | legacy gene/protein endpoints (`y_type=gene`)                             |
 | `disease_involves_pathway`           | `disease`    | `pathway`    | `disease_assoc`   | no      | yes  |     2,296 | OpenTargets Reactome evidence slice                                       |
@@ -408,8 +464,9 @@ primary biological assertion.
 | `disease_has_phenotype`              | `disease`    | `phenotype`  | `phenotype_assoc` | yes     | yes  |   241,797 | legacy + OpenTargets HPO                                                  |
 | `phenotype_observed_in_tissue`       | `phenotype`  | `tissue`     | `phenotype_assoc` | no      | no   |         - | not exported yet                                                          |
 | `phenotype_caused_by_mutation`       | `phenotype`  | `mutation`   | `genetic`         | no      | no   |         - | deprecated inverted wording; prefer `mutation_causes_phenotype`           |
-| `phenotype_associated_gene`          | `phenotype`  | `gene`       | `phenotype_assoc` | no      | no   |         - | non-causal HPO-gene association only                                      |
-| `phenotype_associated_protein`       | `phenotype`  | `protein`    | `phenotype_assoc` | no      | yes  |     3,330 | legacy inferred via gene; legacy gene/protein endpoints (`y_type=gene`)   |
+| `phenotype_associated_gene`          | `phenotype`  | `gene`       | `phenotype_assoc` | no      | no   |         - | deprecated inverted name/direction; prefer `gene_associated_phenotype`    |
+| `phenotype_associated_protein`       | `phenotype`  | `protein`    | `phenotype_assoc` | no      | yes  |     3,330 | legacy indexed file only; prefer `protein_associated_phenotype`; endpoints still gene/protein-conflated |
+| `protein_associated_phenotype`       | `protein`    | `phenotype`  | `phenotype_assoc` | no      | no   |         - | preferred non-causal protein→phenotype association direction              |
 | `phenotype_associated_cell_type`     | `phenotype`  | `cell_type`  | `phenotype_assoc` | no      | no   |         - | not exported yet                                                          |
 | `phenotype_subtype_of_phenotype`     | `phenotype`  | `phenotype`  | `ontological`     | yes     | yes  |    37,472 | HPO hierarchy                                                             |
 | `tissue_subtype_of_tissue`           | `tissue`     | `tissue`     | `ontological`     | yes     | yes  |    28,064 | UBERON parent-child hierarchy                                             |
@@ -543,11 +600,11 @@ hetero_dgl  = kg.to_dgl()   # DGL HeteroGraph (legacy)
       validation helper in `notebooks/kg_schema_overview.ipynb` §7; all IDs
       normalised to valid ontology formats)
 
-### Phase 4 — OpenTargets ingestion ⚠️ (implemented, not fully exported)
+### Phase 4 — OpenTargets ingestion ⚠️ (implemented; canonical subset exported)
 
 `manage_db/ingest_opentargets.py` contains ingestion functions for the core
-OpenTargets datasets, but the current canonical `gs://jouvencekb/kg/v2` export
-does **not** yet reflect a complete OpenTargets run/merge.
+OpenTargets datasets. The current canonical `gs://jouvencekb/kg/v2` export is a
+large validated subset, **not** a complete all-dataset OpenTargets run/merge.
 
 - [x] `ingest_targets` → Ensembl `nodes/gene.parquet` with xrefs. OpenTargets
       26.03 target IDs are merged into the canonical export.
@@ -579,23 +636,25 @@ does **not** yet reflect a complete OpenTargets run/merge.
       `paper_mentions_gene` / `paper_mentions_disease`; these validate cleanly
       under the 2026-06-15 full DuckDB canonical validation.
 
-### Phase 5 — Additional sources ⚠️ (partially implemented, mostly pending export)
+### Phase 5 — Additional sources ⚠️ (mixed: some canonical, some pending)
 
-Additional OpenTargets-derived functions exist, but the corresponding node/edge
-files are missing from the current canonical export unless listed in the Current
-Export Reality section above.
+Additional OpenTargets-derived functions exist. Some are now canonical and
+validated; unlisted schema relations remain pending until explicit source
+semantics, endpoint validation, and evidence/audit criteria are satisfied.
 
 - [x] `ingest_disease_phenotype`: OpenTargets HPO slice merged and audited with
       normalized `MONDO:` / `HP:` endpoints.
-- [ ] PARTIAL: `ingest_expression` added OpenTargets `tissue_expresses_gene`,
-      `cell_type_expresses_gene`, and legacy `tissue_expresses_protein`.
-      `cell_type_expresses_protein` remains pending because no audited source
-      mapping has been promoted for that relation.
+- [x] `ingest_expression` added canonical OpenTargets `tissue_expresses_gene`
+      (`3,800,648`) and `cell_type_expresses_gene` (`1,561,873`) plus legacy
+      `tissue_expresses_protein` (`1,538,088`). Pending work is evidence/source
+      provenance for expression edges and a source-backed
+      `cell_type_expresses_protein` mapping; do not treat this as a missing
+      rerun of the already-promoted gene-expression slice.
 - [x] `ingest_biosample`: OpenTargets `cell_type` nodes are present in the
       canonical export.
 - [x] `ingest_pharmacogenomics`: OpenTargets pharmacogenomics slice merged as
       `mutation` stubs and `mutation_affects_molecule_response`.
-- [ ] PARTIAL: `ingest_variants` used OpenTargets 26.03 `variant/` staging
+- [x] `ingest_variants` safe tranche status: OpenTargets 26.03 `variant/` staging
       now archived at `/mnt/gcs/jouvencekb/kg/local-archive/home-ubuntu-data-txgnn-20260611T0940Z/txgnn-variants-scratch.tar.zst`
       (25 source files, 3.2G, 7,432,549 rows). Code now maps
       `mutation_causes_protein_change` to ENSP via unambiguous UniProt xrefs
@@ -608,7 +667,9 @@ Export Reality section above.
       remaining pending variant relations are the broader `mutation_in_gene`,
       `mutation_affects_transcript`, `mutation_overlaps_enhancer`,
       `mutation_causes_phenotype`, and `mutation_associated_cell_type`, each
-      requiring stricter filters/source semantics before promotion.
+      requiring stricter filters/source semantics before promotion. Track those
+      as unresolved schema tasks, not as a generic partially failed variant
+      ingest.
 - [x] `ingest_evidence_backed_variants` / dataset alias
       `known_variant` added a sparse, evidence-first variant path. It scans
       `evidence_*` directories for high-value genetics datatypes
@@ -663,12 +724,13 @@ Export Reality section above.
       represented in LaminDB/bionty. The GWAS disease relation is now included in the canonical
       `mutation_associated_disease` union; targeted endpoint validation reports
       zero dangling mutation and disease endpoints.
-- [ ] Phase 4 audit datasets are archived under
+- [x] Phase 4 audit datasets are archived under
       `/mnt/gcs/jouvencekb/kg/local-archive/home-ubuntu-data-txgnn-20260611T0940Z/txgnn-phase4-audit.tar.zst`:
       `interaction`, `interaction_evidence`, `clinical_indication`, and
-      `drug_mechanism_of_action`. These are source caches/audits, not promoted
-      canonical KG files; interaction/indication/MoA still need a fresh audited
-      merge if we want the full OT-scale graph beyond the legacy TxData edges.
+      `drug_mechanism_of_action`. Archival itself is complete. These are source
+      caches/audits, not promoted canonical KG files; interaction/indication/MoA
+      still need a fresh audited merge if we want the full OT-scale graph beyond
+      the legacy TxData edges.
 - [x] `ingest_enhancers`/OpenTargets enhancer slice: canonical GCS now has
       `48,808,144` `enhancer` nodes plus `enhancer_regulates_gene`,
       `enhancer_active_in_tissue`, and `enhancer_active_in_cell_type` edges.
@@ -676,9 +738,10 @@ Export Reality section above.
       Remaining enhancer-schema relations (`enhancer_regulates_transcript`,
       `enhancer_associated_disease`, `mutation_overlaps_enhancer`) are still
       pending explicit source mappings.
-- [ ] Add source features: for each source, download and add their real feature
-      (e.g. genes get their sequence, same for transcripts, molecules, proteins,
-      enhancers) for paper, get their abstract and discussion.
+- [ ] Add source feature tables, separate from graph edges: sequence/features
+      for genes, transcripts, proteins, and enhancers; molecule
+      structures/descriptors; paper title/abstract/sections/full text where
+      licensed; embeddings later.
 
 ### Phase 6 — Edge credibility pipeline ✅ complete
 
@@ -710,7 +773,7 @@ data/kg/
 - Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2`; paper, Reactome,
   molecule/MoA, biosample, expression, variant, organism, dataset, cell-line,
   and enhancer slices were later added. Current canonical GCS layout has
-  `15 / 15` node files and `40 / 77` edge files. The 2026-06-15 full DuckDB
+  `15 / 15` node files and `40 / 80` edge files. The 2026-06-15 full DuckDB
   validation over `/mnt/gcs/jouvencekb/kg/v2` reports `55,365,186` nodes,
   `144,155,654` edges, and `total_dangling_edges: 0`.
 
@@ -734,7 +797,7 @@ data/kg/
 - [x] Schema coverage audit CLI:
       `uv run python -m manage_db.audit_kg_coverage /mnt/gcs/jouvencekb/kg/v2`
       reports physical node/edge file coverage against `kg_schema.py`. Current
-      canonical GCS export: `15 / 15` node files, `40 / 77` edge files,
+      canonical GCS export: `15 / 15` node files, `40 / 80` edge files,
       `55,365,186` total nodes, and `144,155,654` total edges. See
       `docs/kg_coverage_audit.md`.
 - [x] Remote GCS validation after remaining-slice promotion: the 2026-06-15

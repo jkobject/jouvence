@@ -393,7 +393,9 @@ RELATIONS: list[Relation] = [
         NodeType.TRANSCRIPT,
         RelationKind.CENTRAL_DOGMA,
         True,
-        "Alternative splicing",
+        "TODEL/deprecated ambiguous transcript-transcript shortcut; alternative isoforms are better represented by shared gene_has_transcript membership and transcript/protein feature metadata",
+        RelationStatus.DEPRECATED,
+        "gene_has_transcript plus transcript feature metadata (canonical isoform, MANE/RefSeq/CCDS xrefs)",
     ),
     # ── Genetic ─────────────────────────────────────────────────────────────
     Relation(
@@ -402,7 +404,7 @@ RELATIONS: list[Relation] = [
         NodeType.GENE,
         RelationKind.GENETIC,
         True,
-        "Physical/genomic containment only; do not use for L2G/GWAS association",
+        "Physical/genomic containment only; do not use for L2G/GWAS association or OpenTargets L2G targetId smoke output",
     ),
     Relation(
         "mutation_associated_gene",
@@ -410,7 +412,7 @@ RELATIONS: list[Relation] = [
         NodeType.GENE,
         RelationKind.GENETIC,
         False,
-        "Statistical/functional locus-to-gene prediction (for example OpenTargets L2G/GWAS)",
+        "Statistical/functional locus-to-gene prediction (for example OpenTargets L2G/GWAS); canonical promoted GWAS/L2G relation with evidence support",
     ),
     Relation(
         "mutation_affects_transcript",
@@ -418,7 +420,7 @@ RELATIONS: list[Relation] = [
         NodeType.TRANSCRIPT,
         RelationKind.GENETIC,
         True,
-        "Splicing / UTR variant",
+        "Transcript-level consequence such as splicing/UTR/coding-transcript effect; active schema relation but not canonical until bounded source-specific evidence and endpoint policy are selected",
     ),
     Relation(
         "mutation_causes_protein_change",
@@ -426,7 +428,7 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.GENETIC,
         True,
-        "Amino acid change",
+        "Amino acid change with ENSP protein endpoint; canonical OpenTargets protein-change edge and evidence files exist",
     ),
     Relation(
         "mutation_overlaps_enhancer",
@@ -434,7 +436,7 @@ RELATIONS: list[Relation] = [
         NodeType.ENHANCER,
         RelationKind.GENETIC,
         True,
-        "Regulatory variant",
+        "Regulatory variant interval overlap; active schema relation but not canonical until a bounded enhancer-overlap source/provenance policy is selected",
     ),
     Relation(
         "mutation_associated_disease",
@@ -442,7 +444,7 @@ RELATIONS: list[Relation] = [
         NodeType.DISEASE,
         RelationKind.GENETIC,
         False,
-        "GWAS / ClinVar",
+        "GWAS / ClinVar / OpenTargets known-variant disease association; canonical edge exists, evidence backfill remains next tranche",
     ),
     Relation(
         "mutation_causes_phenotype",
@@ -450,7 +452,15 @@ RELATIONS: list[Relation] = [
         NodeType.PHENOTYPE,
         RelationKind.GENETIC,
         False,
-        "Mendelian / GWAS",
+        "Mendelian / GWAS phenotype consequence; preferred forward phenotype-causality direction (mutation→phenotype), not yet canonical",
+    ),
+    Relation(
+        "gene_associated_phenotype",
+        NodeType.GENE,
+        NodeType.PHENOTYPE,
+        RelationKind.PHENOTYPE_ASSOC,
+        False,
+        "Non-causal HPO gene-to-phenotype association; direction is gene→phenotype",
     ),
     Relation(
         "mutation_affects_molecule_response",
@@ -466,7 +476,7 @@ RELATIONS: list[Relation] = [
         NodeType.CELL_TYPE,
         RelationKind.GENETIC,
         False,
-        "Deprecated candidate; likely better as evidence/context metadata unless a concrete eQTL/cell-type source is selected",
+        "TODEL/deprecated candidate; likely better as evidence/context metadata unless a concrete eQTL/cell-type source is selected",
         RelationStatus.DEPRECATED,
         "evidence/context metadata on variant/gene or variant/disease assertions",
     ),
@@ -673,9 +683,17 @@ RELATIONS: list[Relation] = [
         NodeType.MOLECULE,
         RelationKind.PHARMACOLOGICAL,
         False,
-        "Legacy phenotype-indexed side-effect/rescue association; not a causal phenotype→molecule assertion",
+        "Legacy phenotype-indexed side-effect/rescue association retained for existing canonical files; inverted relative to the preferred molecule→phenotype direction",
         RelationStatus.LEGACY_INDEX,
-        "evidence-backed molecule effect/side-effect assertion when a directional relation is added",
+        "molecule_associated_phenotype",
+    ),
+    Relation(
+        "molecule_associated_phenotype",
+        NodeType.MOLECULE,
+        NodeType.PHENOTYPE,
+        RelationKind.PHARMACOLOGICAL,
+        False,
+        "Non-causal molecule-to-phenotype side-effect/rescue association; direction is molecule→phenotype",
     ),
     # ── Disease associations ─────────────────────────────────────────────────
     Relation(
@@ -760,7 +778,9 @@ RELATIONS: list[Relation] = [
         NodeType.GENE,
         RelationKind.PHENOTYPE_ASSOC,
         False,
-        "HPO-gene association only; not a phenotype-causes-gene causal edge",
+        "Deprecated inverted HPO association name/direction; the association should be represented as gene→phenotype",
+        RelationStatus.DEPRECATED,
+        "gene_associated_phenotype",
     ),
     Relation(
         "phenotype_associated_protein",
@@ -768,9 +788,17 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.PHENOTYPE_ASSOC,
         False,
-        "Legacy/inferred via gene; canonical file may contain legacy gene endpoints; not causal",
+        "Legacy/inferred via gene; canonical file may contain legacy gene endpoints; inverted relative to the preferred protein→phenotype direction",
         RelationStatus.LEGACY_INDEX,
-        "phenotype_associated_gene or evidence-backed disease/gene/phenotype assertions",
+        "protein_associated_phenotype",
+    ),
+    Relation(
+        "protein_associated_phenotype",
+        NodeType.PROTEIN,
+        NodeType.PHENOTYPE,
+        RelationKind.PHENOTYPE_ASSOC,
+        False,
+        "Non-causal protein-to-phenotype association; direction is protein→phenotype",
     ),
     Relation(
         "phenotype_associated_cell_type",
@@ -1309,7 +1337,7 @@ LEGACY_RELATION_MAP: dict[str, str] = {
     "protein_protein": "protein_interacts_protein",
     "drug_protein": "molecule_targets_protein",
     "drug_drug": "molecule_interacts_molecule",
-    "phenotype_protein": "phenotype_associated_protein",
+    "phenotype_protein": "protein_associated_phenotype",
     "phenotype_phenotype": "phenotype_subtype_of_phenotype",
     "disease_phenotype_positive": "disease_has_phenotype",
     "disease_phenotype_negative": "disease_has_phenotype",
@@ -1318,7 +1346,7 @@ LEGACY_RELATION_MAP: dict[str, str] = {
     "anatomy_protein_absent": "tissue_expresses_protein",
     "anatomy_anatomy": "tissue_subtype_of_tissue",
     "drug_disease": "molecule_treats_disease",
-    "drug_effect": "phenotype_associated_molecule",
+    "drug_effect": "molecule_associated_phenotype",
     "pathway_pathway": "pathway_child_of_pathway",
     "pathway_protein": "pathway_contains_protein",
     "protein_pathway": "pathway_contains_protein",  # alternate form
@@ -1354,8 +1382,7 @@ LEGACY_RELATION_FLIP: frozenset[str] = frozenset(
         "molfunc_protein",  # gene/protein→pathway  → flip → pathway→gene  (pathway_contains_gene)
         "cellcomp_protein",  # gene/protein→pathway  → flip → pathway→gene  (pathway_contains_gene)
         "pathway_protein",  # gene/protein→pathway  → flip → pathway→gene  (pathway_contains_protein)
-        "phenotype_protein",  # gene/protein→phenotype→ flip → phenotype→gene (phenotype_associated_protein)
-        "drug_effect",  # drug→effect/phenotype → flip → phenotype→molecule (phenotype_associated_molecule)
+
     }
 )
 

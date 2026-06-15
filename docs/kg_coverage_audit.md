@@ -28,10 +28,12 @@ PYARROW_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
 
 Coverage audit answers: "which schema files are physically missing?"
 Validation answers: "do present edges resolve to present node IDs?"
+Evidence audit answers: "which canonical edges have support rows, and are any
+support rows orphaned?"
 
 As of 2026-06-15 after the remaining OpenTargets-backed `target_essentiality`
 and `enhancer_to_gene` imports, the canonical export reports `15 / 15` node
-files and `40 / 77` edge files: `55,365,186` nodes and `144,155,654` edges.
+files and `40 / 80` edge files: `55,365,186` nodes and `144,155,654` edges.
 The formerly missing node files (`cell_line`, `dataset`, `enhancer`) are now
 present. The remaining missing edge files are schema/vision relations that still
 need explicit source mapping; do not create empty placeholder Parquets for them.
@@ -51,6 +53,17 @@ uv run --no-sync python -m manage_db.validate_kg /mnt/gcs/jouvencekb/kg/v2 \
 ```
 
 Evidence: `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
+
+Current evidence status is tracked in `CLAUDE.md` and
+`docs/evidence_and_edge_schema_plan.md`. As of the 2026-06-15 read-only audit,
+canonical evidence exists for six relations
+(`disease_associated_gene`, `disease_involves_pathway`,
+`mutation_affects_molecule_response`, `mutation_associated_gene`,
+`mutation_causes_protein_change`, and `molecule_targets_protein`) and targeted
+`manage_db.audit_edge_evidence` reports zero unsupported/orphan records for all
+six. The active evidence backlog starts with `mutation_associated_disease`, then
+clinical `molecule_treats_disease` / `molecule_contraindicates_disease`, then
+enhancer/expression/cell-line support tranches.
 
 ## Node ontology namespace coverage
 
