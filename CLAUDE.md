@@ -200,6 +200,79 @@ The previous PyArrow streaming validator timed out or exhausted memory once
 Python. Use `--pyarrow-streaming` only for small/remote KGs that DuckDB cannot
 read directly; do not use it for the canonical enhancer-scale export.
 
+### TxGNN/Jouvence KG status dashboard — 2026-06-15
+
+Keep this subsection current when canonical GCS, LaminDB parity, evidence, or
+schema status changes. It is the short handoff for future agents; detailed
+history stays in the phase notes below.
+
+**Current verified baseline**
+
+- Canonical KG root: `/mnt/gcs/jouvencekb/kg/v2`.
+- Coverage: `15 / 15` node files and `40 / 77` edge files from `kg_schema.py`.
+- Scale: `55,365,186` nodes and `144,155,654` edges.
+- Full DuckDB validation: `total_dangling_edges=0` under systemd limits; see
+  `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
+- LaminDB/custom registry parity: verified `missing_ids=0` for canonical
+  `gene`, `molecule`, `pathway`, `tissue`, `cell_type`, `transcript`,
+  `disease`, `protein`, `paper`, `mutation`, and `organism`; see
+  `.omoc/reports/hermes-parity-custom-registries-*.json`.
+- Tiny TxGNN model smoke: passed under `CPUQuota=200%`, `MemoryMax=4G`; see
+  `.omoc/reports/hermes-final-txgnn-tiny-smoke-wrapper-*.txt`.
+
+**Evidence layer status**
+
+- Evidence is modeled as support metadata in `evidence/{relation}.parquet`, not
+  as primary biological edges. Papers are one evidence/support type, alongside
+  database records, studies, scores, source rows, and later extracted text spans.
+- Canonical evidence currently covers six relations with zero unsupported/orphan
+  records: `disease_associated_gene`, `disease_involves_pathway`,
+  `mutation_affects_molecule_response`, `mutation_associated_gene`,
+  `mutation_causes_protein_change`, and `molecule_targets_protein`.
+- Latest six-relation evidence audit:
+  `.omoc/reports/hermes-evidence-six-relations-audit-20260615T113441Z.json`.
+- Next evidence targets: `mutation_associated_disease`,
+  `molecule_treats_disease`, `molecule_contraindicates_disease`, enhancer
+  regulatory/context edges, and expression/DepMap/cell-line edges where source
+  records are available.
+
+**Schema cleanup / modeling decisions**
+
+- `mutation_in_gene` and `mutation_associated_gene` are shape-compatible but not
+  the same edge. `mutation_in_gene` is physical locus/containment;
+  `mutation_associated_gene` is statistical/functional L2G/GWAS association.
+  Do not promote dense OpenTargets variant→gene/transcript outputs without a
+  stricter locus/consequence policy.
+- Legacy literature edges `paper_mentions_gene` and `paper_mentions_disease`
+  remain readable canonical indexes, but future biological support should go
+  into the evidence layer.
+- Relations marked as deprecated/migration candidates in
+  `docs/evidence_and_edge_schema_plan.md` should not be expanded until schema
+  compatibility is decided (`gene_encodes_protein` shortcut,
+  `cell_line_associated_disease`, `mutation_associated_cell_type`,
+  `organism_models_disease`, and paper-mention-as-edge patterns).
+- Several `*protein*` edge files still physically use `gene` endpoints. Evidence
+  preserves those canonical endpoints; do not remap ENSG/NCBI gene endpoints to
+  ENSP proteins without a dedicated endpoint migration.
+
+**What's next**
+
+1. Finish edge-schema cleanup: align `kg_schema.py`, `CLAUDE.md`, and
+   `docs/evidence_and_edge_schema_plan.md` around deprecated/inverted/candidate
+   relations, including phenotype causality direction and candidate protein↔RNA
+   / protein↔enhancer interactions.
+2. Continue evidence backfill/source-aware ingestion, starting with
+   `mutation_associated_disease`, then clinical indication/contraindication and
+   enhancer/cell-line/expression supports. Each evidence tranche is done only
+   after `audit_edge_evidence` reports zero unsupported/orphan records.
+3. Add source feature tables, separate from graph edges: sequences for genes,
+   transcripts, proteins, and enhancers; molecule structure/descriptors; paper
+   title/abstract/sections/full text where licensed; embeddings later.
+4. Decide the protein-endpoint migration plan for legacy gene/protein-conflated
+   relations before rewriting any canonical edge endpoints.
+5. Re-run full KG validation, evidence audit, and LaminDB parity after any
+   canonical GCS promotion.
+
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
 The legacy TxData source conflates `gene/protein` in places, and some relations
 use `protein` as an endpoint type, but those legacy edges still physically use
@@ -477,15 +550,21 @@ does **not** yet reflect a complete OpenTargets run/merge.
       than adding new endpoint IDs.
 - [x] Legacy/TxData `protein_interacts_protein`, `molecule_targets_protein`,
       indication/contraindication-like edges are present in the export.
-- [ ] PARTIAL: `ingest_evidence` added the cached OpenTargets Reactome evidence
+- [x] `ingest_evidence` added the cached OpenTargets Reactome evidence
       slice (`2,928` `disease_associated_gene`, `2,296`
       `disease_involves_pathway`) and validates with zero dangling endpoints.
-      Other evidence sources such as known_drug/chembl/genetic associations
-      still need download/merge.
-- [ ] Full OpenTargets `interaction`, `reactome`, `indication`, and
-      `mechanismOfAction` runs need a fresh audited merge into the canonical
-      export if we want the expanded OT-scale graph. OpenTargets 26.03
-      `target` + `go` are merged and validated.
+      The evidence layer now also has canonical support records for
+      `mutation_affects_molecule_response`, `mutation_associated_gene`,
+      `mutation_causes_protein_change`, and `molecule_targets_protein`; see the
+      status dashboard above and `docs/evidence_and_edge_schema_plan.md`.
+      Remaining evidence sources to backfill/merge include
+      `mutation_associated_disease`, clinical indication/contraindication,
+      enhancer/regulatory context, and expression/cell-line source records.
+- [ ] Full OpenTargets `interaction`, `indication`, and richer
+      `mechanismOfAction` runs need a fresh audited merge if we want the expanded
+      OT-scale graph beyond the legacy TxData edges. OpenTargets 26.03 `target`,
+      `go`, Reactome, pharmacogenomics, and conservative MoA support are merged
+      and validated at the current canonical scope.
 - [x] `ingest_literature` produced and uploaded canonical `paper` nodes plus
       `paper_mentions_gene` / `paper_mentions_disease`; these validate cleanly
       under the 2026-06-15 full DuckDB canonical validation.
