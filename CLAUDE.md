@@ -306,7 +306,10 @@ updates.
    `mutation_overlaps_enhancer`, `mutation_causes_phenotype`, and
    `mutation_associated_cell_type` remain unpromoted because each needs stricter
    locus/consequence/context semantics than the dense OpenTargets variant smoke
-   output provided.
+   output provided. The source-to-edge policy for the active non-GCS tranche is
+   locked in `docs/variant_transcript_enhancer_missing_edges.md`; first
+   promotion candidate is HP-only pathogenic/likely-pathogenic
+   `mutation_causes_phenotype` from EVA/ClinVar-style rows.
 3. Several canonical `*protein*` relations still physically use `gene`
    endpoints. Keep their evidence tied to current canonical endpoints until a
    deliberate ENSG/NCBI→ENSP endpoint migration policy exists.

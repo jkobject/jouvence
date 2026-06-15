@@ -16,6 +16,7 @@ from manage_db.ingest_opentargets import (
     ingest_go,
     ingest_pharmacogenomics,
     ingest_literature,
+    ingest_orthology,
     ingest_targets,
     ingest_variants,
     ingest_variant_protein_changes,
@@ -146,6 +147,68 @@ def test_ingest_drugs_writes_required_molecule_xrefs(tmp_path: Path) -> None:
     assert molecules.loc[0, "smiles"] == "CCO"
 
 
+def test_ingest_orthology_writes_only_high_confidence_target_homologues(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    target_dir = ot_dir / "target"
+    target_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "id": "ENSG00000139618",
+                "approvedSymbol": "BRCA2",
+                "homologues": [
+                    {
+                        "speciesId": "10090",
+                        "speciesName": "Mouse",
+                        "homologyType": "ortholog_one2one",
+                        "targetGeneId": "ENSMUSG00000041147",
+                        "isHighConfidence": "1",
+                        "targetGeneSymbol": "Brca2",
+                        "queryPercentageIdentity": 59.5,
+                        "targetPercentageIdentity": 58.0,
+                    },
+                    {
+                        "speciesId": "9606",
+                        "speciesName": "Human",
+                        "homologyType": "within_species_paralog",
+                        "targetGeneId": "ENSG00000012048",
+                        "isHighConfidence": "NULL",
+                        "targetGeneSymbol": "BRCA1",
+                    },
+                    {
+                        "speciesId": "10116",
+                        "speciesName": "Rat",
+                        "homologyType": "ortholog_one2one",
+                        "targetGeneId": "ENSRNOG00000033202",
+                        "isHighConfidence": "0",
+                        "targetGeneSymbol": "Brca2",
+                    },
+                ],
+            }
+        ]
+    ).to_parquet(target_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+
+    assert ingest_orthology(ot_dir, kg_dir, root) == {
+        "gene": 2,
+        "gene_ortholog_gene": 1,
+    }
+    genes = kg_storage.read_nodes(root, "gene")
+    edges = kg_storage.read_edges(root, "gene_ortholog_gene")
+
+    assert set(genes["id"]) == {"ENSG00000139618", "ENSMUSG00000041147"}
+    assert set(genes["source"]) == {"OpenTargets/target.homologues"}
+    assert edges.loc[0, "x_id"] == "ENSG00000139618"
+    assert edges.loc[0, "y_id"] == "ENSMUSG00000041147"
+    assert edges.loc[0, "relation"] == "gene_ortholog_gene"
+    assert edges.loc[0, "source"] == "OpenTargets/target.homologues"
+    assert edges.loc[0, "homology_type"] == "ortholog_one2one"
+    assert edges.loc[0, "species_id"] == "10090"
+    assert bool(edges.loc[0, "is_high_confidence"])
+
+
 def test_ingest_targets_writes_ensp_protein_nodes(tmp_path: Path) -> None:
     ot_dir = tmp_path / "opentargets"
     target_dir = ot_dir / "target"
@@ -270,6 +333,7 @@ def test_ingest_expression_normalizes_tissue_ids_and_adds_gene_stubs(tmp_path: P
     assert ingest_expression(ot_dir, kg_dir, root) == {
         "tissue_expresses_gene": 1,
         "cell_type_expresses_gene": 1,
+        "cell_type_expresses_protein": 0,
     }
 
     tissue_edges = kg_storage.read_edges(root, "tissue_expresses_gene")
@@ -280,6 +344,52 @@ def test_ingest_expression_normalizes_tissue_ids_and_adds_gene_stubs(tmp_path: P
     assert tissue_edges.loc[0, "y_id"] == "ENSG00000123456"
     assert cell_type_edges.loc[0, "x_id"] == "CL_0000540"
     assert set(genes["id"]) == {"ENSG00000123456"}
+
+
+def test_ingest_expression_projects_cell_type_gene_expression_to_proteins(tmp_path: Path) -> None:
+    ot_dir = tmp_path / "opentargets"
+    expression_dir = ot_dir / "expression"
+    expression_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "id": "ENSG00000139618",
+                "tissues": [{"efo_code": "CL_0000540", "rna": {"value": 3.0, "level": 2}}],
+            },
+        ]
+    ).to_parquet(expression_dir / "part-000.parquet", index=False)
+
+    kg_dir = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_dir))
+    kg_storage.write_nodes(
+        root,
+        "protein",
+        pd.DataFrame(
+            [
+                {
+                    "id": "ENSP00000369497",
+                    "ensembl_gene_id": "ENSG00000139618",
+                    "uniprot_id": None,
+                    "refseq_protein": None,
+                    "pdb_ids": None,
+                    "name": "BRCA2 protein",
+                    "source": "OpenTargets/target",
+                }
+            ]
+        ),
+    )
+
+    assert ingest_expression(ot_dir, kg_dir, root) == {
+        "tissue_expresses_gene": 0,
+        "cell_type_expresses_gene": 1,
+        "cell_type_expresses_protein": 1,
+    }
+
+    protein_edges = kg_storage.read_edges(root, "cell_type_expresses_protein")
+    assert protein_edges.loc[0, "x_id"] == "CL_0000540"
+    assert protein_edges.loc[0, "y_id"] == "ENSP00000369497"
+    assert protein_edges.loc[0, "y_type"] == "protein"
+    assert protein_edges.loc[0, "source"] == "OpenTargets/HPA;projected_via_gene_encodes_protein"
 
 
 def test_ingest_disease_phenotype_normalizes_ids_and_adds_stubs(tmp_path: Path) -> None:
@@ -609,10 +719,28 @@ def test_ingest_target_essentiality_writes_cell_line_context(tmp_path: Path) -> 
 
     kg_dir = tmp_path / "kg"
     root = kg_storage.open_kg_root(str(kg_dir))
+    kg_storage.write_nodes(
+        root,
+        "protein",
+        pd.DataFrame(
+            [
+                {
+                    "id": "ENSP00000123456",
+                    "ensembl_gene_id": "ENSG00000123456",
+                    "uniprot_id": None,
+                    "refseq_protein": None,
+                    "pdb_ids": None,
+                    "name": "example protein",
+                    "source": "OpenTargets/target",
+                }
+            ]
+        ),
+    )
     results = ingest_target_essentiality(ot_dir, kg_dir, root)
 
     assert results["cell_line"] == 1
     assert results["cell_line_expresses_gene"] == 1
+    assert results["cell_line_expresses_protein"] == 1
     assert results["cell_line_derived_from_tissue"] == 1
     assert results["cell_line_associated_disease"] == 1
 

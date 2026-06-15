@@ -158,6 +158,34 @@ Prioritize relations that already exist and have source rows:
 7. `molecule_treats_disease`, `molecule_contraindicates_disease` from `known_drug` / clinical-indication-like sources. **Next tranche after mutation-disease.** Treat indication and contraindication as separate collapsed clinical assertions, supported by OpenTargets/ChEMBL known-drug source rows, clinical trial IDs, approval/status fields, disease/drug normalization provenance, and optional publication references. Do not model a paper or clinical trial as the primary edge; use it as support metadata for the treatment/contraindication edge. Audit indications and contraindications independently because polarity errors are high-impact.
 8. `enhancer_regulates_gene` and enhancer context edges from enhancer-to-gene/activity sources.
 
+#### Clinical / phenotype source-policy tranche investigated 2026-06-15
+
+This tranche deliberately does **not** backfill canonical evidence from the
+current clinical edge files. The safest finding is that the available canonical
+clinical assertions are legacy TxGNN collapsed edges without retained source-row
+provenance, while the archived OpenTargets clinical source directories expected
+by the importer are present but empty. Creating evidence rows from those edges
+alone would only restate the edge as ``source=TxGNN`` and would not meet the
+source-aware evidence policy.
+
+Observed state from the read-only KG/archive inspection:
+
+| Relation / candidate | Canonical edge state | Source mapping required for evidence | Archive/source state | Safe action |
+| --- | ---: | --- | --- | --- |
+| `molecule_treats_disease` | `14,135` rows, all `source=TxGNN`, columns only `x_id`, `x_type`, `y_id`, `y_type`, `relation`, `display_relation`, `source`, `credibility` | OpenTargets `drug_indication`: `id` → molecule CHEMBL ID; `approvedIndications[]` → disease IDs with predicate `approved_indication`; `indications[]` entries `{disease, maxPhaseForIndication, ...}` → disease IDs with phase/status evidence. Evidence should use `source=OpenTargets`, `source_dataset=drug_indication`, a stable drug/disease/phase/status composite `source_record_id`, optional `evidence_score`/`direction` blank, and `predicate` such as `approved_indication` or `clinical_indication_phase_<n>`. | `/mnt/gcs/jouvencekb/kg/local-archive/home-ubuntu-data-txgnn-20260611T0907Z/txgnn-drug-molecule-scratch/opentargets/drug_indication` exists but contains no Parquet files; `/opentargets/evidence_known_drug` also exists but contains no Parquet files. | Block source-aware backfill until OpenTargets `drug_indication` or `known_drug` source rows are restored/downloaded. Do not fabricate support from the TxGNN-only edge file. |
+| `molecule_contraindicates_disease` | `30,675` rows, all `source=TxGNN`, same minimal columns | No usable OpenTargets contraindication mapping is present in the archived `drug_indication` importer: the current `ingest_indication` code initializes `contra_rows` but does not populate contraindication source rows. A safe tranche needs an explicit source such as DrugBank/SIDER/ChEMBL safety labeling with molecule ID, disease/condition ID, polarity=`contraindication`, source record/version, and optional label/trial/publication provenance. | Same empty OpenTargets clinical directories as above; no archive path found for a contraindication-specific source table. | Block source-aware backfill until a contraindication source is selected and archived. Audit separately from indications because polarity errors are high-impact. |
+| `disease_manifests_in_tissue` | no canonical edge file | Needs a disease/phenotype-to-anatomy source with explicit disease/phenotype, tissue/anatomy ID, predicate, and provenance, e.g. curated HPO/UBERON, disease atlas, or GTEx-like disease tissue annotation. | No source archive or canonical file found for this relation. Existing tissue files are expression/context edges, not disease manifestations. | Keep unexported; do not derive disease→tissue edges from expression or phenotype co-occurrence without a source-policy decision. |
+| `phenotype_observed_in_tissue` | no canonical edge file | Needs phenotype-to-anatomy observations with HP/UBERON (or mapped tissue) endpoints and source/study/provenance. | No source archive or canonical file found for this relation. Existing phenotype files are HPO disease phenotype and legacy phenotype-associated molecule/protein edges. | Keep unexported; add only after a concrete phenotype-anatomy source is selected. |
+
+Implementation implication: when OpenTargets clinical source rows are restored,
+add a source-aware backfill helper rather than using generic edge backfill. It
+should join only source rows whose `(molecule, disease, relation)` endpoints are
+already canonical, preserve phase/status/source-row keys, write local
+`evidence/molecule_treats_disease.parquet`, and run
+`audit_edge_evidence --relations molecule_treats_disease` before any promotion.
+Contraindications need an independent source and audit path; they should not be
+inferred as the inverse or complement of treatment indications.
+
 Current evidence files in canonical GCS/FUSE (read-only Parquet metadata audit,
 2026-06-15):
 
@@ -176,6 +204,26 @@ Relations with canonical edge files but no source-aware evidence yet include
 expression and cell-line/DepMap edges, organism/dataset provenance edges, and
 legacy paper-mention indexes. Treat these as the active backlog rather than
 claiming the whole canonical graph is fully evidenced.
+
+## Expression/cell-line/tissue/phenotype missing-edge source triage
+
+Read-only tranche selection on 2026-06-15 found two safe non-GCS backfills that
+can be generated from existing OpenTargets-derived archived/source inputs once a
+parent-side canonical temp root is prepared:
+
+| Relation | Proposed source | Export policy |
+| --- | --- | --- |
+| `cell_type_expresses_protein` | Existing OpenTargets `expression` (`cell_type_expresses_gene`) projected through registered protein nodes' `ensembl_gene_id` / `gene_encodes_protein` mapping | Safe derived edge. Preserve expression metadata (`tpm`, `expression_level`) and add `gene_id`; source is `OpenTargets/HPA;projected_via_gene_encodes_protein`. |
+| `cell_line_expresses_protein` | Existing OpenTargets `target_essentiality` / DepMap expression (`cell_line_expresses_gene`) projected through registered protein nodes' `ensembl_gene_id` / `gene_encodes_protein` mapping | Safe derived edge. Preserve DepMap metadata (`expression`, `gene_effect`, `is_essential`) and add `gene_id`; source is `OpenTargets/DepMap;projected_via_gene_encodes_protein`. |
+| `cell_line_responds_to_molecule` | PRISM/GDSC/CTRP-like drug-screen response table | Do not synthesize from pharmacogenomics or target essentiality; wait for an explicit cell-line×molecule response source with effect/viability metric. |
+| `disease_manifests_in_tissue` | Disease/tissue pathology source (e.g. curated UBERON/EFO mapping) | Do not infer from disease phenotype or cell-line tissue context. |
+| `phenotype_observed_in_tissue` | HPO phenotype anatomical-context annotations or curated phenotype↔UBERON mapping | Do not infer from `disease_has_phenotype` plus `disease_manifests_in_tissue` until both sources and directionality are explicit. |
+| `phenotype_associated_cell_type` | Cell Ontology / HPO or disease scRNA enrichment source | Existing direction is legacy phenotype→cell_type; for new exports prefer adding a forward `cell_type_associated_phenotype` relation first, then keep legacy readable if needed. |
+| `gene_coexpressed_gene` | Coexpression network with explicit threshold/cohort (GTEx/HPA/CellxGene-derived) | Potentially huge; require thresholding and evidence policy before export. |
+
+No canonical GCS files should be written by child lanes; promote only after the
+parent has run endpoint validation and LaminDB parity checks on a bounded temp
+root.
 
 ### Phase E3 — Recompute collapsed edge credibility from support
 

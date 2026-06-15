@@ -65,6 +65,34 @@ six. The active evidence backlog starts with `mutation_associated_disease`, then
 clinical `molecule_treats_disease` / `molecule_contraindicates_disease`, then
 enhancer/expression/cell-line support tranches.
 
+## Source policy for next gene-gene tranches
+
+- `gene_ortholog_gene`: the only currently mapped non-GCS exporter is
+  `manage_db.ingest_opentargets --datasets orthology`, which reads the
+  OpenTargets `target.homologues` field exactly. It keeps only `ENSG` human
+  query genes with high-confidence (`isHighConfidence` true/`1`) entries whose
+  `homologyType` starts with `ortholog_`, writes endpoint Ensembl gene stubs
+  needed for local validation, and rejects within-species/other paralogues.
+  This is intentionally **not** in `ALL_DATASETS`; run against a temp root first:
+
+  ```bash
+  uv run python -m manage_db.ingest_opentargets \
+    --data-dir /tmp/txgnn-orthology-smoke --datasets orthology --no-download
+  uv run python -m manage_db.validate_kg /tmp/txgnn-orthology-smoke/kg \
+    --threads 2 --duckdb-memory-limit 1GB \
+    --duckdb-temp-dir /tmp/txgnn-orthology-smoke/duckdb-tmp
+  ```
+
+  Replace `/tmp/txgnn-orthology-smoke/opentargets/target` with a local or
+  read-only copy of the OT `target` Parquet directory before running. Do not
+  promote to canonical GCS until the parent has reviewed the non-human gene-node
+  policy and LaminDB parity implications.
+- `gene_coexpressed_gene`: no exact source mapping is selected yet. Do not infer
+  coexpression from already-promoted tissue/cell-type expression edges or emit an
+  empty placeholder. Pick an explicit coexpression network source (for example a
+  GTEx/HPA correlation product with thresholding and tissue context policy), add
+  tests on a temp root, then export.
+
 ## Node ontology namespace coverage
 
 Use this companion audit to summarize physical node ID namespaces and populated

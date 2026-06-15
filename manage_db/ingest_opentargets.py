@@ -357,6 +357,33 @@ def _normalize_hp_id(value: str) -> str:
     return normalize_ontology_curie(value) or value
 
 
+def _build_gene_to_protein_map(root: kg_storage.KGRoot) -> dict[str, list[str]]:
+    """Return Ensembl gene ID → ENSP protein node IDs from registered proteins."""
+    try:
+        proteins = kg_storage.read_nodes(
+            root,
+            NodeType.PROTEIN.value,
+            columns=["id", "ensembl_gene_id"],
+        )
+    except Exception as exc:
+        log.info("No protein nodes available for gene→protein projection: %s", exc)
+        return {}
+
+    required = {"id", "ensembl_gene_id"}
+    if proteins.empty or not required <= set(proteins.columns):
+        return {}
+
+    proteins = proteins[list(required)].dropna()
+    proteins = proteins[
+        proteins["id"].astype(str).str.startswith("ENSP")
+        & proteins["ensembl_gene_id"].astype(str).str.startswith("ENSG")
+    ]
+    mapping: dict[str, list[str]] = {}
+    for gene_id, protein_id in proteins[["ensembl_gene_id", "id"]].drop_duplicates().itertuples(index=False):
+        mapping.setdefault(str(gene_id), []).append(str(protein_id))
+    return mapping
+
+
 def _write_chunk(df: pd.DataFrame, chunk_dir: Path) -> None:
     """Append *df* as a new numbered parquet file in *chunk_dir* (no read-back)."""
     if df.empty:
@@ -715,6 +742,120 @@ def ingest_targets(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
         log.info("  %d transcript→protein edges saved", len(transcript_protein_edges))
     log.info("  %d gene nodes saved", len(gene_df))
     return len(gene_df)
+
+
+def ingest_orthology(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
+    """Ingest exact OpenTargets target homologues as gene→gene orthology edges.
+
+    Source mapping is intentionally narrow and auditable:
+
+    * input dataset: ``target``
+    * input field: ``homologues`` (OpenTargets target records)
+    * accepted rows: human query genes (``ENSG``) with homologue entries whose
+      ``homologyType`` starts with ``ortholog_`` and ``isHighConfidence`` is
+      true/``"1"``
+    * rejected rows: within-human paralogues, other paralogues, missing target
+      gene IDs, self edges, and non-Ensembl-gene targets
+
+    The exporter also writes minimal endpoint gene stubs for accepted Ensembl
+    gene IDs so temp-root validation can anti-join edges exactly.  It is
+    not included in ``ALL_DATASETS``; run explicitly with ``--datasets orthology``
+    after reviewing the source policy for a canonical promotion.
+    """
+    target_path = ot_dir / "target"
+    log.info("Loading target homologues from %s", target_path)
+
+    df = _read_parquet_dir_available(
+        target_path,
+        columns=["id", "approvedSymbol", "homologues"],
+    )
+    if "homologues" not in df.columns:
+        raise ValueError("OpenTargets target dataset does not expose a 'homologues' column")
+
+    endpoint_gene_rows: dict[str, dict] = {}
+    edge_rows: list[dict] = []
+
+    def _is_high_confidence(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        text = str(value).strip().lower()
+        return text in {"1", "true", "t", "yes"}
+
+    for _, row in df.iterrows():
+        query_gene_id = str(row.get("id") or "").strip()
+        if not query_gene_id.startswith("ENSG"):
+            continue
+        query_symbol = str(row.get("approvedSymbol") or "").strip()
+        for homologue in _to_list(row.get("homologues")):
+            if not isinstance(homologue, dict):
+                continue
+            homology_type = str(homologue.get("homologyType") or "").strip()
+            if not homology_type.startswith("ortholog_"):
+                continue
+            if not _is_high_confidence(homologue.get("isHighConfidence")):
+                continue
+            target_gene_id = str(homologue.get("targetGeneId") or "").strip()
+            if not target_gene_id.startswith("ENS") or target_gene_id == query_gene_id:
+                continue
+
+            target_symbol = str(homologue.get("targetGeneSymbol") or "").strip()
+            species_id = str(homologue.get("speciesId") or "").strip()
+            species_name = str(homologue.get("speciesName") or "").strip()
+            endpoint_gene_rows[query_gene_id] = {
+                "id": query_gene_id,
+                "name": query_symbol or query_gene_id,
+                "description": None,
+                "biotype": None,
+                "ncbi_gene_id": None,
+                "hgnc_id": None,
+                "uniprot_id": None,
+                "gene_name": query_symbol or None,
+                "source": "OpenTargets/target.homologues",
+            }
+            endpoint_gene_rows[target_gene_id] = {
+                "id": target_gene_id,
+                "name": target_symbol or target_gene_id,
+                "description": f"{species_name} ortholog of {query_symbol or query_gene_id}" if species_name else None,
+                "biotype": None,
+                "ncbi_gene_id": None,
+                "hgnc_id": None,
+                "uniprot_id": None,
+                "gene_name": target_symbol or None,
+                "source": "OpenTargets/target.homologues",
+            }
+            edge_rows.append(_make_edge(
+                x_id=query_gene_id,
+                x_type=NodeType.GENE.value,
+                y_id=target_gene_id,
+                y_type=NodeType.GENE.value,
+                relation="gene_ortholog_gene",
+                display_relation="ortholog of",
+                source="OpenTargets/target.homologues",
+                credibility=Credibility.ESTABLISHED_FACT,
+                homology_type=homology_type,
+                species_id=species_id or None,
+                species_name=species_name or None,
+                is_high_confidence=True,
+                query_percentage_identity=homologue.get("queryPercentageIdentity"),
+                target_percentage_identity=homologue.get("targetPercentageIdentity"),
+            ))
+
+    if endpoint_gene_rows:
+        _save_node_df(pd.DataFrame(endpoint_gene_rows.values()), root, NodeType.GENE.value)
+    if edge_rows:
+        edge_df = pd.DataFrame(edge_rows).drop_duplicates(
+            subset=["x_id", "y_id", "relation"],
+            keep="first",
+        )
+        _save_edge_df(edge_df, root, "gene_ortholog_gene")
+    else:
+        edge_df = pd.DataFrame()
+
+    log.info("  %d orthology endpoint gene stubs saved", len(endpoint_gene_rows))
+    log.info("  %d gene orthology edges saved", len(edge_df))
+    return {"gene": len(endpoint_gene_rows), "gene_ortholog_gene": len(edge_df)}
 
 
 # ---------------------------------------------------------------------------
@@ -1812,6 +1953,7 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
     chunks_base = out_dir / ".chunks" / "target_essentiality"
     cell_line_chunks = chunks_base / "cell_line"
     expr_chunks = chunks_base / "cell_line_expresses_gene"
+    protein_expr_chunks = chunks_base / "cell_line_expresses_protein"
     tissue_chunks = chunks_base / "cell_line_derived_from_tissue"
     disease_chunks = chunks_base / "cell_line_associated_disease"
     dataset_cell_line_chunks = chunks_base / "dataset_contains_cell_line"
@@ -1834,6 +1976,7 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
     )
 
     seen_cell_lines: set[str] = set()
+    gene_to_proteins = _build_gene_to_protein_map(root)
 
     for chunk in _read_parquet_dir_chunked(
         te_dir,
@@ -1842,6 +1985,7 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
     ):
         cell_line_rows: list[dict[str, object]] = []
         expr_rows: list[dict[str, object]] = []
+        protein_expr_rows: list[dict[str, object]] = []
         tissue_rows: list[dict[str, object]] = []
         disease_rows: list[dict[str, object]] = []
         dataset_cell_line_rows: list[dict[str, object]] = []
@@ -1937,6 +2081,21 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
                             expression=expression,
                             is_essential=is_essential,
                         ))
+                        for protein_id in gene_to_proteins.get(gene_id, []):
+                            protein_expr_rows.append(_make_edge(
+                                x_id=cell_line_id,
+                                x_type=NodeType.CELL_LINE.value,
+                                y_id=protein_id,
+                                y_type=NodeType.PROTEIN.value,
+                                relation="cell_line_expresses_protein",
+                                display_relation="expresses protein",
+                                source="OpenTargets/DepMap;projected_via_gene_encodes_protein",
+                                credibility=Credibility.ESTABLISHED_FACT,
+                                gene_id=gene_id,
+                                gene_effect=gene_effect,
+                                expression=expression,
+                                is_essential=is_essential,
+                            ))
 
                         if tissue_id.startswith("UBERON:"):
                             tissue_rows.append(_make_edge(
@@ -1977,6 +2136,7 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
         for df, chunk_dir in [
             (pd.DataFrame(cell_line_rows), cell_line_chunks),
             (pd.DataFrame(expr_rows), expr_chunks),
+            (pd.DataFrame(protein_expr_rows), protein_expr_chunks),
             (pd.DataFrame(tissue_rows), tissue_chunks),
             (pd.DataFrame(disease_rows), disease_chunks),
             (pd.DataFrame(dataset_cell_line_rows), dataset_cell_line_chunks),
@@ -1997,6 +2157,12 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
         expr_chunks,
         root,
         "cell_line_expresses_gene",
+        dedup_cols=["x_id", "y_id", "relation", "source"],
+    )
+    results["cell_line_expresses_protein"] = _finalize_edge_chunks_streaming(
+        protein_expr_chunks,
+        root,
+        "cell_line_expresses_protein",
         dedup_cols=["x_id", "y_id", "relation", "source"],
     )
     results["cell_line_derived_from_tissue"] = _finalize_edge_chunks_streaming(
@@ -2204,7 +2370,9 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
 
     tissue_rows:    list[dict] = []
     cell_type_rows: list[dict] = []
+    cell_type_protein_rows: list[dict] = []
     seen_genes: set[str] = set()
+    gene_to_proteins = _build_gene_to_protein_map(root)
 
     for chunk in _read_parquet_dir_chunked(
         exp_dir, columns=["id", "tissues"], chunksize=50_000
@@ -2258,6 +2426,19 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
                         credibility=int(Credibility.ESTABLISHED_FACT),
                         **extra,
                     ))
+                    for protein_id in gene_to_proteins.get(gene_id, []):
+                        cell_type_protein_rows.append(_make_edge(
+                            x_id=efo_code,
+                            x_type=NodeType.CELL_TYPE.value,
+                            y_id=protein_id,
+                            y_type=NodeType.PROTEIN.value,
+                            relation="cell_type_expresses_protein",
+                            display_relation="expresses",
+                            source="OpenTargets/HPA;projected_via_gene_encodes_protein",
+                            credibility=int(Credibility.ESTABLISHED_FACT),
+                            gene_id=gene_id,
+                            **extra,
+                        ))
 
     dedup = ["x_id", "y_id", "relation", "source"]
     results: dict[str, int] = {}
@@ -2292,6 +2473,7 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
     for relation, rows in [
         ("tissue_expresses_gene",    tissue_rows),
         ("cell_type_expresses_gene", cell_type_rows),
+        ("cell_type_expresses_protein", cell_type_protein_rows),
     ]:
         if not rows:
             log.warning("ingest_expression: no rows for %s", relation)
@@ -3399,6 +3581,8 @@ def ingest_enhancers(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> di
 
 DATASET_FUNCTIONS = {
     "target":                   ingest_targets,
+    "orthology":                ingest_orthology,
+    "target_homologues":        ingest_orthology,
     "disease":                  ingest_diseases,
     "drug_molecule":            ingest_drugs,
     "molecule":                 ingest_drugs,   # alias

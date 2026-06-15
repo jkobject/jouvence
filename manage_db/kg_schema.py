@@ -503,7 +503,7 @@ RELATIONS: list[Relation] = [
         NodeType.TRANSCRIPT,
         RelationKind.REGULATORY,
         True,
-        "TSS-specific regulation",
+        "transcript-specific/TSS-specific regulation; require a source that directly names ENST/TSS endpoints and is not inferred by expanding enhancer→gene to all transcripts",
     ),
     Relation(
         "enhancer_active_in_cell_type",
@@ -527,7 +527,7 @@ RELATIONS: list[Relation] = [
         NodeType.DISEASE,
         RelationKind.DISEASE_ASSOC,
         False,
-        "GWAS overlap",
+        "GWAS/credible-set variant overlap with enhancer interval plus disease/study mapping; do not infer transitively through enhancer→gene→disease",
     ),
     # ── Expression ──────────────────────────────────────────────────────────
     Relation(
@@ -568,7 +568,7 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.EXPRESSION,
         True,
-        "CyTOF / sc-proteomics",
+        "OpenTargets/HPA RNA projected through Ensembl gene→protein mapping; replace or supplement with CyTOF / sc-proteomics when curated source is selected",
     ),
     Relation(
         "cell_line_expresses_gene",
@@ -584,7 +584,7 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.EXPERIMENTAL,
         True,
-        "Proteomics (CCLE…)",
+        "OpenTargets/DepMap expression projected through Ensembl gene→protein mapping; replace or supplement with CCLE proteomics when curated source is selected",
     ),
     # ── Physical ────────────────────────────────────────────────────────────
     Relation(
