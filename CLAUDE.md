@@ -269,21 +269,28 @@ source, credibility, [additional metadata columns...]
 - maybe = sometimes direct depending on source
 - no = associative / statistical / indirect
 
+Schema-cleanup and evidence doctrine live in
+`docs/evidence_and_edge_schema_plan.md`. In short: already-promoted legacy
+shortcut/literature edges remain readable until an explicit compatibility
+migration archives or rewrites them; new imports should treat papers and source
+records primarily as evidence/support metadata for biological edges, not as the
+primary biological assertion.
+
 | Relation                             | Source       | Target       | Kind              | Direct? | GCS? |      Rows | Comment                                                                   |
 | ------------------------------------ | ------------ | ------------ | ----------------- | ------- | ---- | --------: | ------------------------------------------------------------------------- |
 | `gene_has_transcript`                | `gene`       | `transcript` | `central_dogma`   | yes     | yes  |   507,365 | OpenTargets target transcripts                                             |
 | `transcript_encodes_protein`         | `transcript` | `protein`    | `central_dogma`   | yes     | yes  |   233,995 | OpenTargets ENST→ENSP translations                                         |
-| `gene_encodes_protein`               | `gene`       | `protein`    | `central_dogma`   | no      | yes  |   233,995 | OpenTargets ENSG→ENSP translations                                        |
+| `gene_encodes_protein`               | `gene`       | `protein`    | `central_dogma`   | no      | yes  |   233,995 | deprecated shortcut; prefer `gene_has_transcript` + `transcript_encodes_protein` |
 | `transcript_alternative_transcript`  | `transcript` | `transcript` | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
-| `mutation_in_gene`                   | `mutation`   | `gene`       | `genetic`         | yes     | no   |         - | 26.03 `variant` staged; smoke shows full relation is too dense for blind promotion |
-| `mutation_associated_gene`           | `mutation`   | `gene`       | `genetic`         | no      | yes  |   535,093 | OpenTargets L2G GWAS credible-set join; promoted 2026-06-10 with zero dangling endpoints |
+| `mutation_in_gene`                   | `mutation`   | `gene`       | `genetic`         | yes     | no   |         - | physical locus/containment only; do not conflate with L2G association      |
+| `mutation_associated_gene`           | `mutation`   | `gene`       | `genetic`         | no      | yes  |   535,093 | OpenTargets L2G/GWAS association; promoted 2026-06-10 with zero dangling endpoints |
 | `mutation_affects_transcript`        | `mutation`   | `transcript` | `genetic`         | yes     | no   |         - | 26.03 `variant` staged; smoke shows full relation is too dense for blind promotion |
 | `mutation_causes_protein_change`     | `mutation`   | `protein`    | `genetic`         | yes     | yes  |   177,735 | promoted 2026-06-10 from bounded variant scratch; ENSP protein endpoints             |
 | `mutation_overlaps_enhancer`         | `mutation`   | `enhancer`   | `genetic`         | yes     | no   |         - | not exported yet                                                          |
 | `mutation_associated_disease`        | `mutation`   | `disease`    | `genetic`         | no      | yes  | 4,656,171 | OpenTargets known-variant + GWAS disease evidence promoted 2026-06-11 with zero dangling endpoints |
 | `mutation_causes_phenotype`          | `mutation`   | `phenotype`  | `genetic`         | no      | no   |         - | not exported yet                                                          |
 | `mutation_affects_molecule_response` | `mutation`   | `molecule`   | `pharmacological` | no      | yes  |     4,866 | OpenTargets pharmacogenomics                                              |
-| `mutation_associated_cell_type`      | `mutation`   | `cell_type`  | `genetic`         | no      | no   |         - | not exported yet                                                          |
+| `mutation_associated_cell_type`      | `mutation`   | `cell_type`  | `genetic`         | no      | no   |         - | deprecated candidate unless a concrete eQTL/cell-type source is selected   |
 | `gene_ortholog_gene`                 | `gene`       | `gene`       | `genetic`         | yes     | no   |         - | not exported yet                                                          |
 | `enhancer_regulates_gene`            | `enhancer`   | `gene`       | `regulatory`      | no      | yes  | 48,808,144 | OpenTargets enhancer-to-gene evidence; endpoint-validated                 |
 | `enhancer_regulates_transcript`      | `enhancer`   | `transcript` | `regulatory`      | yes     | no   |         - | not exported yet                                                          |
@@ -330,12 +337,12 @@ source, credibility, [additional metadata columns...]
 | `cell_line_derived_from_cell_type`   | `cell_line`  | `cell_type`  | `experimental`    | yes     | no   |         - | not exported yet                                                          |
 | `cell_line_derived_from_tissue`      | `cell_line`  | `tissue`     | `experimental`    | yes     | yes  |     1,092 | OpenTargets DepMap cell line tissue provenance                            |
 | `cell_line_from_organism`            | `cell_line`  | `organism`   | `metadata`        | yes     | no   |         - | not exported yet                                                          |
-| `cell_line_associated_disease`       | `cell_line`  | `disease`    | `experimental`    | no      | no   |         - | not exported yet                                                          |
+| `cell_line_associated_disease`       | `cell_line`  | `disease`    | `experimental`    | no      | no   |         - | deprecated candidate; prefer `cell_line_models_disease` when curated       |
 | `organism_has_gene`                  | `organism`   | `gene`       | `genetic`         | yes     | yes  |   109,325 | human-only KG provenance; zero dangling endpoints                         |
-| `organism_models_disease`            | `organism`   | `disease`    | `experimental`    | no      | no   |         - | not exported yet                                                          |
+| `organism_models_disease`            | `organism`   | `disease`    | `experimental`    | no      | no   |         - | deprecated/deprioritized for current human-only KG                         |
 | `organism_has_tissue`                | `organism`   | `tissue`     | `ontological`     | yes     | yes  |    16,061 | human-only KG anatomy provenance; zero dangling endpoints                 |
-| `paper_mentions_gene`                | `paper`      | `gene`       | `literature`      | no      | yes  | 7,177,163 | Europe PMC; graph-valid                                                   |
-| `paper_mentions_disease`             | `paper`      | `disease`    | `literature`      | no      | yes  | 6,492,130 | Europe PMC; graph-valid                                                   |
+| `paper_mentions_gene`                | `paper`      | `gene`       | `literature`      | no      | yes  | 7,177,163 | legacy literature index; future biological support should use edge evidence |
+| `paper_mentions_disease`             | `paper`      | `disease`    | `literature`      | no      | yes  | 6,492,130 | legacy literature index; future biological support should use edge evidence |
 | `paper_mentions_protein`             | `paper`      | `protein`    | `literature`      | no      | no   |         - | not exported yet                                                          |
 | `paper_mentions_molecule`            | `paper`      | `molecule`   | `literature`      | no      | no   |         - | not exported yet                                                          |
 | `paper_mentions_mutation`            | `paper`      | `mutation`   | `literature`      | no      | no   |         - | not exported yet                                                          |
@@ -356,6 +363,23 @@ source, credibility, [additional metadata columns...]
 | `3`   | Established fact (curated DB, no ambiguity)                        |
 | `2`   | Multiple independent evidence (papers from distinct author groups) |
 | `1`   | Single evidence (one paper, possibly same authors)                 |
+
+### Evidence Layer
+
+Evidence/source records should be modeled as support metadata for edge
+assertions, not primarily as standalone biological edges. The intended storage
+shape is `evidence/{relation}.parquet`, keyed by `(relation, x_id, y_id)` /
+`edge_key`, with support fields such as `evidence_type`, `source`,
+`source_dataset`, `source_record_id`, `paper_id`, `dataset_id`, `study_id`,
+`evidence_score`, effect-size/statistical fields, and extraction provenance.
+
+`paper` remains a node type for bibliographic provenance, features, and optional
+literature graph tasks. Existing `paper_mentions_gene` and
+`paper_mentions_disease` canonical files remain readable as a legacy literature
+index, but new biological/pharmacological/disease-association imports should
+prefer evidence records that support existing edge relations. See
+`docs/evidence_and_edge_schema_plan.md` for the OpenTargets-first evidence
+implementation plan.
 
 ### Storage Layer
 
