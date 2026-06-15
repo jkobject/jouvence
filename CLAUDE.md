@@ -382,14 +382,29 @@ prefer evidence records that support existing edge relations. See
 implementation plan. The first implementation tranche adds `manage_db.kg_evidence`,
 `manage_db.audit_edge_evidence`, `manage_db.backfill_edge_evidence`, and
 Reactome evidence support for `disease_associated_gene` /
-`disease_involves_pathway`. Canonical evidence files now exist at
-`evidence/disease_associated_gene.parquet` (`2,928` support records),
-`evidence/disease_involves_pathway.parquet` (`2,296` support records), and
-`evidence/mutation_affects_molecule_response.parquet` (`18,595` support records:
-`5,543` OpenTargets pharmacogenomics source-record supports + `13,052` PMID
-paper supports). Audits report zero unsupported/orphan records in
-`.omoc/reports/hermes-reactome-evidence-audit-*.json` and
-`.omoc/reports/hermes-pgx-evidence-audit-*.json`.
+`disease_involves_pathway`, PGx evidence support for
+`mutation_affects_molecule_response`, variant/protein-change evidence support,
+and conservative MoA/target support. Canonical evidence files now exist at:
+
+- `evidence/disease_associated_gene.parquet` — `2,928` Reactome support records.
+- `evidence/disease_involves_pathway.parquet` — `2,296` Reactome support records.
+- `evidence/mutation_affects_molecule_response.parquet` — `18,595` support records
+  (`5,543` OpenTargets pharmacogenomics source-record supports + `13,052` PMID
+  paper supports).
+- `evidence/mutation_associated_gene.parquet` — `535,093` OpenTargets L2G support
+  records preserving `studyLocusId` row-level support.
+- `evidence/mutation_causes_protein_change.parquet` — `177,735` OpenTargets
+  variant/protein-change support records.
+- `evidence/molecule_targets_protein.parquet` — `41,239` conservative canonical
+  edge-derived supports, including `14,559` OpenTargets MoA rows with
+  `drug_mechanism_of_action` metadata and `26,680` legacy TxGNN supports.
+
+Audits report zero unsupported/orphan records in
+`.omoc/reports/hermes-reactome-evidence-audit-*.json`,
+`.omoc/reports/hermes-pgx-evidence-audit-*.json`, and
+`.omoc/reports/hermes-three-evidence-audit-*.json`. For MoA, evidence preserves
+the canonical legacy `molecule_targets_protein` `y_type=gene` endpoints; do not
+remap ENSG targets to ENSP until a separate endpoint migration is designed.
 
 ### Storage Layer
 

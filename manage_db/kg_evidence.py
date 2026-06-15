@@ -66,6 +66,15 @@ _DEDUP_COLUMNS = [
     "predicate",
 ]
 
+# Historical canonical exports currently store OpenTargets mechanism-of-action
+# rows in the ``molecule_targets_protein`` relation with Ensembl gene endpoints
+# (``y_type=gene``), even though the schema-level relation target is protein.
+# Evidence must preserve the actual canonical edge row type so audit joins by
+# relation|x_id|y_id remain truthful; do not remap ENSG targets to ENSP here.
+_LEGACY_RELATION_TYPE_EXCEPTIONS = {
+    ("molecule_targets_protein", "molecule", "gene"),
+}
+
 
 def evidence_schema() -> pa.Schema:
     fields = []
@@ -114,12 +123,19 @@ def _coerce_evidence_frame(table: pa.Table | pd.DataFrame, relation: str) -> pd.
 
     spec = RELATION_BY_NAME[relation]
     if not df.empty:
-        bad_x = df.loc[df["x_type"].astype(str) != spec.source.value, "x_type"].astype(str).unique()
-        bad_y = df.loc[df["y_type"].astype(str) != spec.target.value, "y_type"].astype(str).unique()
-        if len(bad_x):
-            raise ValueError(f"evidence/{relation} has invalid x_type values: {sorted(bad_x)}")
-        if len(bad_y):
-            raise ValueError(f"evidence/{relation} has invalid y_type values: {sorted(bad_y)}")
+        types = df[["x_type", "y_type"]].astype(str)
+        allowed = (types["x_type"] == spec.source.value) & (types["y_type"] == spec.target.value)
+        for exception_relation, exception_x, exception_y in _LEGACY_RELATION_TYPE_EXCEPTIONS:
+            if relation == exception_relation:
+                allowed |= (types["x_type"] == exception_x) & (types["y_type"] == exception_y)
+        bad = types.loc[~allowed]
+        if not bad.empty:
+            bad_x = sorted(bad.loc[bad["x_type"] != spec.source.value, "x_type"].unique())
+            bad_y = sorted(bad.loc[bad["y_type"] != spec.target.value, "y_type"].unique())
+            if bad_x:
+                raise ValueError(f"evidence/{relation} has invalid x_type values: {bad_x}")
+            if bad_y:
+                raise ValueError(f"evidence/{relation} has invalid y_type values: {bad_y}")
 
     for name, _ in EVIDENCE_PARQUET_COLUMNS:
         if name not in df.columns:

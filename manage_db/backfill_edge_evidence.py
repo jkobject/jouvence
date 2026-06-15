@@ -34,8 +34,35 @@ def _to_list(value: object) -> list:
     return [value]
 
 
+def _clean_str(value: object) -> str:
+    """Return a stripped string, treating pandas/null sentinels as empty."""
+
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip()
+
+
+def _score_token(value: object) -> str:
+    """Stable source-record token for score-like values."""
+
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    try:
+        return f"{float(str(value)):.12g}"
+    except (TypeError, ValueError):
+        return _clean_str(value)
+
+
 def _pmid(value: object) -> str:
-    text = str(value or "").strip()
+    text = _clean_str(value)
     if not text:
         return ""
     if text.upper().startswith("PMID:"):
@@ -45,14 +72,133 @@ def _pmid(value: object) -> str:
     return text
 
 
+def _protein_change_evidence_row(row: pd.Series, relation: str, x_id: str, y_id: str) -> dict:
+    """Build conservative OpenTargets variant evidence for mutation→protein changes."""
+
+    source_raw = _clean_str(row.get("source")) or "OpenTargets"
+    source, _ = _split_source(source_raw)
+    amino_acid_change = _clean_str(row.get("amino_acid_change"))
+    uniprot_id = _clean_str(row.get("uniprot_id"))
+    source_record_prefix = source_raw if "/" in source_raw else f"{source_raw}/variant"
+    return {
+        "relation": relation,
+        "x_id": x_id,
+        "x_type": _clean_str(row.get("x_type")) or "mutation",
+        "y_id": y_id,
+        "y_type": _clean_str(row.get("y_type")) or "protein",
+        "evidence_type": "database_record",
+        "source": source,
+        "source_dataset": "variant",
+        "source_record_id": (
+            f"{source_record_prefix}:{relation}:{x_id}:{y_id}:{uniprot_id}:{amino_acid_change}"
+        ),
+        "paper_id": "",
+        "dataset_id": "",
+        "study_id": "",
+        "evidence_score": None,
+        "direction": "",
+        "predicate": "amino_acid_change",
+    }
+
+
+def _edge_source_metadata(row: pd.Series, relation: str, source_raw: str) -> tuple[str, str, str, str]:
+    """Return source, source_dataset, source-record suffix, and predicate for an edge row."""
+
+    source, source_dataset = _split_source(source_raw)
+    predicate = relation
+    suffix_parts: list[str] = []
+
+    if relation == "molecule_targets_protein" and source == "OpenTargets":
+        # Historical canonical exports use this relation name for OpenTargets
+        # mechanism-of-action rows whose target endpoint is still an ENSG gene.
+        # Preserve the canonical endpoint and action metadata; do not remap to ENSP.
+        source_dataset = source_dataset or "drug_mechanism_of_action"
+        action_type = _clean_str(row.get("action_type"))
+        if action_type:
+            predicate = action_type
+            suffix_parts.append(action_type)
+
+    return source, source_dataset, ":".join(suffix_parts), predicate
+
+
+def _mutation_associated_gene_l2g_evidence_from_edges(edges: pd.DataFrame) -> pd.DataFrame:
+    """Build conservative OpenTargets L2G support rows for mutation→gene edges.
+
+    The canonical ``mutation_associated_gene`` edge file can contain multiple
+    distinct ``studyLocusId`` rows for the same mutation/gene edge. Evidence
+    backfill keeps one support row per L2G source row and includes study locus,
+    datatype, and score in ``source_record_id`` so those supports do not collapse.
+    """
+
+    rows: list[dict] = []
+    relation = "mutation_associated_gene"
+    for _, row in edges.iterrows():
+        if _clean_str(row.get("relation")) != relation:
+            continue
+        source_raw = _clean_str(row.get("source"))
+        source, source_dataset = _split_source(source_raw)
+        if source != "OpenTargets" or source_dataset != "l2g":
+            continue
+
+        study_locus_id = _clean_str(row.get("studyLocusId"))
+        if not study_locus_id:
+            continue
+        x_id = _clean_str(row.get("x_id"))
+        y_id = _clean_str(row.get("y_id"))
+        if not x_id or not y_id:
+            continue
+
+        datatype = _clean_str(row.get("datatype")) or "l2g"
+        score = row.get("score")
+        score_token = _score_token(score)
+        evidence_type = "genetic_association" if datatype == "genetic_association" else "model_prediction"
+        rows.append(
+            {
+                "relation": relation,
+                "x_id": x_id,
+                "x_type": _clean_str(row.get("x_type")) or "mutation",
+                "y_id": y_id,
+                "y_type": _clean_str(row.get("y_type")) or "gene",
+                "evidence_type": evidence_type,
+                "source": "OpenTargets",
+                "source_dataset": "l2g",
+                "source_record_id": ":".join(
+                    [source_raw, relation, x_id, y_id, datatype, study_locus_id, score_token]
+                ),
+                "paper_id": "",
+                "dataset_id": "",
+                "study_id": study_locus_id,
+                "evidence_score": score,
+                "direction": _clean_str(row.get("direction")),
+                "predicate": datatype,
+                "extraction_method": "OpenTargets L2G",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def _evidence_from_edges(edges: pd.DataFrame) -> pd.DataFrame:
+    if not edges.empty and set(edges["relation"].astype(str)) == {"mutation_associated_gene"}:
+        return _mutation_associated_gene_l2g_evidence_from_edges(edges)
+
     rows: list[dict] = []
     for _, row in edges.iterrows():
         relation = str(row["relation"])
         x_id = str(row["x_id"])
         y_id = str(row["y_id"])
-        source_raw = str(row.get("source") or "")
-        source, source_dataset = _split_source(source_raw)
+        if relation == "mutation_causes_protein_change":
+            rows.append(_protein_change_evidence_row(row, relation, x_id, y_id))
+            continue
+
+        source_raw = _clean_str(row.get("source"))
+        source, source_dataset, source_record_suffix, predicate = _edge_source_metadata(
+            row, relation, source_raw
+        )
+        source_record_id = f"{source_raw}:{relation}:{x_id}:{y_id}"
+        if source_dataset and source_raw == source:
+            source_record_id = f"{source}:{source_dataset}:{relation}:{x_id}:{y_id}"
+        if source_record_suffix:
+            source_record_id = f"{source_record_id}:{source_record_suffix}"
         rows.append(
             {
                 "relation": relation,
@@ -63,13 +209,13 @@ def _evidence_from_edges(edges: pd.DataFrame) -> pd.DataFrame:
                 "evidence_type": "database_record",
                 "source": source,
                 "source_dataset": source_dataset,
-                "source_record_id": f"{source_raw}:{relation}:{x_id}:{y_id}",
+                "source_record_id": source_record_id,
                 "paper_id": "",
                 "dataset_id": "",
                 "study_id": "",
                 "evidence_score": row.get("score"),
-                "direction": str(row.get("direction") or ""),
-                "predicate": relation,
+                "direction": predicate if relation == "molecule_targets_protein" else str(row.get("direction") or ""),
+                "predicate": predicate,
             }
         )
     return pd.DataFrame(rows)
@@ -122,24 +268,24 @@ def backfill_pharmacogenomics_evidence(
     for parquet_file in files:
         df = pd.read_parquet(parquet_file)
         for _, row in df.iterrows():
-            variant_id = str(row.get("variantId") or "").strip()
+            variant_id = _clean_str(row.get("variantId"))
             if not variant_id:
                 continue
-            datasrc = str(row.get("datasourceId") or "clinpgx").strip() or "clinpgx"
-            version = str(row.get("datasourceVersion") or "").strip()
-            datatype = str(row.get("datatypeId") or "pharmacogenomics").strip()
-            direction = str(row.get("directionality") or "").strip()
-            evidence_level = str(row.get("evidenceLevel") or "").strip()
-            pgx_category = str(row.get("pgxCategory") or datatype).strip() or datatype
-            study_id = str(row.get("studyId") or "").strip()
-            text_span = str(row.get("genotypeAnnotationText") or row.get("phenotypeText") or "").strip()
+            datasrc = _clean_str(row.get("datasourceId")) or "clinpgx"
+            version = _clean_str(row.get("datasourceVersion"))
+            datatype = _clean_str(row.get("datatypeId")) or "pharmacogenomics"
+            direction = _clean_str(row.get("directionality"))
+            evidence_level = _clean_str(row.get("evidenceLevel"))
+            pgx_category = _clean_str(row.get("pgxCategory")) or datatype
+            study_id = _clean_str(row.get("studyId"))
+            text_span = _clean_str(row.get("genotypeAnnotationText")) or _clean_str(row.get("phenotypeText"))
             literature = [_pmid(item) for item in _to_list(row.get("literature"))]
             literature = [item for item in literature if item]
 
             for drug in _to_list(row.get("drugs")):
                 if not isinstance(drug, dict):
                     continue
-                drug_id = str(drug.get("drugId") or "").strip()
+                drug_id = _clean_str(drug.get("drugId"))
                 if (variant_id, drug_id) not in canonical:
                     continue
                 base_record = f"{datasrc}:{study_id}:{variant_id}:{drug_id}:{evidence_level}:{pgx_category}"

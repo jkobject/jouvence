@@ -128,3 +128,162 @@ def test_backfill_pharmacogenomics_evidence_uses_source_records_and_papers(tmp_p
     assert record["predicate"] == "efficacy"
     assert "clinpgx:PGX-STUDY-1:1_100_A_T:CHEMBL1:1A:efficacy" in record["source_record_id"]
     assert audit_edge_evidence(tmp_path / "kg", relations=["mutation_affects_molecule_response"]).ok
+
+
+
+def test_backfill_variant_protein_change_evidence_uses_edge_payload(tmp_path: Path) -> None:
+    from manage_db.audit_edge_evidence import audit_edge_evidence
+    from manage_db.backfill_edge_evidence import backfill_edge_evidence
+    from manage_db.kg_evidence import read_evidence
+
+    root = open_kg_root(str(tmp_path / "kg"))
+    write_edges(
+        root,
+        "mutation_causes_protein_change",
+        pd.DataFrame(
+            [
+                {
+                    "x_id": "1_12345_A_G",
+                    "x_type": "mutation",
+                    "y_id": "ENSP00000123456",
+                    "y_type": "protein",
+                    "relation": "mutation_causes_protein_change",
+                    "display_relation": "causes protein change",
+                    "source": "OpenTargets",
+                    "credibility": 3,
+                    "amino_acid_change": "A1G",
+                    "uniprot_id": "P12345",
+                }
+            ]
+        ),
+    )
+
+    assert backfill_edge_evidence(tmp_path / "kg", ["mutation_causes_protein_change"]) == {
+        "mutation_causes_protein_change": 1
+    }
+
+    evidence = read_evidence(root, "mutation_causes_protein_change")
+    assert len(evidence) == 1
+    record = evidence.iloc[0]
+    assert record["edge_key"] == "mutation_causes_protein_change|1_12345_A_G|ENSP00000123456"
+    assert record["relation"] == "mutation_causes_protein_change"
+    assert record["evidence_type"] == "database_record"
+    assert record["source"] == "OpenTargets"
+    assert record["source_dataset"] == "variant"
+    assert record["predicate"] == "amino_acid_change"
+    assert record["paper_id"] == ""
+    assert record["source_record_id"] == (
+        "OpenTargets/variant:mutation_causes_protein_change:"
+        "1_12345_A_G:ENSP00000123456:P12345:A1G"
+    )
+    assert audit_edge_evidence(tmp_path / "kg", relations=["mutation_causes_protein_change"]).ok
+
+
+def test_backfill_mutation_associated_gene_preserves_l2g_study_locus_support_rows(
+    tmp_path: Path,
+) -> None:
+    from manage_db.audit_edge_evidence import audit_edge_evidence
+    from manage_db.backfill_edge_evidence import backfill_edge_evidence
+    from manage_db.kg_evidence import read_evidence
+
+    root = open_kg_root(str(tmp_path / "kg"))
+    edge_dir = tmp_path / "kg" / "edges"
+    edge_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "x_id": "1_100_A_T",
+                "x_type": "mutation",
+                "y_id": "ENSG000001",
+                "y_type": "gene",
+                "relation": "mutation_associated_gene",
+                "display_relation": "associated with",
+                "source": "OpenTargets/l2g",
+                "credibility": 2,
+                "score": 0.91,
+                "datatype": "genetic_association",
+                "studyLocusId": "GCST1_1_100_A_T",
+            },
+            {
+                "x_id": "1_100_A_T",
+                "x_type": "mutation",
+                "y_id": "ENSG000001",
+                "y_type": "gene",
+                "relation": "mutation_associated_gene",
+                "display_relation": "associated with",
+                "source": "OpenTargets/l2g",
+                "credibility": 2,
+                "score": 0.42,
+                "datatype": "l2g",
+                "studyLocusId": "GCST2_1_100_A_T",
+            },
+        ]
+    ).to_parquet(edge_dir / "mutation_associated_gene.parquet", index=False)
+
+    assert backfill_edge_evidence(tmp_path / "kg", ["mutation_associated_gene"]) == {
+        "mutation_associated_gene": 2
+    }
+
+    evidence = read_evidence(root, "mutation_associated_gene").sort_values("study_id").reset_index(drop=True)
+    assert len(evidence) == 2
+    assert set(evidence["edge_key"]) == {"mutation_associated_gene|1_100_A_T|ENSG000001"}
+    assert list(evidence["study_id"]) == ["GCST1_1_100_A_T", "GCST2_1_100_A_T"]
+    assert list(evidence["evidence_score"]) == [0.91, 0.42]
+    assert set(evidence["evidence_type"]) == {"genetic_association", "model_prediction"}
+    assert set(evidence["source"]) == {"OpenTargets"}
+    assert set(evidence["source_dataset"]) == {"l2g"}
+    assert set(evidence["predicate"]) == {"genetic_association", "l2g"}
+    assert set(evidence["extraction_method"]) == {"OpenTargets L2G"}
+    assert evidence["source_record_id"].nunique() == 2
+    for record_id in evidence["source_record_id"]:
+        assert "OpenTargets/l2g" in record_id
+        assert "mutation_associated_gene" in record_id
+        assert "1_100_A_T" in record_id
+        assert "ENSG000001" in record_id
+        assert "GCST" in record_id
+
+    assert audit_edge_evidence(tmp_path / "kg", relations=["mutation_associated_gene"]).ok
+
+
+def test_backfill_molecule_targets_protein_accepts_legacy_gene_moa_rows(tmp_path: Path) -> None:
+    from manage_db.audit_edge_evidence import audit_edge_evidence
+    from manage_db.backfill_edge_evidence import backfill_edge_evidence
+    from manage_db.kg_evidence import read_evidence
+
+    root = open_kg_root(str(tmp_path / "kg"))
+    write_edges(
+        root,
+        "molecule_targets_protein",
+        pd.DataFrame(
+            [
+                {
+                    "x_id": "CHEMBL1",
+                    "x_type": "molecule",
+                    "y_id": "ENSG000001",
+                    "y_type": "gene",
+                    "relation": "molecule_targets_protein",
+                    "display_relation": "receptor antagonist",
+                    "source": "OpenTargets",
+                    "credibility": 3,
+                    "action_type": "ANTAGONIST",
+                }
+            ]
+        ),
+    )
+
+    assert backfill_edge_evidence(tmp_path / "kg", ["molecule_targets_protein"]) == {
+        "molecule_targets_protein": 1
+    }
+
+    evidence = read_evidence(root, "molecule_targets_protein")
+    assert len(evidence) == 1
+    assert evidence.loc[0, "edge_key"] == "molecule_targets_protein|CHEMBL1|ENSG000001"
+    assert evidence.loc[0, "y_type"] == "gene"
+    assert evidence.loc[0, "source"] == "OpenTargets"
+    assert evidence.loc[0, "source_dataset"] == "drug_mechanism_of_action"
+    assert evidence.loc[0, "predicate"] == "ANTAGONIST"
+    assert evidence.loc[0, "direction"] == "ANTAGONIST"
+    assert evidence.loc[0, "source_record_id"] == (
+        "OpenTargets:drug_mechanism_of_action:molecule_targets_protein:CHEMBL1:ENSG000001:ANTAGONIST"
+    )
+    assert audit_edge_evidence(tmp_path / "kg", relations=["molecule_targets_protein"]).ok

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from manage_db.kg_storage import open_kg_root, write_edges
 
@@ -74,6 +75,61 @@ def test_write_read_evidence_deduplicates_support_records(tmp_path: Path) -> Non
     assert got.loc[0, "edge_key"] == "disease_associated_gene|EFO:1|ENSG1"
     assert got.loc[0, "source_record_id"] == "reactome:row-1"
     assert got.loc[0, "evidence_score"] == 0.9
+
+
+
+def test_write_evidence_accepts_documented_molecule_target_gene_exception(tmp_path: Path) -> None:
+    from manage_db.kg_evidence import read_evidence, write_evidence
+
+    root = open_kg_root(str(tmp_path / "kg"))
+    assert write_evidence(
+        root,
+        "molecule_targets_protein",
+        pd.DataFrame(
+            [
+                {
+                    "relation": "molecule_targets_protein",
+                    "x_id": "CHEMBL1",
+                    "x_type": "molecule",
+                    "y_id": "ENSG000001",
+                    "y_type": "gene",
+                    "evidence_type": "database_record",
+                    "source": "OpenTargets",
+                    "source_dataset": "drug_mechanism_of_action",
+                    "source_record_id": "row-1",
+                }
+            ]
+        ),
+    ) == 1
+
+    got = read_evidence(root, "molecule_targets_protein")
+    assert got.loc[0, "y_type"] == "gene"
+
+
+def test_write_evidence_still_rejects_other_schema_type_mismatches(tmp_path: Path) -> None:
+    from manage_db.kg_evidence import write_evidence
+
+    root = open_kg_root(str(tmp_path / "kg"))
+    with pytest.raises(ValueError, match="invalid y_type"):
+        write_evidence(
+            root,
+            "disease_associated_gene",
+            pd.DataFrame(
+                [
+                    {
+                        "relation": "disease_associated_gene",
+                        "x_id": "EFO:1",
+                        "x_type": "disease",
+                        "y_id": "ENSG1",
+                        "y_type": "protein",
+                        "evidence_type": "database_record",
+                        "source": "OpenTargets",
+                        "source_dataset": "reactome",
+                        "source_record_id": "row-1",
+                    }
+                ]
+            ),
+        )
 
 
 def test_audit_edge_evidence_reports_missing_and_orphan_support(tmp_path: Path) -> None:
