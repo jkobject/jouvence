@@ -39,10 +39,18 @@ Post-import coverage evidence is
 `.omoc/reports/hermes-kg-coverage-post-remaining-20260615T000243Z.json`, and
 new-slice endpoint validation evidence is
 `.omoc/reports/hermes-remaining-slices-duckdb-fast-validation-clean-20260615T000434Z.json`.
-Full generic `validate_kg` is no longer ideal for the huge enhancer slice because
-it materializes all node IDs; use the optimized targeted validation script for
-remaining-slice promotion checks, then run stricter full validation only with an
-implementation that streams or special-cases enhancer source membership.
+Full generic `validate_kg` now uses DuckDB anti-joins relation-by-relation and
+supports `--duckdb-memory-limit` plus `--duckdb-temp-dir`, so it can validate the
+huge enhancer slice without materializing all node IDs in Python. The successful
+2026-06-15 canonical run used:
+
+```bash
+uv run --no-sync python -m manage_db.validate_kg /mnt/gcs/jouvencekb/kg/v2 \
+  --threads 2 --duckdb-memory-limit 4GB --duckdb-temp-dir .omoc/duckdb-tmp \
+  --progress-every-relations 1
+```
+
+Evidence: `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
 
 ## Node ontology namespace coverage
 
@@ -54,13 +62,11 @@ uv run python -m manage_db.audit_node_ontology_coverage /mnt/gcs/jouvencekb/kg/v
 uv run python -m manage_db.audit_node_ontology_coverage /mnt/gcs/jouvencekb/kg/v2 --json
 ```
 
-Dated reports such as
-`.omoc/reports/node-ontology-coverage-after-human-organism-*.json` and
-`.omoc/reports/hermes-node-ontology-coverage-*.json` confirm `6,555,858` node
-rows across present canonical node files and record the remaining missing node
-files (`cell_line`, `dataset`, `enhancer`).
-Disease and cell-type Parquets now use CURIE separators for selected ontology
-IDs (`EFO:...`, `MONDO:...`, `CL:...`, etc.); the normalization pass collapsed
-`11,030` duplicate disease rows created by prior mixed underscore/colon syntax.
-Targeted validation evidence is stored at
-`.omoc/reports/canonical-targeted-validation-after-ontology-normalization.json`.
+Dated reports from 2026-06-11 predate the remaining-slice promotion and are
+historical. For current coverage, run the command above on
+`/mnt/gcs/jouvencekb/kg/v2`; the canonical node files are now complete (`15 / 15`)
+including `cell_line`, `dataset`, and `enhancer`. Disease and cell-type Parquets
+use CURIE separators for selected ontology IDs (`EFO:...`, `MONDO:...`,
+`CL:...`, etc.); the normalization pass collapsed `11,030` duplicate disease
+rows created by prior mixed underscore/colon syntax. Targeted validation evidence
+is stored at `.omoc/reports/canonical-targeted-validation-after-ontology-normalization.json`.

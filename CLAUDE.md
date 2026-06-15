@@ -437,9 +437,9 @@ does **not** yet reflect a complete OpenTargets run/merge.
       `mechanismOfAction` runs need a fresh audited merge into the canonical
       export if we want the expanded OT-scale graph. OpenTargets 26.03
       `target` + `go` are merged and validated.
-- [ ] PARTIAL: `ingest_literature` produced and uploaded `paper` nodes plus
-      `paper_mentions_gene` / `paper_mentions_disease`; these now validate
-      cleanly after the target/disease node ID-space merge.
+- [x] `ingest_literature` produced and uploaded canonical `paper` nodes plus
+      `paper_mentions_gene` / `paper_mentions_disease`; these validate cleanly
+      under the 2026-06-15 full DuckDB canonical validation.
 
 ### Phase 5 — Additional sources ⚠️ (partially implemented, mostly pending export)
 
@@ -449,8 +449,10 @@ Export Reality section above.
 
 - [x] `ingest_disease_phenotype`: OpenTargets HPO slice merged and audited with
       normalized `MONDO:` / `HP:` endpoints.
-- [ ] PARTIAL: `ingest_expression` added OpenTargets `tissue_expresses_gene` and
-      `cell_type_expresses_gene`; `cell_type_expresses_protein` remains pending.
+- [ ] PARTIAL: `ingest_expression` added OpenTargets `tissue_expresses_gene`,
+      `cell_type_expresses_gene`, and legacy `tissue_expresses_protein`.
+      `cell_type_expresses_protein` remains pending because no audited source
+      mapping has been promoted for that relation.
 - [x] `ingest_biosample`: OpenTargets `cell_type` nodes are present in the
       canonical export.
 - [x] `ingest_pharmacogenomics`: OpenTargets pharmacogenomics slice merged as
@@ -463,9 +465,12 @@ Export Reality section above.
       `311,562` mutation nodes, `11,652,040` `mutation_in_gene`,
       `11,652,040` `mutation_affects_transcript`, and `8,563`
       `mutation_causes_protein_change` edges with `6.5G` peak RSS. Do **not**
-      blindly promote full gene/transcript variant relations; next bounded
-      variant slice should promote protein-change edges first, then revisit
-      stricter filters for gene/transcript.
+      blindly promote full gene/transcript variant relations. The safe
+      protein-change slice is now promoted as `mutation_causes_protein_change`;
+      remaining pending variant relations are the broader `mutation_in_gene`,
+      `mutation_affects_transcript`, `mutation_overlaps_enhancer`,
+      `mutation_causes_phenotype`, and `mutation_associated_cell_type`, each
+      requiring stricter filters/source semantics before promotion.
 - [x] `ingest_evidence_backed_variants` / dataset alias
       `known_variant` added a sparse, evidence-first variant path. It scans
       `evidence_*` directories for high-value genetics datatypes
@@ -523,9 +528,16 @@ Export Reality section above.
 - [ ] Phase 4 audit datasets are archived under
       `/mnt/gcs/jouvencekb/kg/local-archive/home-ubuntu-data-txgnn-20260611T0940Z/txgnn-phase4-audit.tar.zst`:
       `interaction`, `interaction_evidence`, `clinical_indication`, and
-      `drug_mechanism_of_action`.
-- [ ] `ingest_enhancers`: smoke-tested only; enhancer nodes and enhancer
-      regulatory edges remain pending.
+      `drug_mechanism_of_action`. These are source caches/audits, not promoted
+      canonical KG files; interaction/indication/MoA still need a fresh audited
+      merge if we want the full OT-scale graph beyond the legacy TxData edges.
+- [x] `ingest_enhancers`/OpenTargets enhancer slice: canonical GCS now has
+      `48,808,144` `enhancer` nodes plus `enhancer_regulates_gene`,
+      `enhancer_active_in_tissue`, and `enhancer_active_in_cell_type` edges.
+      Full 2026-06-15 DuckDB validation reports zero dangling endpoints.
+      Remaining enhancer-schema relations (`enhancer_regulates_transcript`,
+      `enhancer_associated_disease`, `mutation_overlaps_enhancer`) are still
+      pending explicit source mappings.
 - [ ] Add source features: for each source, download and add their real feature
       (e.g. genes get their sequence, same for transcripts, molecules, proteins,
       enhancers) for paper, get their abstract and discussion.
@@ -558,11 +570,11 @@ data/kg/
 - `tests/test_kg_storage.py` covers atomic writes, schema validation,
   provenance, and an optional GCS smoke round-trip.
 - Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2`; paper, Reactome,
-  molecule/MoA, biosample, and expression slices were later added. Current GCS
-  layout has 11 node files and 30 edge files. The 2026-06-10 full streaming
-  validation was clean before disease-edge promotion, and the 2026-06-11
-  `mutation_associated_disease` edge addition has targeted zero-dangling
-  endpoint validation.
+  molecule/MoA, biosample, expression, variant, organism, dataset, cell-line,
+  and enhancer slices were later added. Current canonical GCS layout has
+  `15 / 15` node files and `40 / 77` edge files. The 2026-06-15 full DuckDB
+  validation over `/mnt/gcs/jouvencekb/kg/v2` reports `55,365,186` nodes,
+  `144,155,654` edges, and `total_dangling_edges: 0`.
 
 ### Phase 8 — KGLoader + graph export ✅ (complete)
 
@@ -582,31 +594,24 @@ data/kg/
 
 - [x] Dangling edge checks (`KGLoader.validate()`)
 - [x] Schema coverage audit CLI:
-      `uv run python -m manage_db.audit_kg_coverage gs://jouvencekb/kg/v2`
+      `uv run python -m manage_db.audit_kg_coverage /mnt/gcs/jouvencekb/kg/v2`
       reports physical node/edge file coverage against `kg_schema.py`. Current
-      GCS export: 11/15 node files, 30/77 edge files. See
+      canonical GCS export: `15 / 15` node files, `40 / 77` edge files,
+      `55,365,186` total nodes, and `144,155,654` total edges. See
       `docs/kg_coverage_audit.md`.
-- [x] Remote GCS validation after paper, OpenTargets ID-space merge,
-      biosample/expression, and disease-phenotype promotion:
-      the 2026-06-10 full streaming run of `PYARROW_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 uv run python -m manage_db.validate_kg gs://jouvencekb/kg/v2 --batch-size 250000` reported
-      `6,562,289` nodes, `27,014,101` edges, and `total_dangling_edges: 0`.
-      The 2026-06-11 `mutation_associated_disease` promotion changed only
-      `nodes/disease.parquet` and added `edges/mutation_associated_disease.parquet`;
-      targeted validation of that new edge file reports zero dangling mutation
-      or disease endpoints. A fresh full streaming validation attempt after the
-      promotion timed out after 20 minutes with no output on GCS FUSE.
-- [x] Node ontology coverage stats. 2026-06-11 report:
-      `.omoc/reports/node-ontology-coverage-20260611T113441Z.json` over
-      `/mnt/gcs/jouvencekb/kg/v2` counted `6,555,857` node rows across
-      `12 / 15` node files and missing `cell_line`, `dataset`,
-      and `enhancer`. The human organism slice added `NCBITaxon:9606` plus
-      `109,325` `organism_has_gene` and `16,061` `organism_has_tissue` edges. The 2026-06-11 normalization pass rewrote disease and
-      cell-type node IDs plus all selected endpoint columns from underscore
-      ontology syntax to CURIE syntax (for example `EFO_...` -> `EFO:...`,
-      `CL_...` -> `CL:...`) and collapsed `11,030` duplicate disease rows.
-      Remaining non-primary namespaces include expected legacy DrugBank, CTD,
-      NCBI, gnomAD-like, and `OTVAR` IDs; missing node files remain the next
-      schema-completion work.
+- [x] Remote GCS validation after remaining-slice promotion: the 2026-06-15
+      full DuckDB run of
+      `uv run --no-sync python -m manage_db.validate_kg /mnt/gcs/jouvencekb/kg/v2 --threads 2 --duckdb-memory-limit 4GB --duckdb-temp-dir .omoc/duckdb-tmp --progress-every-relations 1`
+      completed under systemd (`CPUQuota=200%`, `MemoryMax=8G`) with
+      `55,365,186` nodes, `144,155,654` edges, and
+      `total_dangling_edges: 0`. Evidence:
+      `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
+- [x] Node ontology coverage stats. The canonical node files are now complete
+      (`cell_line`, `dataset`, and `enhancer` are present). Older 2026-06-11
+      reports predate remaining-slice promotion and should be treated as
+      historical. Use
+      `uv run python -m manage_db.audit_node_ontology_coverage /mnt/gcs/jouvencekb/kg/v2 --json`
+      for current namespace/xref coverage.
 - [ ] LaminDB parity audit and sync. 2026-06-10 bounded sync created
       `233,995` custom ENSP protein records and `2,588,052` mutation records
       needed by the combined/GWAS safe variant slices (`2,165,367` from the
