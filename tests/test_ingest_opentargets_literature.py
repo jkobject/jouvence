@@ -101,6 +101,21 @@ def test_ingest_evidence_finalizes_chunked_edges(tmp_path: Path) -> None:
     assert set(genes["id"]) == {"ENSG00000139618"}
     assert set(pathways["id"]) == {"R-HSA-12345", "R-HSA-67890"}
 
+    from manage_db.kg_evidence import read_evidence
+
+    gene_evidence = read_evidence(root, "disease_associated_gene")
+    assert len(gene_evidence) == 1
+    assert gene_evidence.loc[0, "edge_key"] == "disease_associated_gene|EFO:0000305|ENSG00000139618"
+    assert gene_evidence.loc[0, "source_dataset"] == "evidence_genetic_association"
+    assert gene_evidence.loc[0, "source_record_id"] == "reactome:EFO:0000305:ENSG00000139618:affected_pathway"
+    assert gene_evidence.loc[0, "evidence_score"] == 0.71
+
+    pathway_evidence = read_evidence(root, "disease_involves_pathway")
+    assert set(pathway_evidence["edge_key"]) == {
+        "disease_involves_pathway|EFO:0000305|R-HSA-12345",
+        "disease_involves_pathway|EFO:0000305|R-HSA-67890",
+    }
+
 
 def test_ingest_drugs_writes_required_molecule_xrefs(tmp_path: Path) -> None:
     ot_dir = tmp_path / "opentargets"

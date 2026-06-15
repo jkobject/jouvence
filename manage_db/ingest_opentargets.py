@@ -59,6 +59,11 @@ try:
 except ImportError:  # pragma: no cover - script fallback
     import kg_storage  # type: ignore
 
+try:
+    from . import kg_evidence
+except ImportError:  # pragma: no cover - script fallback
+    import kg_evidence  # type: ignore
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -970,6 +975,8 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
     gd_chunks  = chunks_base / "disease_associated_gene"
     dd_chunks  = chunks_base / "molecule_treats_disease"
     pd_chunks  = chunks_base / "disease_involves_pathway"
+    gd_evidence_chunks = chunks_base / "evidence_disease_associated_gene"
+    pd_evidence_chunks = chunks_base / "evidence_disease_involves_pathway"
     seen_genes: set[str] = set()
     seen_pathways: dict[str, str | None] = {}
 
@@ -997,6 +1004,8 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
             gene_disease_rows: list[dict] = []
             drug_disease_rows: list[dict] = []
             pathway_disease_rows: list[dict] = []
+            gene_disease_evidence_rows: list[dict] = []
+            pathway_disease_evidence_rows: list[dict] = []
 
             for _, row in chunk.iterrows():
                 target_id  = str(row.get("targetId") or "").strip()
@@ -1005,6 +1014,29 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                 dsource    = str(row.get("datasourceId") or dtype).strip()
                 score      = float(row.get("score") or 0.0)
                 cred       = _credibility_from_score(score, dtype)
+
+                def _evidence_row(relation: str, x_id: str, x_type: str, y_id: str, y_type: str, *, suffix: str = "") -> dict:
+                    base = f"{dsource}:{disease_id}:{target_id}:{dtype}"
+                    if suffix:
+                        base = f"{base}:{suffix}"
+                    return {
+                        "relation": relation,
+                        "x_id": x_id,
+                        "x_type": x_type,
+                        "y_id": y_id,
+                        "y_type": y_type,
+                        "evidence_type": "database_record",
+                        "source": "OpenTargets",
+                        "source_dataset": ev_path.name,
+                        "source_record_id": base,
+                        "paper_id": "",
+                        "dataset_id": "",
+                        "study_id": "",
+                        "evidence_score": round(score, 4),
+                        "direction": "",
+                        "predicate": dtype,
+                        "release": "26.03",
+                    }
 
                 if not target_id or not disease_id:
                     continue
@@ -1065,6 +1097,14 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                             score=round(score, 4),
                             pathway_name=pathway_name,
                         ))
+                        pathway_disease_evidence_rows.append(_evidence_row(
+                            "disease_involves_pathway",
+                            disease_id,
+                            NodeType.DISEASE.value,
+                            pathway_id,
+                            NodeType.PATHWAY.value,
+                            suffix=pathway_id,
+                        ))
                     if target_id.startswith("ENSG"):
                         seen_genes.add(target_id)
                         gene_disease_rows.append(_make_edge(
@@ -1075,6 +1115,13 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                             source=f"OpenTargets/{dsource}",
                             credibility=cred,
                             score=round(score, 4),
+                        ))
+                        gene_disease_evidence_rows.append(_evidence_row(
+                            "disease_associated_gene",
+                            disease_id,
+                            NodeType.DISEASE.value,
+                            target_id,
+                            NodeType.GENE.value,
                         ))
 
                 # ── Gene-disease evidence ────────────────────────────────────
@@ -1090,6 +1137,13 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                             credibility=cred,
                             score=round(score, 4),
                         ))
+                        gene_disease_evidence_rows.append(_evidence_row(
+                            "disease_associated_gene",
+                            disease_id,
+                            NodeType.DISEASE.value,
+                            target_id,
+                            NodeType.GENE.value,
+                        ))
                 else:
                     # Unknown datatype — emit as gene-disease if IDs look right
                     if target_id.startswith("ENSG"):
@@ -1103,6 +1157,13 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                             credibility=Credibility.SINGLE_EVIDENCE,
                             score=round(score, 4),
                         ))
+                        gene_disease_evidence_rows.append(_evidence_row(
+                            "disease_associated_gene",
+                            disease_id,
+                            NodeType.DISEASE.value,
+                            target_id,
+                            NodeType.GENE.value,
+                        ))
 
             # Flush each chunk's rows immediately to temp files
             if gene_disease_rows:
@@ -1111,6 +1172,10 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                 _write_chunk(pd.DataFrame(drug_disease_rows), dd_chunks)
             if pathway_disease_rows:
                 _write_chunk(pd.DataFrame(pathway_disease_rows), pd_chunks)
+            if gene_disease_evidence_rows:
+                _write_chunk(pd.DataFrame(gene_disease_evidence_rows), gd_evidence_chunks)
+            if pathway_disease_evidence_rows:
+                _write_chunk(pd.DataFrame(pathway_disease_evidence_rows), pd_evidence_chunks)
 
     dedup_edge = ["x_id", "y_id", "relation", "source"]
     counts: dict[str, int] = {}
@@ -1178,6 +1243,16 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
         dedup_edge,
     )
     if n: counts["disease_associated_gene"] = n
+    _finalize_chunks(
+        gd_evidence_chunks,
+        lambda df: kg_evidence.write_evidence(
+            root,
+            "disease_associated_gene",
+            df,
+            mode="append",
+        ),
+        ["relation", "x_id", "y_id", "source_record_id"],
+    )
     n = _finalize_chunks(
         dd_chunks,
         lambda df: kg_storage.write_edges(
@@ -1200,6 +1275,16 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
         dedup_edge,
     )
     if n: counts["disease_involves_pathway"] = n
+    _finalize_chunks(
+        pd_evidence_chunks,
+        lambda df: kg_evidence.write_evidence(
+            root,
+            "disease_involves_pathway",
+            df,
+            mode="append",
+        ),
+        ["relation", "x_id", "y_id", "source_record_id"],
+    )
 
     log.info("  Evidence edges: %s", counts)
     return counts

@@ -379,7 +379,14 @@ literature graph tasks. Existing `paper_mentions_gene` and
 index, but new biological/pharmacological/disease-association imports should
 prefer evidence records that support existing edge relations. See
 `docs/evidence_and_edge_schema_plan.md` for the OpenTargets-first evidence
-implementation plan.
+implementation plan. The first implementation tranche adds `manage_db.kg_evidence`,
+`manage_db.audit_edge_evidence`, `manage_db.backfill_edge_evidence`, and
+Reactome evidence support for `disease_associated_gene` /
+`disease_involves_pathway`. Canonical evidence files now exist at
+`evidence/disease_associated_gene.parquet` (`2,928` support records) and
+`evidence/disease_involves_pathway.parquet` (`2,296` support records), with
+zero unsupported/orphan records in
+`.omoc/reports/hermes-reactome-evidence-audit-*.json`.
 
 ### Storage Layer
 

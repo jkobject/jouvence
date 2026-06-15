@@ -110,14 +110,18 @@ This makes `paper` useful without overloading the graph:
 
 OpenTargets is the first evidence source to normalize because it already exposes evidence-like records across multiple domains.
 
-### Phase E1 — Evidence schema and loader
+### Phase E1 — Evidence schema and loader ✅ first tranche complete
 
-1. Add an evidence storage helper, e.g. `manage_db/kg_evidence.py`:
+1. `manage_db/kg_evidence.py` now provides:
    - `write_evidence(root, relation, frame, mode=...)`
    - `read_evidence(root, relation)`
+   - `list_evidence(root)`
    - schema validation for required columns.
-2. Store evidence under `evidence/<relation>.parquet` or partitioned directories for large relations.
-3. Add tests with tiny synthetic evidence tables.
+2. Evidence is stored under `evidence/<relation>.parquet` for the first tranche.
+3. `manage_db.audit_edge_evidence` reports unsupported edges and orphan evidence.
+4. `manage_db.backfill_edge_evidence` can create conservative evidence records
+   from existing canonical edge Parquets when original source-row provenance is
+   not yet retained.
 
 ### Phase E2 — Backfill evidence for existing canonical OpenTargets-derived edges
 
@@ -126,7 +130,7 @@ Prioritize relations that already exist and have source rows:
 1. `mutation_associated_gene` from GWAS/L2G/credible-set inputs.
 2. `mutation_associated_disease` from known-variant/GWAS disease evidence.
 3. `mutation_causes_protein_change` from variant protein-change inputs.
-4. `disease_associated_gene` and `disease_involves_pathway` from Reactome evidence.
+4. `disease_associated_gene` and `disease_involves_pathway` from Reactome evidence. ✅ First canonical evidence backfill complete: `2,928` and `2,296` support rows respectively, audited with zero unsupported/orphan records.
 5. `molecule_treats_disease`, `molecule_contraindicates_disease`, `molecule_targets_protein` from `known_drug` / `mechanismOfAction` / ChEMBL-like sources.
 6. `enhancer_regulates_gene` and enhancer context edges from enhancer-to-gene/activity sources.
 
