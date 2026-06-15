@@ -44,8 +44,17 @@ These are **not** deleted automatically. They should be handled by an explicit m
 | `gene_encodes_protein` | canonical file exists (`233,995`) | Keep readable for now, but mark as shortcut/derived | Redundant with `gene_has_transcript` + `transcript_encodes_protein`; useful for legacy TxGNN compatibility. |
 | `mutation_associated_cell_type` | schema present; no canonical file | Deprecate unless a concrete eQTL/cell-type source is selected | Likely better as evidence/context metadata for variant effects. |
 | `organism_models_disease` | schema present; no canonical file | Deprioritize/deprecate for the human-only KG | Useful for model-organism expansion, but not for current human TxGNN graph. |
+| `phenotype_caused_by_mutation` | schema present; no canonical file | Deprecate as inverted wording; prefer `mutation_causes_phenotype` | The causal direction should run from mutation to phenotype. Keep only as compatibility metadata until migrated. |
+| `phenotype_associated_molecule` | canonical file exists (`64,784`) | Keep readable as a legacy phenotype-indexed side-effect/rescue index | Do not interpret as phenotype causes molecule; future directional drug side-effect/rescue assertions should be modeled explicitly with evidence. |
+| `phenotype_associated_protein` | canonical file exists (`3,330`) | Keep readable as legacy/inferred via gene | Current canonical file has legacy gene/protein endpoint caveats; do not treat as a causal phenotype→protein assertion. |
+| `phenotype_associated_gene` | schema present; no canonical file | Keep as non-causal HPO-gene association only | Valid as an association/index, but not as a causal phenotype→gene edge. |
 | `paper_mentions_gene` | canonical file exists (`7,177,163`) | Keep as legacy/literature index; migrate long-term into edge evidence | Co-mention is weak evidence, not a biological assertion. |
 | `paper_mentions_disease` | canonical file exists (`6,492,130`) | Keep as legacy/literature index; migrate long-term into edge evidence | Co-mention is weak evidence, not a biological assertion. |
+
+`manage_db.kg_schema` records these decisions as explicit relation lifecycle
+metadata (`RelationStatus.DERIVED`, `LEGACY_INDEX`, or `DEPRECATED`) instead of
+removing relations. This preserves compatibility for canonical files that already
+exist while making cleanup intent machine-readable for tests and downstream docs.
 
 Candidate new regulatory relations from the user list that are **not** in current `kg_schema.py`:
 
@@ -53,6 +62,10 @@ Candidate new regulatory relations from the user list that are **not** in curren
 | --- | --- | --- | --- |
 | `protein_interacts_with_enhancer` | `protein` | `enhancer` | Add only if backed by a concrete TF/ChIP/ENCODE source; otherwise model as evidence for `enhancer_regulates_gene`. |
 | `protein_interacts_with_transcript` | `protein` | `transcript` | Add only if backed by RBP/RNA-binding source; otherwise keep out of core schema. |
+
+These are represented in code as `CANDIDATE_RELATIONS`, not as canonical
+`RELATIONS`, so coverage/validation does not expect edge Parquets before a source
+selection and ingestion policy exist.
 
 ## `mutation_in_gene` vs `mutation_associated_gene`
 
@@ -67,7 +80,9 @@ So: they are shape-compatible but semantically distinct. If a source cannot prov
 
 ## Evidence doctrine
 
-Evidence should be modeled primarily as **metadata/support for an edge assertion**, not as a separate biological edge whose only purpose is to say that a paper mentions two entities.
+Evidence should be modeled primarily as **metadata/support for an edge assertion**, not as a separate biological edge whose only purpose is to say that a paper mentions two entities. The graph edge is the biological, pharmacological, or clinical assertion; the evidence layer explains why that assertion exists and where it came from.
+
+In this model, a `paper` is one evidence/support carrier, not the primary biological edge. Evidence can also be an OpenTargets source row, a curated database record, a dataset/cohort/screen, a GWAS or clinical study, a score, an effect-size observation, or an extracted text span. A relation can therefore have multiple support rows of different kinds for the same `(relation, x_id, y_id)` edge.
 
 A canonical edge file, e.g. `edges/molecule_treats_disease.parquet`, should contain the collapsed assertion:
 
@@ -87,14 +102,14 @@ Suggested columns:
 | --- | --- |
 | `edge_key` | Stable hash of `(relation, x_id, y_id)` or explicit edge UUID. |
 | `relation`, `x_id`, `x_type`, `y_id`, `y_type` | The asserted edge being supported. |
-| `evidence_type` | `paper`, `database_record`, `experiment`, `clinical_trial`, `genetic_association`, `model_prediction`, `manual_curation`, etc. |
+| `evidence_type` | `source_row`, `paper`, `database_record`, `dataset`, `study`, `score`, `text_span`, `experiment`, `clinical_trial`, `genetic_association`, `model_prediction`, `manual_curation`, etc. |
 | `source` | Source system, e.g. `OpenTargets`, `EuropePMC`, `ChEMBL`, `Reactome`, `ClinVar`, `Cellosaurus`. |
-| `source_dataset` | Specific OpenTargets table or release, e.g. `evidence`, `known_drug`, `mechanismOfAction`, `interaction`, `europepmc`. |
+| `source_dataset` | Specific source table or release, e.g. OpenTargets `evidence`, `known_drug`, `mechanismOfAction`, `variantIndex`, `studies`, `credibleSet`, `locus2Gene`, `europepmc`. |
 | `source_record_id` | Stable source row/document ID when available. |
 | `paper_id` | `PMID:...` / DOI when evidence is a publication. |
 | `dataset_id` | Dataset node ID if the evidence comes from a dataset/cohort/screen. |
 | `study_id` | GWAS/clinical/experiment accession when available. |
-| `evidence_score` | Source-provided score if available. |
+| `evidence_score` | Source-provided score if available; can itself be the support artifact when the source only exposes scored assertions. |
 | `effect_size`, `p_value`, `direction`, `confidence_interval` | Quantitative fields when applicable. |
 | `predicate` | Source predicate before TxGNN normalization. |
 | `text_span`, `section`, `extraction_method` | Literature/NLP provenance if extracted from text. |
@@ -105,6 +120,7 @@ This makes `paper` useful without overloading the graph:
 - `paper` remains a node type for bibliographic provenance and potential literature graph tasks.
 - `paper_mentions_*` can remain as a legacy/literature index for now.
 - New biological/pharmacological/disease-association imports should prefer evidence tables with `paper_id` references over adding more `paper_mentions_*` as core KG edges.
+- OpenTargets rows should usually become `evidence_type=source_row` records with `source_dataset` and `source_record_id` populated, plus optional paper/study/dataset/score/text-span fields when present.
 
 ## OpenTargets evidence plan
 
@@ -128,12 +144,12 @@ OpenTargets is the first evidence source to normalize because it already exposes
 Prioritize relations that already exist and have source rows:
 
 1. `mutation_associated_gene` from GWAS/L2G/credible-set inputs. ✅ Canonical conservative L2G evidence backfill complete: `535,093` support rows preserving `studyLocusId`, audited with zero unsupported/orphan records.
-2. `mutation_associated_disease` from known-variant/GWAS disease evidence.
+2. `mutation_associated_disease` from OpenTargets genetic-association / known-variant disease rows. **Next tranche.** Preserve disease-facing support as source rows first, with `source_dataset` identifying the OpenTargets input table and `source_record_id` capturing the most stable row key available (for example study-locus/variant/disease composite IDs). Populate optional `study_id`, `evidence_score`, `p_value`, `effect_size`, `direction`, and `paper_id` fields only when present in the source. The done condition is an evidence Parquet for all canonical `mutation_associated_disease` edges plus `audit_edge_evidence` reporting zero unsupported/orphan records.
 3. `mutation_causes_protein_change` from variant protein-change inputs. ✅ Canonical conservative OpenTargets variant evidence backfill complete: `177,735` support rows, audited with zero unsupported/orphan records.
 4. `disease_associated_gene` and `disease_involves_pathway` from Reactome evidence. ✅ Canonical evidence backfill complete: `2,928` and `2,296` support rows respectively, audited with zero unsupported/orphan records.
 5. `mutation_affects_molecule_response` from OpenTargets pharmacogenomics. ✅ Canonical source-aware evidence backfill complete: `18,595` support rows (`5,543` source-record supports + `13,052` PMID paper supports), audited with zero unsupported/orphan records.
 6. `molecule_targets_protein` from `mechanismOfAction` / ChEMBL-like sources. ✅ Conservative canonical evidence backfill complete: `41,239` support rows, including `14,559` OpenTargets MoA rows with `drug_mechanism_of_action` action metadata and `26,680` legacy TxGNN supports. This intentionally preserves legacy `y_type=gene` endpoints; do not remap ENSG to ENSP without a separate endpoint migration.
-7. `molecule_treats_disease`, `molecule_contraindicates_disease` from `known_drug` / clinical-indication-like sources.
+7. `molecule_treats_disease`, `molecule_contraindicates_disease` from `known_drug` / clinical-indication-like sources. **Next tranche after mutation-disease.** Treat indication and contraindication as separate collapsed clinical assertions, supported by OpenTargets/ChEMBL known-drug source rows, clinical trial IDs, approval/status fields, disease/drug normalization provenance, and optional publication references. Do not model a paper or clinical trial as the primary edge; use it as support metadata for the treatment/contraindication edge. Audit indications and contraindications independently because polarity errors are high-impact.
 8. `enhancer_regulates_gene` and enhancer context edges from enhancer-to-gene/activity sources.
 
 ### Phase E3 — Recompute collapsed edge credibility from support
@@ -173,6 +189,7 @@ Report per relation:
 
 ## Immediate next actions
 
-1. Update `CLAUDE.md` edge table comments with the deprecation/evidence distinctions.
-2. Decide whether candidate deprecated relations should be removed from `kg_schema.py` now or only after a compatibility migration.
-3. Implement `kg_evidence.py` and backfill OpenTargets evidence for one relation first, preferably `mutation_associated_gene` or `disease_associated_gene`.
+1. Build the next evidence tranche locally for `mutation_associated_disease` from OpenTargets disease-facing genetic/known-variant source rows, preserving row IDs, studies, scores, effect sizes/p-values, directions, and paper IDs where available. Promote only after the evidence audit has zero unsupported/orphan records.
+2. Then build separate clinical evidence tranches for `molecule_treats_disease` and `molecule_contraindicates_disease` from OpenTargets/ChEMBL known-drug/clinical-indication rows. Keep treatment and contraindication polarity separate, preserve source row/trial/status/provenance fields, and audit each relation independently.
+3. Keep `paper_mentions_gene` and `paper_mentions_disease` as readable literature indexes, but do not expand paper-mention edges as if they were biological assertions; attach papers, text spans, datasets, studies, scores, and source rows through `evidence/{relation}.parquet`.
+4. Remove or rewrite deprecated/candidate relations only after a compatibility migration decision; until then rely on `RelationStatus` and `CANDIDATE_RELATIONS` metadata.

@@ -223,8 +223,10 @@ history stays in the phase notes below.
 **Evidence layer status**
 
 - Evidence is modeled as support metadata in `evidence/{relation}.parquet`, not
-  as primary biological edges. Papers are one evidence/support type, alongside
-  database records, studies, scores, source rows, and later extracted text spans.
+  as primary biological edges. Papers are one evidence/support carrier, not the
+  primary edge; evidence can also be OpenTargets source rows, curated database
+  records, datasets/cohorts/screens, studies, scores/effect observations, and
+  extracted text spans.
 - Canonical evidence currently covers six relations with zero unsupported/orphan
   records: `disease_associated_gene`, `disease_involves_pathway`,
   `mutation_affects_molecule_response`, `mutation_associated_gene`,
@@ -247,30 +249,38 @@ history stays in the phase notes below.
   remain readable canonical indexes, but future biological support should go
   into the evidence layer.
 - Relations marked as deprecated/migration candidates in
-  `docs/evidence_and_edge_schema_plan.md` should not be expanded until schema
-  compatibility is decided (`gene_encodes_protein` shortcut,
+  `docs/evidence_and_edge_schema_plan.md` should not be expanded without an
+  explicit source/migration decision. `manage_db.kg_schema` records this as
+  machine-readable lifecycle metadata (`RelationStatus.DERIVED`,
+  `LEGACY_INDEX`, or `DEPRECATED`) for `gene_encodes_protein` shortcut,
   `cell_line_associated_disease`, `mutation_associated_cell_type`,
-  `organism_models_disease`, and paper-mention-as-edge patterns).
+  `organism_models_disease`, paper-mention-as-edge patterns, and the
+  phenotype-indexed/inverted relations.
+- Phenotype causality direction is mutation→phenotype. Keep
+  `phenotype_caused_by_mutation` only as deprecated compatibility metadata in
+  favor of `mutation_causes_phenotype`; treat
+  `phenotype_associated_gene`/`protein`/`molecule` as non-causal association or
+  legacy index edges, not as phenotype-causes-* assertions.
+- Candidate `protein_interacts_with_enhancer` and
+  `protein_interacts_with_transcript` are documented as `CANDIDATE_RELATIONS`,
+  not canonical `RELATIONS`; add them only after selecting TF/ChIP/ENCODE or
+  RBP/RNA-binding sources and an ingestion policy.
 - Several `*protein*` edge files still physically use `gene` endpoints. Evidence
   preserves those canonical endpoints; do not remap ENSG/NCBI gene endpoints to
   ENSP proteins without a dedicated endpoint migration.
 
 **What's next**
 
-1. Finish edge-schema cleanup: align `kg_schema.py`, `CLAUDE.md`, and
-   `docs/evidence_and_edge_schema_plan.md` around deprecated/inverted/candidate
-   relations, including phenotype causality direction and candidate protein↔RNA
-   / protein↔enhancer interactions.
-2. Continue evidence backfill/source-aware ingestion, starting with
+1. Continue evidence backfill/source-aware ingestion, starting with
    `mutation_associated_disease`, then clinical indication/contraindication and
    enhancer/cell-line/expression supports. Each evidence tranche is done only
    after `audit_edge_evidence` reports zero unsupported/orphan records.
-3. Add source feature tables, separate from graph edges: sequences for genes,
+2. Add source feature tables, separate from graph edges: sequences for genes,
    transcripts, proteins, and enhancers; molecule structure/descriptors; paper
    title/abstract/sections/full text where licensed; embeddings later.
-4. Decide the protein-endpoint migration plan for legacy gene/protein-conflated
+3. Decide the protein-endpoint migration plan for legacy gene/protein-conflated
    relations before rewriting any canonical edge endpoints.
-5. Re-run full KG validation, evidence audit, and LaminDB parity after any
+4. Re-run full KG validation, evidence audit, and LaminDB parity after any
    canonical GCS promotion.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
@@ -353,7 +363,7 @@ primary biological assertion.
 | ------------------------------------ | ------------ | ------------ | ----------------- | ------- | ---- | --------: | ------------------------------------------------------------------------- |
 | `gene_has_transcript`                | `gene`       | `transcript` | `central_dogma`   | yes     | yes  |   507,365 | OpenTargets target transcripts                                             |
 | `transcript_encodes_protein`         | `transcript` | `protein`    | `central_dogma`   | yes     | yes  |   233,995 | OpenTargets ENST→ENSP translations                                         |
-| `gene_encodes_protein`               | `gene`       | `protein`    | `central_dogma`   | no      | yes  |   233,995 | deprecated shortcut; prefer `gene_has_transcript` + `transcript_encodes_protein` |
+| `gene_encodes_protein`               | `gene`       | `protein`    | `central_dogma`   | no      | yes  |   233,995 | deprecated/derived shortcut kept for compatibility; prefer transcript path |
 | `transcript_alternative_transcript`  | `transcript` | `transcript` | `central_dogma`   | yes     | no   |         - | not exported yet                                                          |
 | `mutation_in_gene`                   | `mutation`   | `gene`       | `genetic`         | yes     | no   |         - | physical locus/containment only; do not conflate with L2G association      |
 | `mutation_associated_gene`           | `mutation`   | `gene`       | `genetic`         | no      | yes  |   535,093 | OpenTargets L2G/GWAS association; promoted 2026-06-10 with zero dangling endpoints |
@@ -361,9 +371,9 @@ primary biological assertion.
 | `mutation_causes_protein_change`     | `mutation`   | `protein`    | `genetic`         | yes     | yes  |   177,735 | promoted 2026-06-10 from bounded variant scratch; ENSP protein endpoints             |
 | `mutation_overlaps_enhancer`         | `mutation`   | `enhancer`   | `genetic`         | yes     | no   |         - | not exported yet                                                          |
 | `mutation_associated_disease`        | `mutation`   | `disease`    | `genetic`         | no      | yes  | 4,656,171 | OpenTargets known-variant + GWAS disease evidence promoted 2026-06-11 with zero dangling endpoints |
-| `mutation_causes_phenotype`          | `mutation`   | `phenotype`  | `genetic`         | no      | no   |         - | not exported yet                                                          |
+| `mutation_causes_phenotype`          | `mutation`   | `phenotype`  | `genetic`         | no      | no   |         - | not exported; preferred forward phenotype-causality direction             |
 | `mutation_affects_molecule_response` | `mutation`   | `molecule`   | `pharmacological` | no      | yes  |     4,866 | OpenTargets pharmacogenomics                                              |
-| `mutation_associated_cell_type`      | `mutation`   | `cell_type`  | `genetic`         | no      | no   |         - | deprecated candidate unless a concrete eQTL/cell-type source is selected   |
+| `mutation_associated_cell_type`      | `mutation`   | `cell_type`  | `genetic`         | no      | no   |         - | TODEL/deprecated candidate unless a concrete eQTL/cell-type source is selected |
 | `gene_ortholog_gene`                 | `gene`       | `gene`       | `genetic`         | yes     | no   |         - | not exported yet                                                          |
 | `enhancer_regulates_gene`            | `enhancer`   | `gene`       | `regulatory`      | no      | yes  | 48,808,144 | OpenTargets enhancer-to-gene evidence; endpoint-validated                 |
 | `enhancer_regulates_transcript`      | `enhancer`   | `transcript` | `regulatory`      | yes     | no   |         - | not exported yet                                                          |
@@ -388,7 +398,7 @@ primary biological assertion.
 | `molecule_interacts_molecule`        | `molecule`   | `molecule`   | `pharmacological` | no      | yes  | 2,676,768 | Drug-drug interaction                                                     |
 | `cell_type_responds_to_molecule`     | `cell_type`  | `molecule`   | `pharmacological` | no      | no   |         - | not exported yet                                                          |
 | `cell_line_responds_to_molecule`     | `cell_line`  | `molecule`   | `experimental`    | yes     | no   |         - | not exported yet                                                          |
-| `phenotype_associated_molecule`      | `phenotype`  | `molecule`   | `pharmacological` | no      | yes  |    64,784 | Side effect / rescue                                                      |
+| `phenotype_associated_molecule`      | `phenotype`  | `molecule`   | `pharmacological` | no      | yes  |    64,784 | legacy phenotype-indexed side-effect/rescue index; non-causal             |
 | `disease_associated_gene`            | `disease`    | `gene`       | `disease_assoc`   | no      | yes  |     2,928 | OpenTargets Reactome evidence slice                                       |
 | `disease_associated_protein`         | `disease`    | `protein`    | `disease_assoc`   | no      | yes  |    80,411 | legacy gene/protein endpoints (`y_type=gene`)                             |
 | `disease_involves_pathway`           | `disease`    | `pathway`    | `disease_assoc`   | no      | yes  |     2,296 | OpenTargets Reactome evidence slice                                       |
@@ -397,9 +407,9 @@ primary biological assertion.
 | `disease_comorbid_disease`           | `disease`    | `disease`    | `epidemiological` | no      | no   |         - | not exported yet                                                          |
 | `disease_has_phenotype`              | `disease`    | `phenotype`  | `phenotype_assoc` | yes     | yes  |   241,797 | legacy + OpenTargets HPO                                                  |
 | `phenotype_observed_in_tissue`       | `phenotype`  | `tissue`     | `phenotype_assoc` | no      | no   |         - | not exported yet                                                          |
-| `phenotype_caused_by_mutation`       | `phenotype`  | `mutation`   | `genetic`         | no      | no   |         - | not exported yet                                                          |
-| `phenotype_associated_gene`          | `phenotype`  | `gene`       | `phenotype_assoc` | no      | no   |         - | not exported yet                                                          |
-| `phenotype_associated_protein`       | `phenotype`  | `protein`    | `phenotype_assoc` | no      | yes  |     3,330 | legacy gene/protein endpoints (`y_type=gene`)                             |
+| `phenotype_caused_by_mutation`       | `phenotype`  | `mutation`   | `genetic`         | no      | no   |         - | deprecated inverted wording; prefer `mutation_causes_phenotype`           |
+| `phenotype_associated_gene`          | `phenotype`  | `gene`       | `phenotype_assoc` | no      | no   |         - | non-causal HPO-gene association only                                      |
+| `phenotype_associated_protein`       | `phenotype`  | `protein`    | `phenotype_assoc` | no      | yes  |     3,330 | legacy inferred via gene; legacy gene/protein endpoints (`y_type=gene`)   |
 | `phenotype_associated_cell_type`     | `phenotype`  | `cell_type`  | `phenotype_assoc` | no      | no   |         - | not exported yet                                                          |
 | `phenotype_subtype_of_phenotype`     | `phenotype`  | `phenotype`  | `ontological`     | yes     | yes  |    37,472 | HPO hierarchy                                                             |
 | `tissue_subtype_of_tissue`           | `tissue`     | `tissue`     | `ontological`     | yes     | yes  |    28,064 | UBERON parent-child hierarchy                                             |
@@ -410,9 +420,9 @@ primary biological assertion.
 | `cell_line_derived_from_cell_type`   | `cell_line`  | `cell_type`  | `experimental`    | yes     | no   |         - | not exported yet                                                          |
 | `cell_line_derived_from_tissue`      | `cell_line`  | `tissue`     | `experimental`    | yes     | yes  |     1,092 | OpenTargets DepMap cell line tissue provenance                            |
 | `cell_line_from_organism`            | `cell_line`  | `organism`   | `metadata`        | yes     | no   |         - | not exported yet                                                          |
-| `cell_line_associated_disease`       | `cell_line`  | `disease`    | `experimental`    | no      | no   |         - | deprecated candidate; prefer `cell_line_models_disease` when curated       |
+| `cell_line_associated_disease`       | `cell_line`  | `disease`    | `experimental`    | no      | no   |         - | TODEL/deprecated candidate; prefer `cell_line_models_disease` when curated |
 | `organism_has_gene`                  | `organism`   | `gene`       | `genetic`         | yes     | yes  |   109,325 | human-only KG provenance; zero dangling endpoints                         |
-| `organism_models_disease`            | `organism`   | `disease`    | `experimental`    | no      | no   |         - | deprecated/deprioritized for current human-only KG                         |
+| `organism_models_disease`            | `organism`   | `disease`    | `experimental`    | no      | no   |         - | TODEL/deprecated/deprioritized for current human-only KG                   |
 | `organism_has_tissue`                | `organism`   | `tissue`     | `ontological`     | yes     | yes  |    16,061 | human-only KG anatomy provenance; zero dangling endpoints                 |
 | `paper_mentions_gene`                | `paper`      | `gene`       | `literature`      | no      | yes  | 7,177,163 | legacy literature index; future biological support should use edge evidence |
 | `paper_mentions_disease`             | `paper`      | `disease`    | `literature`      | no      | yes  | 6,492,130 | legacy literature index; future biological support should use edge evidence |

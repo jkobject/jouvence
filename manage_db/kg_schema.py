@@ -307,6 +307,20 @@ class RelationKind(str, Enum):
     METADATA = "metadata"
 
 
+class RelationStatus(str, Enum):
+    """Lifecycle status for relation names in the schema.
+
+    ``RELATIONS`` remains a compatibility list of readable/valid relation names;
+    status metadata records schema-cleanup decisions without destructively
+    removing relations that may already have canonical Parquet files.
+    """
+
+    ACTIVE = "active"
+    DERIVED = "derived"
+    LEGACY_INDEX = "legacy_index"
+    DEPRECATED = "deprecated"
+
+
 @dataclass(frozen=True)
 class Relation:
     """A directed relation type in the knowledge graph.
@@ -318,6 +332,9 @@ class Relation:
         kind: Semantic category of the relation.
         direct: True = direct biological interaction; False = associative/indirect.
         notes: Free-text annotation (data sources, caveats…).
+        status: Lifecycle/compatibility status. Deprecated/legacy relations remain
+                readable unless an explicit data migration removes or archives them.
+        replacement: Preferred relation/modeling pattern when status is not active.
     """
 
     name: str
@@ -326,6 +343,20 @@ class Relation:
     kind: RelationKind
     direct: bool
     notes: str = ""
+    status: RelationStatus = RelationStatus.ACTIVE
+    replacement: str = ""
+
+
+@dataclass(frozen=True)
+class CandidateRelation:
+    """A proposed relation that is intentionally not part of ``RELATIONS`` yet."""
+
+    name: str
+    source: NodeType
+    target: NodeType
+    kind: RelationKind
+    direct: bool
+    recommendation: str
 
 
 RELATIONS: list[Relation] = [
@@ -352,7 +383,9 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.CENTRAL_DOGMA,
         False,
-        "Shortcut edge",
+        "Shortcut/derived edge kept for legacy compatibility; prefer explicit transcript path",
+        RelationStatus.DERIVED,
+        "gene_has_transcript + transcript_encodes_protein",
     ),
     Relation(
         "transcript_alternative_transcript",
@@ -369,7 +402,7 @@ RELATIONS: list[Relation] = [
         NodeType.GENE,
         RelationKind.GENETIC,
         True,
-        "Genomic position",
+        "Physical/genomic containment only; do not use for L2G/GWAS association",
     ),
     Relation(
         "mutation_associated_gene",
@@ -377,7 +410,7 @@ RELATIONS: list[Relation] = [
         NodeType.GENE,
         RelationKind.GENETIC,
         False,
-        "Locus-to-gene prediction",
+        "Statistical/functional locus-to-gene prediction (for example OpenTargets L2G/GWAS)",
     ),
     Relation(
         "mutation_affects_transcript",
@@ -433,7 +466,9 @@ RELATIONS: list[Relation] = [
         NodeType.CELL_TYPE,
         RelationKind.GENETIC,
         False,
-        "eQTL cell-type enrichment",
+        "Deprecated candidate; likely better as evidence/context metadata unless a concrete eQTL/cell-type source is selected",
+        RelationStatus.DEPRECATED,
+        "evidence/context metadata on variant/gene or variant/disease assertions",
     ),
     Relation(
         "gene_ortholog_gene",
@@ -638,7 +673,9 @@ RELATIONS: list[Relation] = [
         NodeType.MOLECULE,
         RelationKind.PHARMACOLOGICAL,
         False,
-        "Side effect / rescue",
+        "Legacy phenotype-indexed side-effect/rescue association; not a causal phenotype→molecule assertion",
+        RelationStatus.LEGACY_INDEX,
+        "evidence-backed molecule effect/side-effect assertion when a directional relation is added",
     ),
     # ── Disease associations ─────────────────────────────────────────────────
     Relation(
@@ -713,7 +750,9 @@ RELATIONS: list[Relation] = [
         NodeType.MUTATION,
         RelationKind.GENETIC,
         False,
-        "Mendelian causal",
+        "Deprecated/inverted causal wording; keep only for compatibility until migrated",
+        RelationStatus.DEPRECATED,
+        "mutation_causes_phenotype",
     ),
     Relation(
         "phenotype_associated_gene",
@@ -721,7 +760,7 @@ RELATIONS: list[Relation] = [
         NodeType.GENE,
         RelationKind.PHENOTYPE_ASSOC,
         False,
-        "HPO-gene annotation",
+        "HPO-gene association only; not a phenotype-causes-gene causal edge",
     ),
     Relation(
         "phenotype_associated_protein",
@@ -729,7 +768,9 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.PHENOTYPE_ASSOC,
         False,
-        "Inferred via gene",
+        "Legacy/inferred via gene; canonical file may contain legacy gene endpoints; not causal",
+        RelationStatus.LEGACY_INDEX,
+        "phenotype_associated_gene or evidence-backed disease/gene/phenotype assertions",
     ),
     Relation(
         "phenotype_associated_cell_type",
@@ -820,7 +861,9 @@ RELATIONS: list[Relation] = [
         NodeType.DISEASE,
         RelationKind.EXPERIMENTAL,
         False,
-        "Added by user",
+        "Deprecated ambiguous association; prefer curated model relation",
+        RelationStatus.DEPRECATED,
+        "cell_line_models_disease",
     ),
     # ── Organism ─────────────────────────────────────────────────────────────
     Relation(
@@ -837,7 +880,9 @@ RELATIONS: list[Relation] = [
         NodeType.DISEASE,
         RelationKind.EXPERIMENTAL,
         False,
-        "MGI / Alliance",
+        "Deprecated/deprioritized for current human-only KG; retain only for future model-organism expansion",
+        RelationStatus.DEPRECATED,
+        "human-only organism_has_gene/organism_has_tissue metadata or future model-organism slice",
     ),
     Relation(
         "organism_has_tissue",
@@ -854,7 +899,9 @@ RELATIONS: list[Relation] = [
         NodeType.GENE,
         RelationKind.LITERATURE,
         False,
-        "NLP / Europe PMC",
+        "Legacy literature/co-mention index; weak evidence, not a biological assertion",
+        RelationStatus.LEGACY_INDEX,
+        "edge evidence records with paper_id where a biological relation is asserted",
     ),
     Relation(
         "paper_mentions_disease",
@@ -862,7 +909,9 @@ RELATIONS: list[Relation] = [
         NodeType.DISEASE,
         RelationKind.LITERATURE,
         False,
-        "NLP / Europe PMC",
+        "Legacy literature/co-mention index; weak evidence, not a biological assertion",
+        RelationStatus.LEGACY_INDEX,
+        "edge evidence records with paper_id where a biological relation is asserted",
     ),
     Relation(
         "paper_mentions_protein",
@@ -963,8 +1012,36 @@ RELATIONS: list[Relation] = [
     ),
 ]
 
+# Candidate relations from schema-cleanup review. These are intentionally kept
+# outside RELATIONS so validators do not expect Parquet edge files until a source
+# and ingestion policy are selected.
+CANDIDATE_RELATIONS: tuple[CandidateRelation, ...] = (
+    CandidateRelation(
+        "protein_interacts_with_enhancer",
+        NodeType.PROTEIN,
+        NodeType.ENHANCER,
+        RelationKind.PHYSICAL,
+        True,
+        "Add only with a concrete TF/ChIP/ENCODE source; otherwise model binding as evidence/context for enhancer_regulates_gene.",
+    ),
+    CandidateRelation(
+        "protein_interacts_with_transcript",
+        NodeType.PROTEIN,
+        NodeType.TRANSCRIPT,
+        RelationKind.PHYSICAL,
+        True,
+        "Add only with a concrete RBP/RNA-binding source; otherwise keep out of the core schema.",
+    ),
+)
+
 # Fast lookup by relation name
 RELATION_BY_NAME: dict[str, Relation] = {r.name: r for r in RELATIONS}
+CANDIDATE_RELATION_BY_NAME: dict[str, CandidateRelation] = {
+    r.name: r for r in CANDIDATE_RELATIONS
+}
+RELATIONS_BY_STATUS: dict[RelationStatus, list[Relation]] = {}
+for _r in RELATIONS:
+    RELATIONS_BY_STATUS.setdefault(_r.status, []).append(_r)
 
 # Fast lookup: all relations for a given source node type
 RELATIONS_BY_SOURCE: dict[NodeType, list[Relation]] = {}
