@@ -11,18 +11,18 @@ Canonical KG root: `/mnt/gcs/jouvencekb/kg/v2`.
 Validated state:
 
 - node files: `15 / 15`
-- edge files: `42 / 80`
-- nodes: `55,365,186`
-- edges: `151,386,746`
+- edge files: `43 / 80`
+- nodes: `55,523,691`
+- edges: `151,548,421`
 - dangling endpoints: `0`
 - last full KG validation evidence before the 2026-06-16 additive tranche:
   `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`
-- evidence layer: `7` canonical evidence files, `804,866` total support rows,
+- evidence layer: `8` canonical evidence files, `966,541` total support rows,
   audited read-only with zero unsupported/orphan records for
   `disease_associated_gene`, `disease_involves_pathway`,
   `mutation_affects_molecule_response`, `mutation_associated_gene`,
-  `mutation_causes_protein_change`, `molecule_targets_protein`, and
-  `mutation_causes_phenotype`
+  `mutation_causes_protein_change`, `molecule_targets_protein`,
+  `mutation_causes_phenotype`, and `gene_ortholog_gene`.
 - 2026-06-16 targeted endpoint validation: `cell_type_expresses_protein`
   (`7,205,547` edges) and `mutation_causes_phenotype` (`25,545` edges) both
   have zero dangling endpoints by DuckDB anti-join.
@@ -193,15 +193,17 @@ Contraindications need an independent source and audit path; they should not be
 inferred as the inverse or complement of treatment indications.
 
 Current evidence files in canonical GCS/FUSE (read-only Parquet metadata audit,
-2026-06-15):
+2026-06-16):
 
 | Relation | Edge rows | Evidence rows | Audit status |
 | --- | ---: | ---: | --- |
 | `disease_associated_gene` | 2,928 | 2,928 | zero unsupported/orphan |
 | `disease_involves_pathway` | 2,296 | 2,296 | zero unsupported/orphan |
+| `gene_ortholog_gene` | 161,675 | 161,675 | zero unsupported/orphan; OpenTargets target.homologues database-record support |
 | `molecule_targets_protein` | 41,239 | 41,239 | zero unsupported/orphan; keeps current legacy `y_type=gene` endpoints |
 | `mutation_affects_molecule_response` | 4,866 | 18,595 | zero unsupported/orphan; multiple source/paper supports per collapsed edge |
 | `mutation_associated_gene` | 535,093 | 535,093 | zero unsupported/orphan |
+| `mutation_causes_phenotype` | 25,545 | 26,980 | zero unsupported/orphan; EVA/ClinVar database-record + PMID supports |
 | `mutation_causes_protein_change` | 177,735 | 177,735 | zero unsupported/orphan |
 
 Relations with canonical edge files but no source-aware evidence yet include

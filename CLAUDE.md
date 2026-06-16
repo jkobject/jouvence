@@ -183,8 +183,8 @@ KG vision**. It is currently:
   `mutation_affects_molecule_response` edges.
 
 As of the 2026-06-15 remaining-slices promotion, the canonical export under
-`/mnt/gcs/jouvencekb/kg/v2` contains all `15 / 15` node files and `42 / 80`
-edge files, with `55,365,186` total nodes and `151,386,746` total edges. The
+`/mnt/gcs/jouvencekb/kg/v2` contains all `15 / 15` node files and `43 / 80`
+edge files, with `55,523,691` total nodes and `151,548,421` total edges. The
 largest new slice is `enhancer` (`48,808,144` nodes) plus enhancer regulatory
 edges. The default `manage_db.validate_kg` path is now an exact DuckDB anti-join
 validator intended for the mounted GCS-FUSE path, for example:
@@ -209,8 +209,8 @@ history stays in the phase notes below.
 **Current verified baseline**
 
 - Canonical KG root: `/mnt/gcs/jouvencekb/kg/v2`.
-- Coverage: `15 / 15` node files and `42 / 80` edge files from `kg_schema.py`.
-- Scale: `55,365,186` nodes and `151,386,746` edges.
+- Coverage: `15 / 15` node files and `43 / 80` edge files from `kg_schema.py`.
+- Scale: `55,523,691` nodes and `151,548,421` edges.
 - Last full DuckDB validation before the 2026-06-16 additive tranche reported
   `total_dangling_edges=0` under systemd limits; see
   `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
@@ -231,13 +231,13 @@ history stays in the phase notes below.
   primary edge; evidence can also be OpenTargets source rows, curated database
   records, datasets/cohorts/screens, studies, scores/effect observations, and
   extracted text spans.
-- Canonical evidence currently covers seven relations with zero unsupported/orphan
+- Canonical evidence currently covers eight relations with zero unsupported/orphan
   records: `disease_associated_gene`, `disease_involves_pathway`,
-  `mutation_affects_molecule_response`, `mutation_associated_gene`,
-  `mutation_causes_protein_change`, `molecule_targets_protein`, and
-  `mutation_causes_phenotype`.
-- Latest seven-relation evidence audit:
-  `.omoc/reports/hermes-evidence-seven-relations-audit-20260616T100720Z.json`.
+  `gene_ortholog_gene`, `mutation_affects_molecule_response`,
+  `mutation_associated_gene`, `mutation_causes_protein_change`,
+  `molecule_targets_protein`, and `mutation_causes_phenotype`.
+- Latest eight-relation evidence audit:
+  `.omoc/reports/hermes-evidence-eight-relations-audit-20260616T133746Z.json`.
 - Next evidence targets: `mutation_associated_disease`,
   `molecule_treats_disease`, `molecule_contraindicates_disease`, enhancer
   regulatory/context edges, and expression/DepMap/cell-line edges where source
@@ -286,19 +286,19 @@ updates.
 **Verified current state (read-only audit, 2026-06-15)**
 
 - Canonical GCS/FUSE root: `/mnt/gcs/jouvencekb/kg/v2`.
-- Physical coverage: all `15 / 15` schema node files and `42 / 80` schema edge
+- Physical coverage: all `15 / 15` schema node files and `43 / 80` schema edge
   files are present; remaining missing edges are unresolved schema/vision
   relations, not empty placeholders to create.
-- Parquet-metadata counts from the mounted canonical root: `55,365,186` nodes
-  and `151,386,746` edges.
-- Evidence files present: `7` relations, `804,866` total support rows.
+- Parquet-metadata counts from the mounted canonical root: `55,523,691` nodes
+  and `151,548,421` edges.
+- Evidence files present: `8` relations, `966,541` total support rows.
 - Evidence audit passes with zero unsupported/orphan records for:
   `disease_associated_gene` (`2,928`), `disease_involves_pathway` (`2,296`),
   `mutation_affects_molecule_response` (`18,595` support rows for `4,866`
-  collapsed edges), `mutation_associated_gene` (`535,093`),
-  `mutation_causes_protein_change` (`177,735`),
-  `molecule_targets_protein` (`41,239`), and
-  `mutation_causes_phenotype` (`26,980`).
+  edges), `mutation_associated_gene` (`535,093`),
+  `mutation_causes_protein_change` (`177,735`), `molecule_targets_protein`
+  (`41,239`), `mutation_causes_phenotype` (`26,980` support rows for `25,545`
+  edges), and `gene_ortholog_gene` (`161,675`).
 
 **Unresolved schema/modeling work**
 
@@ -439,7 +439,7 @@ primary biological assertion.
 | `gene_associated_phenotype`          | `gene`       | `phenotype`  | `phenotype_assoc` | no      | no   |         - | preferred non-causal HPO gene→phenotype association direction             |
 | `mutation_affects_molecule_response` | `mutation`   | `molecule`   | `pharmacological` | no      | yes  |     4,866 | OpenTargets pharmacogenomics                                              |
 | `mutation_associated_cell_type`      | `mutation`   | `cell_type`  | `genetic`         | no      | no   |         - | TODEL/deprecated candidate unless a concrete eQTL/cell-type source is selected |
-| `gene_ortholog_gene`                 | `gene`       | `gene`       | `genetic`         | yes     | no   |         - | not exported yet                                                          |
+| `gene_ortholog_gene`                 | `gene`       | `gene`       | `genetic`         | yes     | yes  |   161,675 | OpenTargets target.homologues high-confidence orthologs; evidence present |
 | `enhancer_regulates_gene`            | `enhancer`   | `gene`       | `regulatory`      | no      | yes  | 48,808,144 | OpenTargets enhancer-to-gene evidence; endpoint-validated                 |
 | `enhancer_regulates_transcript`      | `enhancer`   | `transcript` | `regulatory`      | yes     | no   |         - | not exported yet                                                          |
 | `enhancer_active_in_cell_type`       | `enhancer`   | `cell_type`  | `regulatory`      | yes     | yes  | 19,700,144 | OpenTargets enhancer activity context; endpoint-validated                 |
@@ -783,11 +783,11 @@ data/kg/
 - Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2`; paper, Reactome,
   molecule/MoA, biosample, expression, variant, organism, dataset, cell-line,
   and enhancer slices were later added. Current canonical GCS layout has
-  `15 / 15` node files and `42 / 80` edge files. The 2026-06-15 full DuckDB
+  `15 / 15` node files and `43 / 80` edge files. The 2026-06-15 full DuckDB
   validation over `/mnt/gcs/jouvencekb/kg/v2` reported `55,365,186` nodes,
   `144,155,654` edges, and `total_dangling_edges: 0` before the two 2026-06-16
-  additive tranches. Current metadata counts are `55,365,186` nodes and
-  `151,386,746` edges; the 2026-06-16 files were validated by targeted DuckDB
+  additive tranches. Current metadata counts are `55,523,691` nodes and
+  `151,548,421` edges; the 2026-06-16 files were validated by targeted DuckDB
   anti-joins.
 
 ### Phase 8 — KGLoader + graph export ✅ (complete)
@@ -810,8 +810,8 @@ data/kg/
 - [x] Schema coverage audit CLI:
       `uv run python -m manage_db.audit_kg_coverage /mnt/gcs/jouvencekb/kg/v2`
       reports physical node/edge file coverage against `kg_schema.py`. Current
-      canonical GCS export: `15 / 15` node files, `42 / 80` edge files,
-      `55,365,186` total nodes, and `151,386,746` total edges. See
+      canonical GCS export: `15 / 15` node files, `43 / 80` edge files,
+      `55,523,691` total nodes, and `151,548,421` total edges. See
       `docs/kg_coverage_audit.md`.
 - [x] Remote GCS validation after remaining-slice promotion: the 2026-06-15
       full DuckDB run of

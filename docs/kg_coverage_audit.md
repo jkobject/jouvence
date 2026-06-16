@@ -33,7 +33,7 @@ support rows orphaned?"
 
 As of 2026-06-16 after the additive `cell_type_expresses_protein` and
 `mutation_causes_phenotype` tranche, the canonical export reports `15 / 15`
-node files and `42 / 80` edge files: `55,365,186` nodes and `151,386,746`
+node files and `43 / 80` edge files: `55,523,691` nodes and `151,548,421`
 edges.
 The formerly missing node files (`cell_line`, `dataset`, `enhancer`) are now
 present. The remaining missing edge files are schema/vision relations that still
@@ -65,38 +65,26 @@ targeted DuckDB anti-joins:
 
 Current evidence status is tracked in `CLAUDE.md` and
 `docs/evidence_and_edge_schema_plan.md`. As of the 2026-06-16 targeted audit,
-canonical evidence exists for seven relations
+canonical evidence exists for eight relations
 (`disease_associated_gene`, `disease_involves_pathway`,
-`mutation_affects_molecule_response`, `mutation_associated_gene`,
-`mutation_causes_protein_change`, `molecule_targets_protein`, and
-`mutation_causes_phenotype`) and targeted
+`gene_ortholog_gene`, `mutation_affects_molecule_response`,
+`mutation_associated_gene`, `mutation_causes_protein_change`,
+`molecule_targets_protein`, and `mutation_causes_phenotype`) and targeted
 `manage_db.audit_edge_evidence` reports zero unsupported/orphan records for all
-seven. The active evidence backlog starts with `mutation_associated_disease`, then
+eight. The active evidence backlog starts with `mutation_associated_disease`, then
 clinical `molecule_treats_disease` / `molecule_contraindicates_disease`, then
 enhancer/expression/cell-line support tranches.
 
 ## Source policy for next gene-gene tranches
 
-- `gene_ortholog_gene`: the only currently mapped non-GCS exporter is
-  `manage_db.ingest_opentargets --datasets orthology`, which reads the
-  OpenTargets `target.homologues` field exactly. It keeps only `ENSG` human
-  query genes with high-confidence (`isHighConfidence` true/`1`) entries whose
-  `homologyType` starts with `ortholog_`, writes endpoint Ensembl gene stubs
-  needed for local validation, and rejects within-species/other paralogues.
-  This is intentionally **not** in `ALL_DATASETS`; run against a temp root first:
-
-  ```bash
-  uv run python -m manage_db.ingest_opentargets \
-    --data-dir /tmp/txgnn-orthology-smoke --datasets orthology --no-download
-  uv run python -m manage_db.validate_kg /tmp/txgnn-orthology-smoke/kg \
-    --threads 2 --duckdb-memory-limit 1GB \
-    --duckdb-temp-dir /tmp/txgnn-orthology-smoke/duckdb-tmp
-  ```
-
-  Replace `/tmp/txgnn-orthology-smoke/opentargets/target` with a local or
-  read-only copy of the OT `target` Parquet directory before running. Do not
-  promote to canonical GCS until the parent has reviewed the non-human gene-node
-  policy and LaminDB parity implications.
+- `gene_ortholog_gene`: promoted on 2026-06-16 from OpenTargets
+  `target.homologues` high-confidence orthologs (`161,675` edges and matching
+  evidence rows). The local build ran under systemd `MemoryMax=5G` with `1.7G`
+  peak RSS; canonical promotion had zero dangling gene endpoints and backed up
+  the previous `nodes/gene.parquet` under
+  `/mnt/gcs/jouvencekb/kg/scratch/hermes-backups/20260616T133709Z-pre-orthology/`.
+  Keep this exporter explicit-only (`--datasets orthology`), not in
+  `ALL_DATASETS`, because it adds non-human Ensembl gene stubs.
 - `gene_coexpressed_gene`: no exact source mapping is selected yet. Do not infer
   coexpression from already-promoted tissue/cell-type expression edges or emit an
   empty placeholder. Pick an explicit coexpression network source (for example a
