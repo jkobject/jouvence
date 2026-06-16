@@ -33,7 +33,7 @@ support rows orphaned?"
 
 As of 2026-06-16 after the additive `cell_type_expresses_protein` and
 `mutation_causes_phenotype` tranche, the canonical export reports `15 / 15`
-node files and `43 / 80` edge files: `55,523,691` nodes and `151,548,421`
+node files and `44 / 80` edge files: `55,523,691` nodes and `151,549,604`
 edges.
 The formerly missing node files (`cell_line`, `dataset`, `enhancer`) are now
 present. The remaining missing edge files are schema/vision relations that still
@@ -54,24 +54,35 @@ uv run --no-sync python -m manage_db.validate_kg /mnt/gcs/jouvencekb/kg/v2 \
 ```
 
 Evidence: `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
-That full run predates the 2026-06-16 additive tranche and reported
-`144,155,654` edges. The two new edge files were validated separately with
-targeted DuckDB anti-joins:
+That full run predates the 2026-06-16 additive tranches and reported
+`144,155,654` edges. The new edge files were validated separately with
+targeted anti-joins:
 
 - `cell_type_expresses_protein`: `7,205,547` edges, zero dangling endpoints.
 - `mutation_causes_phenotype`: `25,545` edges, zero dangling endpoints; its
   `26,980` evidence rows pass `manage_db.audit_edge_evidence` with zero
   unsupported/orphan support.
+- `gene_ortholog_gene`: `161,675` edges, zero dangling endpoints; matching
+  evidence rows pass `manage_db.audit_edge_evidence` with zero unsupported/orphan
+  support.
+- `cell_line_from_organism`: `1,183` edges, zero dangling endpoints; matching
+  evidence rows pass `manage_db.audit_edge_evidence` with zero unsupported/orphan
+  support.
+- `cell_line_expresses_protein`: estimated at `264,166,510` projected edges from
+  `cell_line_expresses_gene`, with `3.7G` RSS for estimate-only. Do not promote
+  this relation without a stricter expression/isoform filter or a streaming
+  exporter.
 
 Current evidence status is tracked in `CLAUDE.md` and
 `docs/evidence_and_edge_schema_plan.md`. As of the 2026-06-16 targeted audit,
-canonical evidence exists for eight relations
-(`disease_associated_gene`, `disease_involves_pathway`,
-`gene_ortholog_gene`, `mutation_affects_molecule_response`,
-`mutation_associated_gene`, `mutation_causes_protein_change`,
-`molecule_targets_protein`, and `mutation_causes_phenotype`) and targeted
+canonical evidence exists for nine relations
+(`cell_line_from_organism`, `disease_associated_gene`,
+`disease_involves_pathway`, `gene_ortholog_gene`,
+`mutation_affects_molecule_response`, `mutation_associated_gene`,
+`mutation_causes_protein_change`, `molecule_targets_protein`, and
+`mutation_causes_phenotype`) and targeted
 `manage_db.audit_edge_evidence` reports zero unsupported/orphan records for all
-eight. The active evidence backlog starts with `mutation_associated_disease`, then
+nine. The active evidence backlog starts with `mutation_associated_disease`, then
 clinical `molecule_treats_disease` / `molecule_contraindicates_disease`, then
 enhancer/expression/cell-line support tranches.
 

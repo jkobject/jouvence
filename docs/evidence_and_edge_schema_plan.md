@@ -11,18 +11,19 @@ Canonical KG root: `/mnt/gcs/jouvencekb/kg/v2`.
 Validated state:
 
 - node files: `15 / 15`
-- edge files: `43 / 80`
+- edge files: `44 / 80`
 - nodes: `55,523,691`
-- edges: `151,548,421`
+- edges: `151,549,604`
 - dangling endpoints: `0`
 - last full KG validation evidence before the 2026-06-16 additive tranche:
   `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`
-- evidence layer: `8` canonical evidence files, `966,541` total support rows,
+- evidence layer: `9` canonical evidence files, `967,724` total support rows,
   audited read-only with zero unsupported/orphan records for
-  `disease_associated_gene`, `disease_involves_pathway`,
-  `mutation_affects_molecule_response`, `mutation_associated_gene`,
-  `mutation_causes_protein_change`, `molecule_targets_protein`,
-  `mutation_causes_phenotype`, and `gene_ortholog_gene`.
+  `cell_line_from_organism`, `disease_associated_gene`,
+  `disease_involves_pathway`, `mutation_affects_molecule_response`,
+  `mutation_associated_gene`, `mutation_causes_protein_change`,
+  `molecule_targets_protein`, `mutation_causes_phenotype`, and
+  `gene_ortholog_gene`.
 - 2026-06-16 targeted endpoint validation: `cell_type_expresses_protein`
   (`7,205,547` edges) and `mutation_causes_phenotype` (`25,545` edges) both
   have zero dangling endpoints by DuckDB anti-join.
@@ -39,6 +40,7 @@ Important corrections relative to old notes:
   - `dataset_contains_tissue`: `27`
   - `cell_line_expresses_gene`: `20,928,056`
   - `cell_line_derived_from_tissue`: `1,092`
+  - `cell_line_from_organism`: `1,183`
 - Mutation safe slices are partially canonical:
   - `mutation_associated_gene`: `535,093`
   - `mutation_associated_disease`: `4,656,171`
@@ -197,6 +199,7 @@ Current evidence files in canonical GCS/FUSE (read-only Parquet metadata audit,
 
 | Relation | Edge rows | Evidence rows | Audit status |
 | --- | ---: | ---: | --- |
+| `cell_line_from_organism` | 1,183 | 1,183 | zero unsupported/orphan; human cell-line metadata support |
 | `disease_associated_gene` | 2,928 | 2,928 | zero unsupported/orphan |
 | `disease_involves_pathway` | 2,296 | 2,296 | zero unsupported/orphan |
 | `gene_ortholog_gene` | 161,675 | 161,675 | zero unsupported/orphan; OpenTargets target.homologues database-record support |
