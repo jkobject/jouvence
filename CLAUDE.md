@@ -311,14 +311,25 @@ updates.
 **Near-term phase A — finish source-aware evidence**
 
 1. Backfill `mutation_associated_disease` evidence in a streaming/bounded job.
-   Preserve source row IDs, study IDs, scores, p-values/effect sizes, direction,
-   release, and paper IDs where present. Done =
-   `evidence/mutation_associated_disease.parquet` plus
-   `audit_edge_evidence --relations mutation_associated_disease` with zero
+   Current canonical edge composition is `OpenTargets/eva` (`3,768,116`),
+   `OpenTargets/gwas_credible_sets` (`848,696` with `studyLocusId`),
+   `OpenTargets/uniprot_variants` (`30,305`), and `OpenTargets/eva_somatic`
+   (`9,054`). Archived source rows are available under the 2026-06-11
+   `txgnn-known-variants-scratch` and `txgnn-gwas-join-scratch` archives.
+   Preserve source row IDs, `studyLocusId`/`studyId`, scores, p-values/effect
+   sizes, direction, release/evidence dates, and paper IDs where present. Use
+   DuckDB/PyArrow projection and temp evidence output; do not full-read/write
+   canonical GCS directly. Done = `evidence/mutation_associated_disease.parquet`
+   plus `audit_edge_evidence --relations mutation_associated_disease` with zero
    unsupported/orphan records.
 2. Backfill clinical evidence separately for `molecule_treats_disease` and
-   `molecule_contraindicates_disease`. Do not infer contraindication from
-   missing indication; keep treatment and contraindication polarity separate.
+   `molecule_contraindicates_disease`. The archived OpenTargets
+   `clinical_indication` table has positive indication/trial-stage semantics and
+   can support only a subset of `molecule_treats_disease` after CHEMBL→DrugBank
+   mapping (`481 / 14,135` canonical treatment edges in the read-only probe). It
+   must **not** be used as contraindication evidence; no contraindication-specific
+   archived source is currently identified. Keep treatment and contraindication
+   polarity separate.
 3. Backfill source records for enhancer regulatory/context edges, expression
    edges, DepMap/cell-line edges, organism/dataset metadata edges, and legacy
    literature index edges where source rows exist.
