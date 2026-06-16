@@ -342,6 +342,118 @@ def build_mutation_associated_disease_evidence(
     return {relation: rows_written}
 
 
+def _drugbank_mappings_from_drug_molecule_dir(drug_molecule_dir: str | Path) -> pd.DataFrame:
+    """Return OpenTargets ChEMBL → DrugBank mappings from drug_molecule parquet files."""
+
+    rows: list[tuple[str, str]] = []
+    for parquet_file in sorted(Path(drug_molecule_dir).glob("*.parquet")):
+        df = pd.read_parquet(parquet_file, columns=["id", "crossReferences"])
+        for _, row in df.iterrows():
+            chembl_id = _clean_str(row.get("id"))
+            if not chembl_id:
+                continue
+            for ref in _to_list(row.get("crossReferences")):
+                if not isinstance(ref, dict):
+                    continue
+                if _clean_str(ref.get("source")).lower() != "drugbank":
+                    continue
+                for drugbank_id in _to_list(ref.get("ids")):
+                    drugbank_id = _clean_str(drugbank_id)
+                    if drugbank_id.startswith("DB"):
+                        rows.append((chembl_id, drugbank_id))
+    if not rows:
+        return pd.DataFrame(columns=["drugId", "x_id"])
+    return pd.DataFrame(rows, columns=["drugId", "x_id"]).drop_duplicates()
+
+
+def build_molecule_treats_disease_clinical_evidence(
+    edge_parquet: str | Path,
+    clinical_indication_parquet: str | Path,
+    drug_molecule_dir: str | Path,
+    output_parquet: str | Path,
+) -> dict[str, int]:
+    """Build partial OpenTargets clinical-indication support for treatment edges.
+
+    This intentionally supports only positive indication/treatment semantics.
+    It must not be used for ``molecule_contraindicates_disease`` because the
+    OpenTargets clinical indication table records clinical-stage indications,
+    not contraindications.
+    """
+
+    relation = "molecule_treats_disease"
+    edges = pd.read_parquet(edge_parquet, columns=["x_id", "x_type", "y_id", "y_type", "relation"])
+    edges = edges[edges["relation"].astype(str) == relation].copy()
+    edges["x_id"] = edges["x_id"].astype(str)
+    edges["y_id"] = edges["y_id"].astype(str)
+    canonical = edges[["x_id", "x_type", "y_id", "y_type"]].drop_duplicates()
+
+    mappings = _drugbank_mappings_from_drug_molecule_dir(drug_molecule_dir)
+    if mappings.empty or canonical.empty:
+        empty = pd.DataFrame(columns=kg_evidence.evidence_schema().names)
+        output_parquet = Path(output_parquet)
+        output_parquet.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(pa.Table.from_pandas(empty, schema=kg_evidence.evidence_schema(), preserve_index=False), output_parquet)
+        return {relation: 0}
+
+    clinical = pd.read_parquet(
+        clinical_indication_parquet,
+        columns=["id", "maxClinicalStage", "clinicalReportIds", "diseaseId", "drugId"],
+    )
+    clinical["drugId"] = clinical["drugId"].astype(str)
+    clinical["y_id"] = clinical["diseaseId"].astype(str).str.replace("_", ":", regex=False)
+    clinical = clinical.merge(mappings, on="drugId", how="inner")
+    matched = clinical.merge(canonical, on=["x_id", "y_id"], how="inner")
+    if matched.empty:
+        output_parquet = Path(output_parquet)
+        output_parquet.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(
+            pa.Table.from_pandas(pd.DataFrame(columns=kg_evidence.evidence_schema().names), schema=kg_evidence.evidence_schema(), preserve_index=False),
+            output_parquet,
+        )
+        return {relation: 0}
+
+    matched = matched.drop_duplicates(subset=["id", "x_id", "y_id"])
+    n = len(matched)
+    study_id = matched["clinicalReportIds"].map(lambda value: ";".join(_clean_str(v) for v in _to_list(value) if _clean_str(v)))
+    stage = matched["maxClinicalStage"].fillna("").astype(str)
+    x_id = matched["x_id"].astype(str)
+    y_id = matched["y_id"].astype(str)
+    out = pd.DataFrame(
+        {
+            "edge_key": relation + "|" + x_id + "|" + y_id,
+            "relation": relation,
+            "x_id": x_id,
+            "x_type": matched["x_type"].fillna("molecule").astype(str),
+            "y_id": y_id,
+            "y_type": matched["y_type"].fillna("disease").astype(str),
+            "evidence_type": "clinical_trial",
+            "source": "OpenTargets",
+            "source_dataset": "clinical_indication",
+            "source_record_id": matched["id"].astype(str),
+            "paper_id": "",
+            "dataset_id": "",
+            "study_id": study_id,
+            "evidence_score": pd.Series([math.nan] * n, index=matched.index, dtype="float64"),
+            "effect_size": pd.Series([math.nan] * n, index=matched.index, dtype="float64"),
+            "p_value": pd.Series([math.nan] * n, index=matched.index, dtype="float64"),
+            "direction": "indication",
+            "confidence_interval": "",
+            "predicate": stage,
+            "text_span": "",
+            "section": "",
+            "extraction_method": "OpenTargets clinical_indication + drug_molecule DrugBank xref",
+            "license": "",
+            "release": "26.03",
+            "created_at": "",
+        }
+    )
+    output_parquet = Path(output_parquet)
+    output_parquet.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pandas(out, schema=kg_evidence.evidence_schema(), preserve_index=False)
+    pq.write_table(table, output_parquet)
+    return {relation: table.num_rows}
+
+
 def backfill_pharmacogenomics_evidence(
     kg_path: str | Path,
     pharmacogenomics_dir: str | Path,
@@ -455,6 +567,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Output parquet for streaming builders such as mutation_associated_disease.",
     )
+    parser.add_argument(
+        "--clinical-indication-parquet",
+        default=None,
+        help="OpenTargets clinical_indication parquet for partial molecule_treats_disease evidence staging.",
+    )
+    parser.add_argument(
+        "--drug-molecule-dir",
+        default=None,
+        help="OpenTargets drug_molecule parquet directory for ChEMBL to DrugBank xrefs.",
+    )
     parser.add_argument("--batch-size", type=int, default=100_000, help="Streaming batch size.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     args = parser.parse_args(argv)
@@ -468,6 +590,20 @@ def main(argv: list[str] | None = None) -> int:
                 args.mutation_associated_disease_edge_parquet,
                 args.output_parquet,
                 batch_size=args.batch_size,
+            )
+        )
+    if args.clinical_indication_parquet or args.drug_molecule_dir:
+        if not (args.clinical_indication_parquet and args.drug_molecule_dir and args.output_parquet):
+            parser.error(
+                "--clinical-indication-parquet, --drug-molecule-dir, and --output-parquet are required together"
+            )
+        edge_parquet = Path(args.kg_path) / "edges" / "molecule_treats_disease.parquet"
+        counts.update(
+            build_molecule_treats_disease_clinical_evidence(
+                edge_parquet,
+                args.clinical_indication_parquet,
+                args.drug_molecule_dir,
+                args.output_parquet,
             )
         )
     if args.pharmacogenomics_dir:

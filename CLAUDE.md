@@ -248,9 +248,16 @@ history stays in the phase notes below.
   `.omoc/reports/hermes-mutation-associated-disease-evidence-audit-*.json`.
   Latest prior nine-relation audit:
   `.omoc/reports/hermes-evidence-nine-relations-audit-20260616T135126Z.json`.
-- Next evidence targets: `molecule_treats_disease`,
-  `molecule_contraindicates_disease`, enhancer regulatory/context edges, and
-  expression/DepMap/cell-line edges where source records are available.
+- Clinical treatment evidence source review is complete for the archived
+  OpenTargets `clinical_indication` table. A staging-only partial treatment
+  evidence file supports `481 / 14,135` canonical `molecule_treats_disease`
+  edges via ChEMBL→DrugBank xrefs; see
+  `.omoc/reports/hermes-clinical-evidence-source-review-*.md`. Do **not** use
+  this source for `molecule_contraindicates_disease` despite `89` overlapping
+  pairs: its polarity is positive indication/trial stage, not contraindication.
+- Next evidence targets: find an independent contraindication-specific source,
+  then enhancer regulatory/context edges and expression/DepMap/cell-line edges
+  where source records are available.
 
 **Schema cleanup / modeling decisions**
 
@@ -323,11 +330,15 @@ updates.
 2. Backfill clinical evidence separately for `molecule_treats_disease` and
    `molecule_contraindicates_disease`. The archived OpenTargets
    `clinical_indication` table has positive indication/trial-stage semantics and
-   can support only a subset of `molecule_treats_disease` after CHEMBL→DrugBank
-   mapping (`481 / 14,135` canonical treatment edges in the read-only probe). It
-   must **not** be used as contraindication evidence; no contraindication-specific
-   archived source is currently identified. Keep treatment and contraindication
-   polarity separate.
+   supports a staging-only subset of `molecule_treats_disease` after
+   CHEMBL→DrugBank mapping (`481 / 14,135` canonical treatment edges; see
+   `.omoc/reports/hermes-clinical-evidence-source-review-*.md` and
+   `.omoc/staging/molecule-treats-disease-clinical-evidence-*`). It must **not**
+   be used as contraindication evidence; `89` contraindication edge pairs overlap
+   but with the wrong source polarity. No contraindication-specific archived
+   source is currently identified. Keep treatment and contraindication polarity
+   separate; promote the partial treatment evidence only if partial canonical
+   evidence files are accepted for downstream loaders.
 3. Backfill source records for enhancer regulatory/context edges, expression
    edges, DepMap/cell-line edges, organism/dataset metadata edges, and legacy
    literature index edges where source rows exist.

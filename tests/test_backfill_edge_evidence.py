@@ -343,3 +343,80 @@ def test_build_mutation_associated_disease_evidence_streaming(tmp_path: Path) ->
     assert evidence["source_record_id"].str.contains("row=").all()
     assert evidence.loc[evidence["source_dataset"] == "gwas_credible_sets", "source_record_id"].iloc[0].find("studyLocusId=SL1") > -1
     assert set(evidence["edge_key"]) == {"mutation_associated_disease|1_100_A_T|EFO:1"}
+
+
+
+def test_build_molecule_treats_disease_clinical_evidence_maps_chembl_drugbank(tmp_path: Path) -> None:
+    from manage_db.backfill_edge_evidence import build_molecule_treats_disease_clinical_evidence
+    from manage_db.kg_evidence import read_evidence
+
+    root = open_kg_root(str(tmp_path / "kg"))
+    edge_dir = tmp_path / "kg" / "edges"
+    evidence_dir = tmp_path / "kg" / "evidence"
+    edge_dir.mkdir(parents=True)
+    evidence_dir.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "x_id": "DB001",
+                "x_type": "molecule",
+                "y_id": "MONDO:1",
+                "y_type": "disease",
+                "relation": "molecule_treats_disease",
+                "display_relation": "indication",
+                "source": "TxGNN",
+                "credibility": 3,
+            }
+        ]
+    ).to_parquet(edge_dir / "molecule_treats_disease.parquet", index=False)
+
+    clinical = tmp_path / "clinical_indication.parquet"
+    pd.DataFrame(
+        [
+            {
+                "id": "clinical-row-1",
+                "maxClinicalStage": "APPROVAL",
+                "clinicalReportIds": ["nct123", "emea/h/c/1"],
+                "diseaseId": "MONDO_1",
+                "drugId": "CHEMBL1",
+            },
+            {
+                "id": "clinical-row-unmatched",
+                "maxClinicalStage": "PHASE_2",
+                "clinicalReportIds": ["nct999"],
+                "diseaseId": "MONDO_2",
+                "drugId": "CHEMBL1",
+            },
+        ]
+    ).to_parquet(clinical, index=False)
+
+    drug_dir = tmp_path / "drug_molecule"
+    drug_dir.mkdir()
+    pd.DataFrame(
+        [
+            {
+                "id": "CHEMBL1",
+                "crossReferences": [{"source": "drugbank", "ids": ["DB001"]}],
+            }
+        ]
+    ).to_parquet(drug_dir / "part-000.parquet", index=False)
+
+    out = evidence_dir / "molecule_treats_disease.parquet"
+    counts = build_molecule_treats_disease_clinical_evidence(
+        edge_dir / "molecule_treats_disease.parquet",
+        clinical,
+        drug_dir,
+        out,
+    )
+    assert counts == {"molecule_treats_disease": 1}
+
+    evidence = read_evidence(root, "molecule_treats_disease")
+    assert len(evidence) == 1
+    row = evidence.iloc[0]
+    assert row["edge_key"] == "molecule_treats_disease|DB001|MONDO:1"
+    assert row["source"] == "OpenTargets"
+    assert row["source_dataset"] == "clinical_indication"
+    assert row["source_record_id"] == "clinical-row-1"
+    assert row["predicate"] == "APPROVAL"
+    assert row["direction"] == "indication"
+    assert row["study_id"] == "nct123;emea/h/c/1"
