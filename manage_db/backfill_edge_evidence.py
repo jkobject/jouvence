@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from manage_db import kg_evidence, kg_storage
 
@@ -236,6 +239,109 @@ def backfill_edge_evidence(kg_path: str | Path, relations: list[str]) -> dict[st
     return counts
 
 
+def _mutation_disease_batch_to_evidence(batch: pa.RecordBatch, row_offset: int) -> pa.Table:
+    relation = "mutation_associated_disease"
+    df = batch.to_pandas()
+    n = len(df)
+    source_raw = df["source"].fillna("").astype(str)
+    source_parts = source_raw.str.split("/", n=1, expand=True)
+    source = source_parts[0].where(source_parts[0] != "", "OpenTargets")
+    if source_parts.shape[1] > 1:
+        source_dataset = source_parts[1].fillna("")
+    else:
+        source_dataset = pd.Series([""] * n, index=df.index)
+    datatype = df.get("datatype", pd.Series([""] * n, index=df.index)).fillna("").astype(str)
+    study_locus = df.get("studyLocusId", pd.Series([""] * n, index=df.index)).fillna("").astype(str)
+    score = pd.to_numeric(df.get("score", pd.Series([pd.NA] * n, index=df.index)), errors="coerce")
+    score_token = score.map(_score_token).fillna("").astype(str)
+    row_ids = pd.Series(range(row_offset, row_offset + n), index=df.index).astype(str)
+    x_id = df["x_id"].fillna("").astype(str)
+    y_id = df["y_id"].fillna("").astype(str)
+    source_record_id = (
+        source_raw + ":" + relation
+        + ":" + x_id
+        + ":" + y_id
+        + ":datatype=" + datatype
+        + ":studyLocusId=" + study_locus
+        + ":score=" + score_token
+        + ":row=" + row_ids
+    )
+    evidence_type = source_dataset.where(
+        source_dataset != "gwas_credible_sets", "genetic_association"
+    )
+    evidence_type = evidence_type.where(evidence_type == "genetic_association", "database_record")
+
+    out = pd.DataFrame(
+        {
+            "edge_key": relation + "|" + x_id + "|" + y_id,
+            "relation": relation,
+            "x_id": x_id,
+            "x_type": df.get("x_type", pd.Series(["mutation"] * n, index=df.index)).fillna("mutation").astype(str),
+            "y_id": y_id,
+            "y_type": df.get("y_type", pd.Series(["disease"] * n, index=df.index)).fillna("disease").astype(str),
+            "evidence_type": evidence_type,
+            "source": source,
+            "source_dataset": source_dataset,
+            "source_record_id": source_record_id,
+            "paper_id": "",
+            "dataset_id": "",
+            "study_id": study_locus,
+            "evidence_score": score.astype("float64"),
+            "effect_size": pd.Series([math.nan] * n, index=df.index, dtype="float64"),
+            "p_value": pd.Series([math.nan] * n, index=df.index, dtype="float64"),
+            "direction": "",
+            "confidence_interval": "",
+            "predicate": datatype,
+            "text_span": "",
+            "section": "",
+            "extraction_method": "OpenTargets mutation associated disease edge backfill",
+            "license": "",
+            "release": "26.03",
+            "created_at": "",
+        }
+    )
+    return pa.Table.from_pandas(out, schema=kg_evidence.evidence_schema(), preserve_index=False)
+
+
+def build_mutation_associated_disease_evidence(
+    edge_parquet: str | Path,
+    output_parquet: str | Path,
+    *,
+    batch_size: int = 100_000,
+) -> dict[str, int]:
+    """Stream-build source-aware evidence for canonical mutation→disease edges."""
+
+    relation = "mutation_associated_disease"
+    edge_parquet = Path(edge_parquet)
+    output_parquet = Path(output_parquet)
+    output_parquet.parent.mkdir(parents=True, exist_ok=True)
+    columns = [
+        "relation",
+        "x_id",
+        "x_type",
+        "y_id",
+        "y_type",
+        "source",
+        "score",
+        "datatype",
+        "studyLocusId",
+    ]
+    pf = pq.ParquetFile(edge_parquet)
+    writer: pq.ParquetWriter | None = None
+    rows_written = 0
+    try:
+        for batch in pf.iter_batches(batch_size=batch_size, columns=columns):
+            table = _mutation_disease_batch_to_evidence(batch, rows_written)
+            if writer is None:
+                writer = pq.ParquetWriter(output_parquet, kg_evidence.evidence_schema())
+            writer.write_table(table)
+            rows_written += table.num_rows
+    finally:
+        if writer is not None:
+            writer.close()
+    return {relation: rows_written}
+
+
 def backfill_pharmacogenomics_evidence(
     kg_path: str | Path,
     pharmacogenomics_dir: str | Path,
@@ -339,10 +445,31 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional OpenTargets pharmacogenomics parquet directory for source-aware PGx evidence.",
     )
+    parser.add_argument(
+        "--mutation-associated-disease-edge-parquet",
+        default=None,
+        help="Canonical mutation_associated_disease edge parquet to stream into evidence.",
+    )
+    parser.add_argument(
+        "--output-parquet",
+        default=None,
+        help="Output parquet for streaming builders such as mutation_associated_disease.",
+    )
+    parser.add_argument("--batch-size", type=int, default=100_000, help="Streaming batch size.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     args = parser.parse_args(argv)
 
     counts: dict[str, int] = {}
+    if args.mutation_associated_disease_edge_parquet:
+        if not args.output_parquet:
+            parser.error("--output-parquet is required with --mutation-associated-disease-edge-parquet")
+        counts.update(
+            build_mutation_associated_disease_evidence(
+                args.mutation_associated_disease_edge_parquet,
+                args.output_parquet,
+                batch_size=args.batch_size,
+            )
+        )
     if args.pharmacogenomics_dir:
         counts.update(backfill_pharmacogenomics_evidence(args.kg_path, args.pharmacogenomics_dir))
     if args.relations:

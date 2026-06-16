@@ -452,7 +452,7 @@ RELATIONS: list[Relation] = [
         NodeType.PHENOTYPE,
         RelationKind.GENETIC,
         False,
-        "Mendelian / GWAS phenotype consequence; preferred forward phenotype-causality direction (mutation→phenotype), not yet canonical",
+        "OpenTargets EVA/ClinVar HP-only pathogenic/likely pathogenic mutation→phenotype consequence; preferred forward phenotype-causality direction; canonical edge and evidence files exist",
     ),
     Relation(
         "gene_associated_phenotype",

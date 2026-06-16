@@ -287,3 +287,59 @@ def test_backfill_molecule_targets_protein_accepts_legacy_gene_moa_rows(tmp_path
         "OpenTargets:drug_mechanism_of_action:molecule_targets_protein:CHEMBL1:ENSG000001:ANTAGONIST"
     )
     assert audit_edge_evidence(tmp_path / "kg", relations=["molecule_targets_protein"]).ok
+
+
+
+def test_build_mutation_associated_disease_evidence_streaming(tmp_path: Path) -> None:
+    from manage_db.backfill_edge_evidence import build_mutation_associated_disease_evidence
+    from manage_db.kg_evidence import read_evidence
+
+    root = open_kg_root(str(tmp_path / "kg"))
+    edge_rows = pd.DataFrame(
+        [
+            {
+                "x_id": "1_100_A_T",
+                "x_type": "mutation",
+                "y_id": "EFO:1",
+                "y_type": "disease",
+                "relation": "mutation_associated_disease",
+                "display_relation": "associated with",
+                "source": "OpenTargets/gwas_credible_sets",
+                "credibility": 2,
+                "score": 0.73,
+                "datatype": "genetic_association",
+                "studyLocusId": "SL1",
+            },
+            {
+                "x_id": "1_100_A_T",
+                "x_type": "mutation",
+                "y_id": "EFO:1",
+                "y_type": "disease",
+                "relation": "mutation_associated_disease",
+                "display_relation": "associated with",
+                "source": "OpenTargets/eva",
+                "credibility": 1,
+                "score": 0.5,
+                "datatype": "genetic_association",
+                "studyLocusId": None,
+            },
+        ]
+    )
+    edge_dir = tmp_path / "kg" / "edges"
+    evidence_dir = tmp_path / "kg" / "evidence"
+    edge_dir.mkdir(parents=True)
+    evidence_dir.mkdir(parents=True)
+    edge_parquet = edge_dir / "mutation_associated_disease.parquet"
+    evidence_parquet = evidence_dir / "mutation_associated_disease.parquet"
+    edge_rows.to_parquet(edge_parquet, index=False)
+    counts = build_mutation_associated_disease_evidence(edge_parquet, evidence_parquet, batch_size=1)
+    assert counts == {"mutation_associated_disease": 2}
+
+    evidence = read_evidence(root, "mutation_associated_disease")
+    assert len(evidence) == 2
+    assert set(evidence["source_dataset"]) == {"gwas_credible_sets", "eva"}
+    assert set(evidence["study_id"]) == {"SL1", ""}
+    assert set(evidence["predicate"]) == {"genetic_association"}
+    assert evidence["source_record_id"].str.contains("row=").all()
+    assert evidence.loc[evidence["source_dataset"] == "gwas_credible_sets", "source_record_id"].iloc[0].find("studyLocusId=SL1") > -1
+    assert set(evidence["edge_key"]) == {"mutation_associated_disease|1_100_A_T|EFO:1"}

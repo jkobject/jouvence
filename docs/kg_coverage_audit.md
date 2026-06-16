@@ -74,16 +74,16 @@ targeted anti-joins:
   exporter.
 
 Current evidence status is tracked in `CLAUDE.md` and
-`docs/evidence_and_edge_schema_plan.md`. As of the 2026-06-16 targeted audit,
-canonical evidence exists for nine relations
+`docs/evidence_and_edge_schema_plan.md`. As of the 2026-06-16 targeted audits,
+canonical evidence exists for ten relations
 (`cell_line_from_organism`, `disease_associated_gene`,
 `disease_involves_pathway`, `gene_ortholog_gene`,
-`mutation_affects_molecule_response`, `mutation_associated_gene`,
-`mutation_causes_protein_change`, `molecule_targets_protein`, and
-`mutation_causes_phenotype`) and targeted
+`mutation_affects_molecule_response`, `mutation_associated_disease`,
+`mutation_associated_gene`, `mutation_causes_protein_change`,
+`molecule_targets_protein`, and `mutation_causes_phenotype`) and targeted
 `manage_db.audit_edge_evidence` reports zero unsupported/orphan records for all
-nine. The active evidence backlog starts with `mutation_associated_disease`, then
-clinical `molecule_treats_disease` / `molecule_contraindicates_disease`, then
+ten. The active evidence backlog now starts with clinical
+`molecule_treats_disease` / `molecule_contraindicates_disease`, then
 enhancer/expression/cell-line support tranches.
 
 ## Source policy for next gene-gene tranches

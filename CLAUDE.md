@@ -235,20 +235,22 @@ history stays in the phase notes below.
   primary edge; evidence can also be OpenTargets source rows, curated database
   records, datasets/cohorts/screens, studies, scores/effect observations, and
   extracted text spans.
-- Canonical evidence currently covers `9` relations with `967,724` support rows
+- Canonical evidence currently covers `10` relations with `5,623,895` support rows
   and zero unsupported/orphan records:
   `cell_line_from_organism` (`1,183`), `disease_associated_gene` (`2,928`),
   `disease_involves_pathway` (`2,296`), `gene_ortholog_gene` (`161,675`),
   `molecule_targets_protein` (`41,239`), `mutation_affects_molecule_response`
-  (`18,595` support rows for `4,866` edges), `mutation_associated_gene`
-  (`535,093`), `mutation_causes_phenotype` (`26,980` support rows for `25,545`
-  edges), and `mutation_causes_protein_change` (`177,735`).
-- Latest nine-relation evidence audit:
+  (`18,595` support rows for `4,866` edges), `mutation_associated_disease`
+  (`4,656,171`), `mutation_associated_gene` (`535,093`),
+  `mutation_causes_phenotype` (`26,980` support rows for `25,545` edges), and
+  `mutation_causes_protein_change` (`177,735`).
+- Latest mutation-associated-disease evidence audit:
+  `.omoc/reports/hermes-mutation-associated-disease-evidence-audit-*.json`.
+  Latest prior nine-relation audit:
   `.omoc/reports/hermes-evidence-nine-relations-audit-20260616T135126Z.json`.
-- Next evidence targets: `mutation_associated_disease`,
-  `molecule_treats_disease`, `molecule_contraindicates_disease`, enhancer
-  regulatory/context edges, and expression/DepMap/cell-line edges where source
-  records are available.
+- Next evidence targets: `molecule_treats_disease`,
+  `molecule_contraindicates_disease`, enhancer regulatory/context edges, and
+  expression/DepMap/cell-line edges where source records are available.
 
 **Schema cleanup / modeling decisions**
 
@@ -301,7 +303,7 @@ updates.
   relations, not empty placeholders to create.
 - Parquet-metadata counts from the mounted canonical root: `55,523,691` nodes
   and `151,549,604` edges.
-- Evidence files present: `9` relations, `967,724` total support rows.
+- Evidence files present: `10` relations, `5,623,895` total support rows.
 - Already-promoted 2026-06-16 tranches that should not be re-done:
   `cell_type_expresses_protein` (`7,205,547` edges),
   `mutation_causes_phenotype` (`25,545` edges + `26,980` supports),
@@ -310,18 +312,14 @@ updates.
 
 **Near-term phase A — finish source-aware evidence**
 
-1. Backfill `mutation_associated_disease` evidence in a streaming/bounded job.
-   Current canonical edge composition is `OpenTargets/eva` (`3,768,116`),
+1. ✅ `mutation_associated_disease` evidence is now canonical. It was built by a
+   streaming PyArrow writer under `MemoryMax=5G` from existing canonical edge rows
+   and promoted to `evidence/mutation_associated_disease.parquet` (`4,656,171`
+   support rows). Composition: `OpenTargets/eva` (`3,768,116`),
    `OpenTargets/gwas_credible_sets` (`848,696` with `studyLocusId`),
    `OpenTargets/uniprot_variants` (`30,305`), and `OpenTargets/eva_somatic`
-   (`9,054`). Archived source rows are available under the 2026-06-11
-   `txgnn-known-variants-scratch` and `txgnn-gwas-join-scratch` archives.
-   Preserve source row IDs, `studyLocusId`/`studyId`, scores, p-values/effect
-   sizes, direction, release/evidence dates, and paper IDs where present. Use
-   DuckDB/PyArrow projection and temp evidence output; do not full-read/write
-   canonical GCS directly. Done = `evidence/mutation_associated_disease.parquet`
-   plus `audit_edge_evidence --relations mutation_associated_disease` with zero
-   unsupported/orphan records.
+   (`9,054`). Audit reports zero unsupported/orphan records; see
+   `.omoc/reports/hermes-mutation-associated-disease-evidence-audit-*.json`.
 2. Backfill clinical evidence separately for `molecule_treats_disease` and
    `molecule_contraindicates_disease`. The archived OpenTargets
    `clinical_indication` table has positive indication/trial-stage semantics and
@@ -489,7 +487,7 @@ primary biological assertion.
 | `mutation_affects_transcript`        | `mutation`   | `transcript` | `genetic`         | yes     | no   |         - | active schema relation; needs bounded transcript consequence evidence policy |
 | `mutation_causes_protein_change`     | `mutation`   | `protein`    | `genetic`         | yes     | yes  |   177,735 | active; canonical edge + evidence files exist; ENSP protein endpoints      |
 | `mutation_overlaps_enhancer`         | `mutation`   | `enhancer`   | `genetic`         | yes     | no   |         - | active schema relation; needs bounded interval-overlap/provenance policy before promotion |
-| `mutation_associated_disease`        | `mutation`   | `disease`    | `genetic`         | no      | yes  | 4,656,171 | active canonical OpenTargets known-variant + GWAS disease edges; evidence backfill still next tranche |
+| `mutation_associated_disease`        | `mutation`   | `disease`    | `genetic`         | no      | yes  | 4,656,171 | active canonical OpenTargets known-variant + GWAS disease edges; evidence present |
 | `mutation_causes_phenotype`          | `mutation`   | `phenotype`  | `genetic`         | no      | yes  |    25,545 | OpenTargets EVA/ClinVar HP-only pathogenic/likely pathogenic assertions; evidence present |
 | `gene_associated_phenotype`          | `gene`       | `phenotype`  | `phenotype_assoc` | no      | no   |         - | preferred non-causal HPO gene→phenotype association direction             |
 | `mutation_affects_molecule_response` | `mutation`   | `molecule`   | `pharmacological` | no      | yes  |     4,866 | OpenTargets pharmacogenomics                                              |
@@ -600,6 +598,9 @@ Canonical evidence files currently exist at:
 - `evidence/mutation_affects_molecule_response.parquet` — `18,595` support
   records (`5,543` OpenTargets pharmacogenomics source-record supports +
   `13,052` PMID paper supports).
+- `evidence/mutation_associated_disease.parquet` — `4,656,171` OpenTargets
+  disease-facing variant support records across `eva`, `gwas_credible_sets`,
+  `uniprot_variants`, and `eva_somatic`.
 - `evidence/mutation_associated_gene.parquet` — `535,093` OpenTargets L2G
   support records preserving `studyLocusId` row-level support.
 - `evidence/mutation_causes_phenotype.parquet` — `26,980` EVA/ClinVar-style
@@ -607,10 +608,12 @@ Canonical evidence files currently exist at:
 - `evidence/mutation_causes_protein_change.parquet` — `177,735` OpenTargets
   variant/protein-change support records.
 
-The latest combined audit is
-`.omoc/reports/hermes-evidence-nine-relations-audit-20260616T135126Z.json` and
-reports zero unsupported/orphan records for all nine. For MoA/protein-named
-legacy relations, do not remap ENSG/NCBI endpoints to ENSP until a separate
+The latest mutation-associated-disease audit is
+`.omoc/reports/hermes-mutation-associated-disease-evidence-audit-*.json` and
+reports zero unsupported/orphan records for that new relation. The prior
+nine-relation audit remains available at
+`.omoc/reports/hermes-evidence-nine-relations-audit-20260616T135126Z.json`.
+For MoA/protein-named legacy relations, do not remap ENSG/NCBI endpoints to ENSP until a separate
 endpoint migration is designed.
 
 ### Storage Layer

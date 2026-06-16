@@ -17,13 +17,13 @@ Validated state:
 - dangling endpoints: `0`
 - last full KG validation evidence before the 2026-06-16 additive tranche:
   `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`
-- evidence layer: `9` canonical evidence files, `967,724` total support rows,
+- evidence layer: `10` canonical evidence files, `5,623,895` total support rows,
   audited read-only with zero unsupported/orphan records for
   `cell_line_from_organism`, `disease_associated_gene`,
-  `disease_involves_pathway`, `mutation_affects_molecule_response`,
-  `mutation_associated_gene`, `mutation_causes_protein_change`,
-  `molecule_targets_protein`, `mutation_causes_phenotype`, and
-  `gene_ortholog_gene`.
+  `disease_involves_pathway`, `gene_ortholog_gene`, `molecule_targets_protein`,
+  `mutation_affects_molecule_response`, `mutation_associated_disease`,
+  `mutation_associated_gene`, `mutation_causes_phenotype`, and
+  `mutation_causes_protein_change`.
 - 2026-06-16 targeted endpoint validation: `cell_type_expresses_protein`
   (`7,205,547` edges) and `mutation_causes_phenotype` (`25,545` edges) both
   have zero dangling endpoints by DuckDB anti-join.
@@ -158,12 +158,12 @@ OpenTargets is the first evidence source to normalize because it already exposes
 Prioritize relations that already exist and have source rows:
 
 1. `mutation_associated_gene` from GWAS/L2G/credible-set inputs. ✅ Canonical conservative L2G evidence backfill complete: `535,093` support rows preserving `studyLocusId`, audited with zero unsupported/orphan records.
-2. `mutation_associated_disease` from OpenTargets genetic-association / known-variant disease rows. **Next tranche.** Preserve disease-facing support as source rows first, with `source_dataset` identifying the OpenTargets input table and `source_record_id` capturing the most stable row key available (for example study-locus/variant/disease composite IDs). Populate optional `study_id`, `evidence_score`, `p_value`, `effect_size`, `direction`, and `paper_id` fields only when present in the source. The done condition is an evidence Parquet for all canonical `mutation_associated_disease` edges plus `audit_edge_evidence` reporting zero unsupported/orphan records.
+2. `mutation_associated_disease` from OpenTargets genetic-association / known-variant disease rows. ✅ Canonical streaming evidence backfill complete: `4,656,171` support rows across `eva`, `gwas_credible_sets`, `uniprot_variants`, and `eva_somatic`, audited with zero unsupported/orphan records.
 3. `mutation_causes_protein_change` from variant protein-change inputs. ✅ Canonical conservative OpenTargets variant evidence backfill complete: `177,735` support rows, audited with zero unsupported/orphan records.
 4. `disease_associated_gene` and `disease_involves_pathway` from Reactome evidence. ✅ Canonical evidence backfill complete: `2,928` and `2,296` support rows respectively, audited with zero unsupported/orphan records.
 5. `mutation_affects_molecule_response` from OpenTargets pharmacogenomics. ✅ Canonical source-aware evidence backfill complete: `18,595` support rows (`5,543` source-record supports + `13,052` PMID paper supports), audited with zero unsupported/orphan records.
 6. `molecule_targets_protein` from `mechanismOfAction` / ChEMBL-like sources. ✅ Conservative canonical evidence backfill complete: `41,239` support rows, including `14,559` OpenTargets MoA rows with `drug_mechanism_of_action` action metadata and `26,680` legacy TxGNN supports. This intentionally preserves legacy `y_type=gene` endpoints; do not remap ENSG to ENSP without a separate endpoint migration.
-7. `molecule_treats_disease`, `molecule_contraindicates_disease` from `known_drug` / clinical-indication-like sources. **Next tranche after mutation-disease.** Treat indication and contraindication as separate collapsed clinical assertions, supported by OpenTargets/ChEMBL known-drug source rows, clinical trial IDs, approval/status fields, disease/drug normalization provenance, and optional publication references. Do not model a paper or clinical trial as the primary edge; use it as support metadata for the treatment/contraindication edge. Audit indications and contraindications independently because polarity errors are high-impact.
+7. `molecule_treats_disease`, `molecule_contraindicates_disease` from `known_drug` / clinical-indication-like sources. **Next tranche.** Treat indication and contraindication as separate collapsed clinical assertions, supported by OpenTargets/ChEMBL known-drug source rows, clinical trial IDs, approval/status fields, disease/drug normalization provenance, and optional publication references. Do not model a paper or clinical trial as the primary edge; use it as support metadata for the treatment/contraindication edge. Audit indications and contraindications independently because polarity errors are high-impact.
 8. `enhancer_regulates_gene` and enhancer context edges from enhancer-to-gene/activity sources.
 
 #### Clinical / phenotype source-policy tranche investigated 2026-06-15
@@ -205,15 +205,16 @@ Current evidence files in canonical GCS/FUSE (read-only Parquet metadata audit,
 | `gene_ortholog_gene` | 161,675 | 161,675 | zero unsupported/orphan; OpenTargets target.homologues database-record support |
 | `molecule_targets_protein` | 41,239 | 41,239 | zero unsupported/orphan; keeps current legacy `y_type=gene` endpoints |
 | `mutation_affects_molecule_response` | 4,866 | 18,595 | zero unsupported/orphan; multiple source/paper supports per collapsed edge |
+| `mutation_associated_disease` | 4,656,171 | 4,656,171 | zero unsupported/orphan; OpenTargets disease-facing variant support |
 | `mutation_associated_gene` | 535,093 | 535,093 | zero unsupported/orphan |
 | `mutation_causes_phenotype` | 25,545 | 26,980 | zero unsupported/orphan; EVA/ClinVar database-record + PMID supports |
 | `mutation_causes_protein_change` | 177,735 | 177,735 | zero unsupported/orphan |
 
 Relations with canonical edge files but no source-aware evidence yet include
-`mutation_associated_disease`, `molecule_treats_disease`,
-`molecule_contraindicates_disease`, enhancer context/regulatory edges,
-expression and cell-line/DepMap edges, organism/dataset provenance edges, and
-legacy paper-mention indexes. Treat these as the active backlog rather than
+`molecule_treats_disease`, `molecule_contraindicates_disease`, enhancer
+context/regulatory edges, expression and cell-line/DepMap edges,
+organism/dataset provenance edges, and legacy paper-mention indexes. Treat
+these as the active backlog rather than
 claiming the whole canonical graph is fully evidenced.
 
 ## Expression/cell-line/tissue/phenotype missing-edge source triage
@@ -273,13 +274,10 @@ Report per relation:
 
 ## Immediate next actions / active backlog
 
-1. Build the next evidence tranche locally for `mutation_associated_disease`
-   from OpenTargets disease-facing genetic/known-variant source rows, preserving
-   row IDs, studies, scores, effect sizes/p-values, directions, and paper IDs
-   where available. Promote only after
-   `audit_edge_evidence --relations mutation_associated_disease` reports zero
+1. ✅ `mutation_associated_disease` evidence is canonical: `4,656,171` support
+   rows, built in streaming mode under `MemoryMax=5G`, and audited with zero
    unsupported/orphan records.
-2. Then build separate clinical evidence tranches for
+2. Next build separate clinical evidence tranches for
    `molecule_treats_disease` and `molecule_contraindicates_disease` from
    OpenTargets/ChEMBL known-drug/clinical-indication rows. Keep treatment and
    contraindication polarity separate, preserve source row/trial/status/
