@@ -235,9 +235,10 @@ history stays in the phase notes below.
   primary edge; evidence can also be OpenTargets source rows, curated database
   records, datasets/cohorts/screens, studies, scores/effect observations, and
   extracted text spans.
-- Canonical evidence currently covers `10` relations with `5,623,895` support rows
+- Canonical evidence currently covers `11` relations with `5,831,784` support rows
   and zero unsupported/orphan records:
-  `cell_line_from_organism` (`1,183`), `disease_associated_gene` (`2,928`),
+  `cell_line_expresses_protein` (`207,889`), `cell_line_from_organism` (`1,183`),
+  `disease_associated_gene` (`2,928`),
   `disease_involves_pathway` (`2,296`), `gene_ortholog_gene` (`161,675`),
   `molecule_targets_protein` (`41,239`), `mutation_affects_molecule_response`
   (`18,595` support rows for `4,866` edges), `mutation_associated_disease`
@@ -256,8 +257,11 @@ history stays in the phase notes below.
   this source for `molecule_contraindicates_disease` despite `89` overlapping
   pairs: its polarity is positive indication/trial stage, not contraindication.
 - Next evidence targets: find an independent contraindication-specific source,
-  then enhancer regulatory/context edges and expression/DepMap/cell-line edges
-  where source records are available.
+  then enhancer regulatory/context edges and remaining expression/DepMap/cell-line
+  edges where source records are available. `cell_line_expresses_protein` is
+  already canonical as a bounded mRNA→protein proxy (`207,889` edges/evidence rows
+  at `expression >= 12.0`) and audits with zero unsupported/orphan evidence. Do
+  not replace it with the naive unfiltered projection.
 
 **Schema cleanup / modeling decisions**
 
@@ -305,14 +309,15 @@ updates.
 **Verified current state (read-only metadata audit, 2026-06-16)**
 
 - Canonical GCS/FUSE root: `/mnt/gcs/jouvencekb/kg/v2`.
-- Physical coverage: all `15 / 15` schema node files and `44 / 80` schema edge
+- Physical coverage: all `15 / 15` schema node files and `45 / 80` schema edge
   files are present; remaining missing edges are unresolved schema/vision
   relations, not empty placeholders to create.
 - Parquet-metadata counts from the mounted canonical root: `55,523,691` nodes
-  and `151,549,604` edges.
-- Evidence files present: `10` relations, `5,623,895` total support rows.
+  and `151,757,493` edges.
+- Evidence files present: `11` relations, `5,831,784` total support rows.
 - Already-promoted 2026-06-16 tranches that should not be re-done:
   `cell_type_expresses_protein` (`7,205,547` edges),
+  `cell_line_expresses_protein` (`207,889` high-expression mRNA-proxy edges + supports),
   `mutation_causes_phenotype` (`25,545` edges + `26,980` supports),
   `gene_ortholog_gene` (`161,675` edges + supports), and
   `cell_line_from_organism` (`1,183` edges + supports).
@@ -327,7 +332,14 @@ updates.
    `OpenTargets/uniprot_variants` (`30,305`), and `OpenTargets/eva_somatic`
    (`9,054`). Audit reports zero unsupported/orphan records; see
    `.omoc/reports/hermes-mutation-associated-disease-evidence-audit-*.json`.
-2. Backfill clinical evidence separately for `molecule_treats_disease` and
+2. ✅ `cell_line_expresses_protein` is now canonical as a deliberately bounded
+   mRNA-proxy tranche, not direct proteomics: `expression >= 12` from
+   OpenTargets/DepMap `cell_line_expresses_gene`, projected through
+   `protein.ensembl_gene_id`, produced `207,889` edges and `207,889` evidence
+   rows with zero missing cell-line/protein endpoints and zero unsupported/orphan
+   evidence. The naive unfiltered projection remains rejected (`264,166,510`
+   estimated edges).
+3. Backfill clinical evidence separately for `molecule_treats_disease` and
    `molecule_contraindicates_disease`. The archived OpenTargets
    `clinical_indication` table has positive indication/trial-stage semantics and
    supports a staging-only subset of `molecule_treats_disease` after
@@ -339,10 +351,14 @@ updates.
    source is currently identified. Keep treatment and contraindication polarity
    separate; promote the partial treatment evidence only if partial canonical
    evidence files are accepted for downstream loaders.
-3. Backfill source records for enhancer regulatory/context edges, expression
-   edges, DepMap/cell-line edges, organism/dataset metadata edges, and legacy
-   literature index edges where source rows exist.
-4. Recompute collapsed edge `credibility` from the evidence layer while
+4. Backfill source records for enhancer regulatory/context edges, remaining
+   expression edges, organism/dataset metadata edges, and legacy literature index
+   edges where source rows exist. `cell_line_expresses_protein` is already canonical
+   as a DuckDB-built bounded mRNA-proxy tranche (`207,889` edges/evidence rows at
+   `expression >= 12.0`, zero unsupported/orphan evidence). It is explicitly an
+   mRNA-derived protein proxy, not direct proteomics; future work is threshold
+   critique/documentation, not another promotion.
+5. Recompute collapsed edge `credibility` from the evidence layer while
    preserving source-provided scores as separate evidence fields. Papers are
    support metadata (`paper_id`, text span, extraction method), not the edge
    itself except for legacy literature-index tasks.
@@ -367,9 +383,9 @@ source rows become evidence.
   cohort/tissue context and thresholding.
 - `cell_type_expresses_protein`: edge file is already promoted; remaining work
   is source-aware evidence and any threshold critique, not another promotion.
-- `cell_line_expresses_protein`: blocked for now; naive projection estimated
-  `264,166,510` edges and needs stricter expression/isoform filtering or a
-  streaming exporter before promotion.
+- `cell_line_expresses_protein`: canonical bounded tranche exists (`207,889`
+  edges/evidence, `expression >= 12`, mRNA-proxy via `protein.ensembl_gene_id`).
+  Do not replace it with the naive unfiltered projection (`264,166,510` edges).
 - `cell_line_responds_to_molecule`: use PRISM/GDSC/CTRP-like response data with
   effect/viability metric and evidence rows; do not synthesize from expression.
 - `disease_manifests_in_tissue` and `phenotype_observed_in_tissue`: require
@@ -515,7 +531,7 @@ primary biological assertion.
 | `cell_type_expresses_gene`           | `cell_type`  | `gene`       | `expression`      | yes     | yes  | 1,561,873 | OpenTargets expression                                                    |
 | `cell_type_expresses_protein`        | `cell_type`  | `protein`    | `expression`      | yes     | yes  | 7,205,547 | derived from `cell_type_expresses_gene` via ENSG→ENSP mapping; zero dangling endpoints |
 | `cell_line_expresses_gene`           | `cell_line`  | `gene`       | `experimental`    | yes     | yes  | 20,928,056 | OpenTargets DepMap target essentiality/expression slice                   |
-| `cell_line_expresses_protein`        | `cell_line`  | `protein`    | `experimental`    | yes     | no   |         - | blocked: naive projection estimated `264,166,510` edges; needs stricter filter/streaming exporter |
+| `cell_line_expresses_protein`        | `cell_line`  | `protein`    | `experimental`    | yes     | yes  |   207,889 | bounded high-expression mRNA proxy (`expression >= 12`) via `protein.ensembl_gene_id`; naive full projection rejected |
 | `protein_interacts_protein`          | `protein`    | `protein`    | `physical`        | yes     | yes  |   642,150 | legacy gene/protein endpoints (`gene` → `gene`)                           |
 | `pathway_contains_gene`              | `pathway`    | `gene`       | `pathway`         | no      | yes  |   588,286 | Reactome / OpenTargets GO                                                 |
 | `pathway_contains_protein`           | `pathway`    | `protein`    | `pathway`         | no      | yes  |    42,646 | legacy gene/protein endpoints (`y_type=gene`)                             |
@@ -729,8 +745,8 @@ semantics, endpoint validation, and evidence/audit criteria are satisfied.
       (`3,800,648`) and `cell_type_expresses_gene` (`1,561,873`) plus legacy
       `tissue_expresses_protein` (`1,538,088`). The derived
       `cell_type_expresses_protein` edge file (`7,205,547`) is also promoted
-      and endpoint-validated. Remaining work is evidence/source provenance for
-      expression edges and a stricter policy for `cell_line_expresses_protein`;
+      and endpoint-validated. `cell_line_expresses_protein` now has a bounded
+      canonical high-expression tranche (`207,889`, `expression >= 12`);
       do not treat this as a missing rerun of the already-promoted gene-expression slice.
 - [x] `ingest_biosample`: OpenTargets `cell_type` nodes are present in the
       canonical export.

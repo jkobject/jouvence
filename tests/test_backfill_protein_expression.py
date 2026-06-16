@@ -125,3 +125,55 @@ def test_project_expression_to_protein_respects_max_output_rows(tmp_path: Path) 
         raise AssertionError("ProjectionTooLargeError not raised")
 
     assert not (tmp_path / "dest" / "edges" / "cell_type_expresses_protein.parquet").exists()
+
+
+
+def test_build_cell_line_protein_expression_duckdb_filters_and_writes_evidence(tmp_path: Path) -> None:
+    from manage_db.backfill_protein_expression import build_cell_line_protein_expression_duckdb
+    from manage_db.kg_evidence import read_evidence
+
+    source = open_kg_root(str(tmp_path / "source"))
+    write_nodes(
+        source,
+        "protein",
+        pd.DataFrame(
+            [
+                {"id": "ENSP1", "ensembl_gene_id": "ENSG1", "uniprot_id": None, "refseq_protein": None, "pdb_ids": None, "name": "p1", "source": "test"},
+                {"id": "ENSP2", "ensembl_gene_id": "ENSG2", "uniprot_id": None, "refseq_protein": None, "pdb_ids": None, "name": "p2", "source": "test"},
+            ]
+        ),
+    )
+    write_edges(
+        source,
+        "cell_line_expresses_gene",
+        pd.DataFrame(
+            [
+                _edge("SIDM1", "cell_line", "ENSG1", "gene", "cell_line_expresses_gene", source="OpenTargets/DepMap", expression=12.5, gene_effect=-0.1, is_essential=False),
+                _edge("SIDM1", "cell_line", "ENSG2", "gene", "cell_line_expresses_gene", source="OpenTargets/DepMap", expression=11.9, gene_effect=-0.2, is_essential=True),
+            ]
+        ),
+    )
+
+    result = build_cell_line_protein_expression_duckdb(
+        source_kg_root=tmp_path / "source",
+        dest_kg_root=tmp_path / "dest",
+        min_expression=12.0,
+        duckdb_memory_limit="512MB",
+        threads=1,
+    )
+
+    assert result.output_rows == 1
+    dest = open_kg_root(str(tmp_path / "dest"))
+    edges = read_edges(dest, "cell_line_expresses_protein")
+    assert edges[["x_id", "y_id", "relation", "gene_id"]].to_dict("records") == [
+        {"x_id": "SIDM1", "y_id": "ENSP1", "relation": "cell_line_expresses_protein", "gene_id": "ENSG1"}
+    ]
+    assert edges.loc[0, "min_expression"] == 12.0
+    assert edges.loc[0, "projection_method"] == "high_mrna_expression_projected_to_protein"
+
+    evidence = read_evidence(dest, "cell_line_expresses_protein")
+    assert len(evidence) == 1
+    assert evidence.loc[0, "edge_key"] == "cell_line_expresses_protein|SIDM1|ENSP1"
+    assert evidence.loc[0, "source_dataset"] == "DepMap"
+    assert evidence.loc[0, "predicate"] == "high_mrna_expression_projected_to_protein"
+    assert evidence.loc[0, "evidence_score"] == 12.5

@@ -17,9 +17,9 @@ Validated state:
 - dangling endpoints: `0`
 - last full KG validation evidence before the 2026-06-16 additive tranche:
   `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`
-- evidence layer: `10` canonical evidence files, `5,623,895` total support rows,
+- evidence layer: `11` canonical evidence files, `5,831,784` total support rows,
   audited read-only with zero unsupported/orphan records for
-  `cell_line_from_organism`, `disease_associated_gene`,
+  `cell_line_expresses_protein`, `cell_line_from_organism`, `disease_associated_gene`,
   `disease_involves_pathway`, `gene_ortholog_gene`, `molecule_targets_protein`,
   `mutation_affects_molecule_response`, `mutation_associated_disease`,
   `mutation_associated_gene`, `mutation_causes_phenotype`, and
@@ -212,7 +212,7 @@ Current evidence files in canonical GCS/FUSE (read-only Parquet metadata audit,
 
 Relations with canonical edge files but no source-aware evidence yet include
 `molecule_treats_disease`, `molecule_contraindicates_disease`, enhancer
-context/regulatory edges, expression and cell-line/DepMap edges,
+context/regulatory edges, remaining expression/DepMap edges,
 organism/dataset provenance edges, and legacy paper-mention indexes. Treat
 these as the active backlog rather than
 claiming the whole canonical graph is fully evidenced.
@@ -226,7 +226,7 @@ parent-side canonical temp root is prepared:
 | Relation | Proposed source | Export policy |
 | --- | --- | --- |
 | `cell_type_expresses_protein` | Existing OpenTargets `expression` (`cell_type_expresses_gene`) projected through registered protein nodes' `ensembl_gene_id` / `gene_encodes_protein` mapping | Safe derived edge. Preserve expression metadata (`tpm`, `expression_level`) and add `gene_id`; source is `OpenTargets/HPA;projected_via_gene_encodes_protein`. |
-| `cell_line_expresses_protein` | Existing OpenTargets `target_essentiality` / DepMap expression (`cell_line_expresses_gene`) projected through registered protein nodes' `ensembl_gene_id` / `gene_encodes_protein` mapping | Safe derived edge. Preserve DepMap metadata (`expression`, `gene_effect`, `is_essential`) and add `gene_id`; source is `OpenTargets/DepMap;projected_via_gene_encodes_protein`. |
+| `cell_line_expresses_protein` | Existing OpenTargets `target_essentiality` / DepMap expression (`cell_line_expresses_gene`) projected through registered protein nodes' `ensembl_gene_id` mapping | ✅ Canonical bounded high-expression tranche exists: `expression >= 12`, `207,889` edges + `207,889` evidence rows, zero endpoint/evidence orphans. This is an mRNA-proxy edge, not direct proteomics; the naive `264,166,510`-edge projection remains rejected. |
 | `cell_line_responds_to_molecule` | PRISM/GDSC/CTRP-like drug-screen response table | Do not synthesize from pharmacogenomics or target essentiality; wait for an explicit cell-line×molecule response source with effect/viability metric. |
 | `disease_manifests_in_tissue` | Disease/tissue pathology source (e.g. curated UBERON/EFO mapping) | Do not infer from disease phenotype or cell-line tissue context. |
 | `phenotype_observed_in_tissue` | HPO phenotype anatomical-context annotations or curated phenotype↔UBERON mapping | Do not infer from `disease_has_phenotype` plus `disease_manifests_in_tissue` until both sources and directionality are explicit. |

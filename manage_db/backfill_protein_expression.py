@@ -12,9 +12,10 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 
-from . import kg_storage
+from . import kg_evidence, kg_storage
 from .kg_schema import Credibility, NodeType
 
 
@@ -180,12 +181,163 @@ def project_expression_to_protein(
     )
 
 
+def build_cell_line_protein_expression_duckdb(
+    *,
+    source_kg_root: str | Path,
+    dest_kg_root: str | Path,
+    min_expression: float,
+    duckdb_memory_limit: str = "4GB",
+    threads: int = 2,
+) -> ProjectionResult:
+    """Build bounded cell-line→protein expression edges and evidence with DuckDB.
+
+    This intentionally treats the protein edge as an mRNA-derived proxy, not
+    direct proteomics. The source gene-expression relation is filtered by
+    ``expression >= min_expression`` before projecting ENSG genes to ENSP
+    proteins through ``nodes/protein.ensembl_gene_id``.
+    """
+
+    source_root = Path(source_kg_root)
+    dest_root = Path(dest_kg_root)
+    dest_edges = dest_root / "edges"
+    dest_evidence = dest_root / "evidence"
+    dest_edges.mkdir(parents=True, exist_ok=True)
+    dest_evidence.mkdir(parents=True, exist_ok=True)
+
+    source_edge = source_root / "edges" / "cell_line_expresses_gene.parquet"
+    proteins = source_root / "nodes" / "protein.parquet"
+    edge_out = dest_edges / "cell_line_expresses_protein.parquet"
+    evidence_out = dest_evidence / "cell_line_expresses_protein.parquet"
+    credibility = int(Credibility.ESTABLISHED_FACT)
+
+    con = duckdb.connect()
+    con.execute(f"PRAGMA memory_limit='{duckdb_memory_limit}'")
+    con.execute(f"PRAGMA threads={threads}")
+    con.execute(
+        f"""
+        CREATE TEMP TABLE expr AS
+        SELECT DISTINCT
+            x_id,
+            x_type,
+            y_id AS gene_id,
+            TRY_CAST(expression AS DOUBLE) AS expression,
+            TRY_CAST(gene_effect AS DOUBLE) AS gene_effect,
+            TRY_CAST(is_essential AS BOOLEAN) AS is_essential,
+            source
+        FROM read_parquet('{source_edge}')
+        WHERE x_type = 'cell_line'
+          AND y_type = 'gene'
+          AND starts_with(y_id, 'ENSG')
+          AND TRY_CAST(expression AS DOUBLE) >= {float(min_expression)}
+        """
+    )
+    input_rows = int(con.execute("SELECT count(*) FROM read_parquet(?)", [str(source_edge)]).fetchone()[0])
+    con.execute(
+        f"""
+        CREATE TEMP TABLE protein_map AS
+        SELECT DISTINCT
+            ensembl_gene_id AS gene_id,
+            id AS protein_id
+        FROM read_parquet('{proteins}')
+        WHERE starts_with(ensembl_gene_id, 'ENSG')
+          AND starts_with(id, 'ENSP')
+        """
+    )
+    mapped_gene_rows = int(
+        con.execute("SELECT count(*) FROM expr SEMI JOIN protein_map USING (gene_id)").fetchone()[0]
+    )
+    unmapped_gene_rows = int(
+        con.execute("SELECT count(*) FROM expr ANTI JOIN protein_map USING (gene_id)").fetchone()[0]
+    )
+    estimated_output_rows = int(
+        con.execute("SELECT count(*) FROM expr JOIN protein_map USING (gene_id)").fetchone()[0]
+    )
+    con.execute(
+        f"""
+        CREATE TEMP TABLE out_edges AS
+        SELECT DISTINCT
+            expr.x_id,
+            expr.x_type,
+            protein_map.protein_id AS y_id,
+            'protein' AS y_type,
+            'cell_line_expresses_protein' AS relation,
+            'expresses protein' AS display_relation,
+            expr.source || ';projected_via_protein.ensembl_gene_id;min_expression>={float(min_expression)}' AS source,
+            {credibility} AS credibility,
+            expr.gene_id,
+            expr.expression,
+            expr.gene_effect,
+            expr.is_essential,
+            {float(min_expression)} AS min_expression,
+            'high_mrna_expression_projected_to_protein' AS projection_method
+        FROM expr
+        JOIN protein_map USING (gene_id)
+        """
+    )
+    con.execute(f"COPY out_edges TO '{edge_out}' (FORMAT PARQUET)")
+    con.execute(
+        f"""
+        CREATE TEMP TABLE out_evidence AS
+        SELECT
+            'cell_line_expresses_protein|' || x_id || '|' || y_id AS edge_key,
+            relation,
+            x_id,
+            x_type,
+            y_id,
+            y_type,
+            'database_record' AS evidence_type,
+            'OpenTargets' AS source,
+            'DepMap' AS source_dataset,
+            'OpenTargets/DepMap:cell_line_expresses_protein:' || x_id || ':' || gene_id || ':' || y_id || ':expression=' || CAST(expression AS VARCHAR) || ':min_expression={float(min_expression)}' AS source_record_id,
+            '' AS paper_id,
+            '' AS dataset_id,
+            '' AS study_id,
+            expression AS evidence_score,
+            gene_effect AS effect_size,
+            NULL::DOUBLE AS p_value,
+            CASE WHEN is_essential THEN 'essential' ELSE '' END AS direction,
+            '' AS confidence_interval,
+            'high_mrna_expression_projected_to_protein' AS predicate,
+            '' AS text_span,
+            '' AS section,
+            'DepMap expression threshold projected through protein.ensembl_gene_id' AS extraction_method,
+            '' AS license,
+            '' AS release,
+            '' AS created_at
+        FROM out_edges
+        """
+    )
+    # Preserve kg_evidence schema column order/types.
+    cols = ", ".join(name for name, _ in kg_evidence.EVIDENCE_PARQUET_COLUMNS)
+    con.execute(f"COPY (SELECT {cols} FROM out_evidence) TO '{evidence_out}' (FORMAT PARQUET)")
+    output_rows = int(con.execute("SELECT count(*) FROM out_edges").fetchone()[0])
+    con.close()
+    return ProjectionResult(
+        source_relation="cell_line_expresses_gene",
+        dest_relation="cell_line_expresses_protein",
+        input_rows=input_rows,
+        mapped_gene_rows=mapped_gene_rows,
+        unmapped_gene_rows=unmapped_gene_rows,
+        estimated_output_rows=estimated_output_rows,
+        output_rows=output_rows,
+        distinct_pairs=output_rows,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-kg-root", required=True, help="Read-only KG root to project from")
     parser.add_argument("--dest-kg-root", required=True, help="Local/temp KG root to write derived edge into")
     parser.add_argument("--max-output-rows", type=int, default=10_000_000)
     parser.add_argument("--estimate-only", action="store_true")
+    parser.add_argument(
+        "--min-expression",
+        type=float,
+        default=None,
+        help="For cell_line_expresses_protein, build a bounded DuckDB projection with expression >= threshold.",
+    )
+    parser.add_argument("--duckdb-memory-limit", default="4GB")
+    parser.add_argument("--threads", type=int, default=2)
     parser.add_argument(
         "--allow-cell-line-build",
         action="store_true",
@@ -210,6 +362,20 @@ def main(argv: list[str] | None = None) -> int:
             "cell_line_expresses_protein is potentially very large; run --estimate-only first "
             "or pass --allow-cell-line-build explicitly for a bounded local build"
         )
+    if args.min_expression is not None:
+        if args.relation != "cell_line_expresses_protein":
+            parser.error("--min-expression is currently only supported for cell_line_expresses_protein")
+        if args.estimate_only:
+            parser.error("--min-expression build mode cannot be combined with --estimate-only")
+        result = build_cell_line_protein_expression_duckdb(
+            source_kg_root=args.source_kg_root,
+            dest_kg_root=args.dest_kg_root,
+            min_expression=args.min_expression,
+            duckdb_memory_limit=args.duckdb_memory_limit,
+            threads=args.threads,
+        )
+        print(result)
+        return 0
 
     source_root = kg_storage.open_kg_root(args.source_kg_root)
     dest_root = kg_storage.open_kg_root(args.dest_kg_root)

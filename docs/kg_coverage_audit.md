@@ -68,23 +68,23 @@ targeted anti-joins:
 - `cell_line_from_organism`: `1,183` edges, zero dangling endpoints; matching
   evidence rows pass `manage_db.audit_edge_evidence` with zero unsupported/orphan
   support.
-- `cell_line_expresses_protein`: estimated at `264,166,510` projected edges from
-  `cell_line_expresses_gene`, with `3.7G` RSS for estimate-only. Do not promote
-  this relation without a stricter expression/isoform filter or a streaming
-  exporter.
+- `cell_line_expresses_protein`: naive full projection remains rejected
+  (`264,166,510` estimated edges), but a bounded canonical tranche is promoted:
+  `expression >= 12`, `207,889` mRNA-proxy cell-line→protein edges and matching
+  evidence rows, zero missing endpoints/orphans.
 
 Current evidence status is tracked in `CLAUDE.md` and
 `docs/evidence_and_edge_schema_plan.md`. As of the 2026-06-16 targeted audits,
-canonical evidence exists for ten relations
-(`cell_line_from_organism`, `disease_associated_gene`,
-`disease_involves_pathway`, `gene_ortholog_gene`,
+canonical evidence exists for eleven relations
+(`cell_line_expresses_protein`, `cell_line_from_organism`,
+`disease_associated_gene`, `disease_involves_pathway`, `gene_ortholog_gene`,
 `mutation_affects_molecule_response`, `mutation_associated_disease`,
 `mutation_associated_gene`, `mutation_causes_protein_change`,
 `molecule_targets_protein`, and `mutation_causes_phenotype`) and targeted
 `manage_db.audit_edge_evidence` reports zero unsupported/orphan records for all
-ten. The active evidence backlog now starts with clinical
+eleven. The active evidence backlog now starts with clinical
 `molecule_treats_disease` / `molecule_contraindicates_disease`, then
-enhancer/expression/cell-line support tranches.
+enhancer/regulatory and remaining expression support tranches.
 
 ## Source policy for next gene-gene tranches
 
