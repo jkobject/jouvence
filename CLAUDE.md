@@ -200,7 +200,7 @@ The previous PyArrow streaming validator timed out or exhausted memory once
 Python. Use `--pyarrow-streaming` only for small/remote KGs that DuckDB cannot
 read directly; do not use it for the canonical enhancer-scale export.
 
-### TxGNN/Jouvence KG status dashboard — 2026-06-15
+### TxGNN/Jouvence KG status dashboard — 2026-06-16
 
 Keep this subsection current when canonical GCS, LaminDB parity, evidence, or
 schema status changes. It is the short handoff for future agents; detailed
@@ -209,18 +209,22 @@ history stays in the phase notes below.
 **Current verified baseline**
 
 - Canonical KG root: `/mnt/gcs/jouvencekb/kg/v2`.
-- Coverage: `15 / 15` node files and `44 / 80` edge files from `kg_schema.py`.
-- Scale: `55,523,691` nodes and `151,549,604` edges.
-- Last full DuckDB validation before the 2026-06-16 additive tranche reported
-  `total_dangling_edges=0` under systemd limits; see
+- Coverage: `15 / 15` node files and `44 / 80` edge files from
+  `manage_db/kg_schema.py`.
+- Scale from Parquet metadata: `55,523,691` nodes and `151,549,604` edges.
+- Last full DuckDB validation before the 2026-06-16 additive tranches reported
+  `total_dangling_edges=0`; see
   `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
-  The 2026-06-16 `cell_type_expresses_protein` and
-  `mutation_causes_phenotype` files were validated with targeted DuckDB
-  endpoint anti-joins plus evidence audit where applicable.
-- LaminDB/custom registry parity: verified `missing_ids=0` for canonical
-  `gene`, `molecule`, `pathway`, `tissue`, `cell_type`, `transcript`,
+  The 2026-06-16 additive files (`cell_type_expresses_protein`,
+  `mutation_causes_phenotype`, `gene_ortholog_gene`, and
+  `cell_line_from_organism`) were validated with targeted DuckDB endpoint
+  anti-joins and evidence audits where applicable. Run a new full DuckDB pass
+  before claiming the post-additive graph has had a full end-to-end validation.
+- LaminDB/custom registry parity baseline: verified `missing_ids=0` for
+  canonical `gene`, `molecule`, `pathway`, `tissue`, `cell_type`, `transcript`,
   `disease`, `protein`, `paper`, `mutation`, and `organism`; see
-  `.omoc/reports/hermes-parity-custom-registries-*.json`.
+  `.omoc/reports/hermes-parity-custom-registries-*.json`. Re-run parity after
+  future canonical node promotions.
 - Tiny TxGNN model smoke: passed under `CPUQuota=200%`, `MemoryMax=4G`; see
   `.omoc/reports/hermes-final-txgnn-tiny-smoke-wrapper-*.txt`.
 
@@ -231,12 +235,14 @@ history stays in the phase notes below.
   primary edge; evidence can also be OpenTargets source rows, curated database
   records, datasets/cohorts/screens, studies, scores/effect observations, and
   extracted text spans.
-- Canonical evidence currently covers nine relations with zero unsupported/orphan
-  records: `cell_line_from_organism`, `disease_associated_gene`,
-  `disease_involves_pathway`, `gene_ortholog_gene`,
-  `mutation_affects_molecule_response`, `mutation_associated_gene`,
-  `mutation_causes_protein_change`, `molecule_targets_protein`, and
-  `mutation_causes_phenotype`.
+- Canonical evidence currently covers `9` relations with `967,724` support rows
+  and zero unsupported/orphan records:
+  `cell_line_from_organism` (`1,183`), `disease_associated_gene` (`2,928`),
+  `disease_involves_pathway` (`2,296`), `gene_ortholog_gene` (`161,675`),
+  `molecule_targets_protein` (`41,239`), `mutation_affects_molecule_response`
+  (`18,595` support rows for `4,866` edges), `mutation_associated_gene`
+  (`535,093`), `mutation_causes_phenotype` (`26,980` support rows for `25,545`
+  edges), and `mutation_causes_protein_change` (`177,735`).
 - Latest nine-relation evidence audit:
   `.omoc/reports/hermes-evidence-nine-relations-audit-20260616T135126Z.json`.
 - Next evidence targets: `mutation_associated_disease`,
@@ -246,6 +252,9 @@ history stays in the phase notes below.
 
 **Schema cleanup / modeling decisions**
 
+- Do not fill every schema relation with a placeholder Parquet. A relation is
+  promotable only when the biological meaning, source mapping, endpoint policy,
+  evidence policy, and validation commands are explicit.
 - `mutation_in_gene` and `mutation_associated_gene` are shape-compatible but not
   the same edge. `mutation_in_gene` is physical locus/containment;
   `mutation_associated_gene` is statistical/functional L2G/GWAS association.
@@ -258,7 +267,7 @@ history stays in the phase notes below.
   `docs/evidence_and_edge_schema_plan.md` should not be expanded without an
   explicit source/migration decision. `manage_db.kg_schema` records this as
   machine-readable lifecycle metadata (`RelationStatus.DERIVED`,
-  `LEGACY_INDEX`, or `DEPRECATED`) for `gene_encodes_protein` shortcut,
+  `LEGACY_INDEX`, or `DEPRECATED`) for the `gene_encodes_protein` shortcut,
   `cell_line_associated_disease`, `mutation_associated_cell_type`,
   `organism_models_disease`, paper-mention-as-edge patterns, and the
   phenotype-indexed/inverted relations.
@@ -284,7 +293,7 @@ history; when they disagree, this backlog and the coverage/evidence tables above
 are the current handoff. Do not write canonical GCS from routine documentation
 updates.
 
-**Verified current state (read-only audit, 2026-06-15)**
+**Verified current state (read-only metadata audit, 2026-06-16)**
 
 - Canonical GCS/FUSE root: `/mnt/gcs/jouvencekb/kg/v2`.
 - Physical coverage: all `15 / 15` schema node files and `44 / 80` schema edge
@@ -293,60 +302,94 @@ updates.
 - Parquet-metadata counts from the mounted canonical root: `55,523,691` nodes
   and `151,549,604` edges.
 - Evidence files present: `9` relations, `967,724` total support rows.
-- Evidence audit passes with zero unsupported/orphan records for:
-  `cell_line_from_organism` (`1,183`), `disease_associated_gene` (`2,928`),
-  `disease_involves_pathway` (`2,296`), `mutation_affects_molecule_response`
-  (`18,595` support rows for `4,866` edges), `mutation_associated_gene`
-  (`535,093`), `mutation_causes_protein_change` (`177,735`),
-  `molecule_targets_protein` (`41,239`), `mutation_causes_phenotype` (`26,980`
-  support rows for `25,545` edges), and `gene_ortholog_gene` (`161,675`).
+- Already-promoted 2026-06-16 tranches that should not be re-done:
+  `cell_type_expresses_protein` (`7,205,547` edges),
+  `mutation_causes_phenotype` (`25,545` edges + `26,980` supports),
+  `gene_ortholog_gene` (`161,675` edges + supports), and
+  `cell_line_from_organism` (`1,183` edges + supports).
 
-**Unresolved schema/modeling work**
+**Near-term phase A — finish source-aware evidence**
 
-1. Evidence/source provenance still missing for canonical
-   `mutation_associated_disease`, `molecule_treats_disease`,
-   `molecule_contraindicates_disease`, enhancer regulatory/context edges,
-   expression edges, DepMap/cell-line edges, organism/dataset edges, and legacy
-   literature index edges. Backfill source-aware evidence before using these as
-   fully explainable assertions.
-2. `mutation_causes_phenotype` is now promoted from HP-only pathogenic/likely
-   pathogenic EVA/ClinVar-style rows (`25,545` edges, `26,980` support rows,
-   zero dangling endpoints/evidence orphans; build peak `2.3G` under systemd
-   `MemoryMax=5G`). `mutation_in_gene`, `mutation_affects_transcript`,
-   `mutation_overlaps_enhancer`, and `mutation_associated_cell_type` remain
-   unpromoted because each needs stricter
-   locus/consequence/context semantics than the dense OpenTargets variant smoke
-   output provided. The source-to-edge policy for the active non-GCS tranche is
-   locked in `docs/variant_transcript_enhancer_missing_edges.md`.
-3. Several canonical `*protein*` relations still physically use `gene`
-   endpoints. Keep their evidence tied to current canonical endpoints until a
-   deliberate ENSG/NCBI→ENSP endpoint migration policy exists.
-4. Deprecated/legacy/candidate relations in
-   `docs/evidence_and_edge_schema_plan.md` should stay readable but should not
-   be expanded without an explicit compatibility or source-selection decision.
-5. Source feature tables are still future work and should remain separate from
-   graph edges: sequence/features for genes, transcripts, proteins, enhancers;
-   molecule structures/descriptors; paper title/abstract/full text where
-   licensed; embeddings later.
-
-**Next safe tranches**
-
-1. Build evidence locally for `mutation_associated_disease`, preserving source
-   row IDs, studies, genetic-association scores, p-values/effect sizes,
-   directions, and paper IDs where present. Promote only after
-   `audit_edge_evidence --relations mutation_associated_disease` has zero
+1. Backfill `mutation_associated_disease` evidence in a streaming/bounded job.
+   Preserve source row IDs, study IDs, scores, p-values/effect sizes, direction,
+   release, and paper IDs where present. Done =
+   `evidence/mutation_associated_disease.parquet` plus
+   `audit_edge_evidence --relations mutation_associated_disease` with zero
    unsupported/orphan records.
-2. Build separate clinical evidence tranches for `molecule_treats_disease` and
-   `molecule_contraindicates_disease`; audit treatment and contraindication
-   independently to avoid polarity errors.
-3. Add source-aware evidence for enhancer regulatory/context edges, then
-   expression/cell-line/DepMap edges, using the same local-build → endpoint
-   validation → evidence audit → explicit promotion pattern.
-4. Only after evidence/source tranches are stable, revisit expanded OpenTargets
-   `interaction`, `clinical_indication`, and richer `mechanismOfAction` merges
-   from archived audit/source caches.
-5. After any canonical promotion, re-run coverage audit, full DuckDB KG
-   validation, targeted evidence audit, and LaminDB/custom registry parity.
+2. Backfill clinical evidence separately for `molecule_treats_disease` and
+   `molecule_contraindicates_disease`. Do not infer contraindication from
+   missing indication; keep treatment and contraindication polarity separate.
+3. Backfill source records for enhancer regulatory/context edges, expression
+   edges, DepMap/cell-line edges, organism/dataset metadata edges, and legacy
+   literature index edges where source rows exist.
+4. Recompute collapsed edge `credibility` from the evidence layer while
+   preserving source-provided scores as separate evidence fields. Papers are
+   support metadata (`paper_id`, text span, extraction method), not the edge
+   itself except for legacy literature-index tasks.
+
+**Near-term phase B — finish/review remaining OpenTargets-style edges**
+
+Prioritize source review before building. Every candidate needs an explicit
+source critique: what the source really asserts, why the relation direction is
+right, what filters/thresholds avoid a dense or misleading graph, and how
+source rows become evidence.
+
+- `mutation_in_gene`: physical locus/containment only; not the same as
+  `mutation_associated_gene`.
+- `mutation_affects_transcript`: transcript-level consequence policy required.
+- `mutation_overlaps_enhancer`: interval-overlap policy required, including
+  genome build and enhancer source provenance.
+- `enhancer_regulates_transcript`: only from transcript/TSS-specific regulatory
+  evidence; do not expand enhancer→gene to all transcripts.
+- `enhancer_associated_disease`: use credible-set/variant/enhancer/disease
+  evidence if available; do not infer transitively from enhancer→gene→disease.
+- `gene_coexpressed_gene`: only from an explicit coexpression network with
+  cohort/tissue context and thresholding.
+- `cell_type_expresses_protein`: edge file is already promoted; remaining work
+  is source-aware evidence and any threshold critique, not another promotion.
+- `cell_line_expresses_protein`: blocked for now; naive projection estimated
+  `264,166,510` edges and needs stricter expression/isoform filtering or a
+  streaming exporter before promotion.
+- `cell_line_responds_to_molecule`: use PRISM/GDSC/CTRP-like response data with
+  effect/viability metric and evidence rows; do not synthesize from expression.
+- `disease_manifests_in_tissue` and `phenotype_observed_in_tissue`: require
+  explicit disease/phenotype-anatomy sources; do not infer from expression.
+- `phenotype_associated_cell_type`: needs explicit phenotype↔cell-type source.
+- Deprecated/TODEL candidates stay non-promoted unless a compatibility migration
+  requires them: `transcript_alternative_transcript`,
+  `mutation_associated_cell_type`, `cell_line_associated_disease`,
+  `organism_models_disease`, and inverted phenotype-indexed names.
+
+**Later phase C — node features, ncRNA, embeddings, and model organisms**
+
+1. Add source feature tables separate from graph edges: sequences/features for
+   genes, transcripts, proteins, enhancers; molecule structures/descriptors;
+   paper title/abstract/full text where licensed.
+2. Add ncRNA only after deciding whether to represent it as Ensembl
+   gene/transcript biotypes or as separate RNA-class node types. Candidate
+   relations require explicit sources, e.g. miRNA-target, lncRNA-disease,
+   RBP-RNA binding, or RNA expression.
+3. Compute versioned node embeddings as feature artifacts, not KG edges:
+   DNA/RNA language models for genes/transcripts/mutations/enhancers, protein
+   LMs for ENSP nodes, molecular LMs/fingerprints for molecules, scFM/UCE-like
+   embeddings for cell types/cell lines/tissues where justified, and LLM text
+   embeddings for papers/diseases/phenotypes with provenance.
+4. Add model organisms only after source selection and translation policy. The
+   current KG remains human-first; `gene_ortholog_gene` is the safe bridge.
+   Future organism/disease/phenotype work must preserve species, genotype/allele,
+   disease/phenotype mapping, and evidence provenance.
+
+**Promotion rule for all remaining tranches**
+
+A remaining edge/task is only done when all are true:
+
+1. source mapping and biological semantics are documented;
+2. local scratch export passes endpoint validation under explicit memory limits;
+3. source-aware evidence exists where applicable;
+4. `audit_edge_evidence` reports zero unsupported/orphan rows;
+5. LaminDB/custom registry parity passes for new nodes;
+6. canonical GCS promotion is explicit and followed by coverage + validation
+   reports.
 
 `gene` does **not** mean that `transcript` and `protein` are fully represented.
 The legacy TxData source conflates `gene/protein` in places, and some relations
@@ -370,7 +413,7 @@ of legacy protein-named edges.
 | Node type    | Primary ontology / ID namespace               | GCS? |      Rows | Comment                                                                             |
 | ------------ | --------------------------------------------- | ---- | --------: | ----------------------------------------------------------------------------------- |
 | `paper`      | PubMed (`PMID:12345678`)                      | yes  | 2,958,199 | Europe PMC PMIDs; live `lnschema_txgnn.Paper` parity passes                         |
-| `gene`       | Ensembl (`ENSG00000139618`)                   | yes  |   109,325 | legacy + OpenTargets 26.03 target IDs; expression/evidence stubs added              |
+| `gene`       | Ensembl (`ENSG00000139618`)                   | yes  |   267,830 | legacy + OpenTargets 26.03 target IDs; expression/evidence + orthology stubs added  |
 | `transcript` | Ensembl (`ENST00000380152`)                   | yes  |   507,365 | OpenTargets 26.03 target transcripts                                                |
 | `protein`    | Ensembl Protein (`ENSP00000369497`)           | yes  |   233,995 | OpenTargets 26.03 target translations; UniProt is an xref                           |
 | `pathway`    | Reactome / GO (`R-HSA-5633007`, `GO:0008150`) | yes  |    48,575 | legacy + OpenTargets Reactome evidence stubs + GO terms                             |
@@ -517,45 +560,47 @@ primary biological assertion.
 
 ### Evidence Layer
 
-Evidence/source records should be modeled as support metadata for edge
-assertions, not primarily as standalone biological edges. The intended storage
-shape is `evidence/{relation}.parquet`, keyed by `(relation, x_id, y_id)` /
-`edge_key`, with support fields such as `evidence_type`, `source`,
-`source_dataset`, `source_record_id`, `paper_id`, `dataset_id`, `study_id`,
-`evidence_score`, effect-size/statistical fields, and extraction provenance.
+Evidence/source records are support metadata for edge assertions, not primarily
+standalone biological edges. Storage shape is `evidence/{relation}.parquet`,
+keyed by `(relation, x_id, y_id)` / `edge_key`, with support fields such as
+`evidence_type`, `source`, `source_dataset`, `source_record_id`, `paper_id`,
+`dataset_id`, `study_id`, `evidence_score`, effect-size/statistical fields,
+direction/predicate fields, and extraction provenance.
 
 `paper` remains a node type for bibliographic provenance, features, and optional
 literature graph tasks. Existing `paper_mentions_gene` and
-`paper_mentions_disease` canonical files remain readable as a legacy literature
-index, but new biological/pharmacological/disease-association imports should
-prefer evidence records that support existing edge relations. See
-`docs/evidence_and_edge_schema_plan.md` for the OpenTargets-first evidence
-implementation plan. The first implementation tranche adds `manage_db.kg_evidence`,
-`manage_db.audit_edge_evidence`, `manage_db.backfill_edge_evidence`, and
-Reactome evidence support for `disease_associated_gene` /
-`disease_involves_pathway`, PGx evidence support for
-`mutation_affects_molecule_response`, variant/protein-change evidence support,
-and conservative MoA/target support. Canonical evidence files now exist at:
+`paper_mentions_disease` canonical files remain readable as legacy literature
+indexes, but new biological/pharmacological/disease-association imports should
+prefer evidence records that support existing edge relations. A paper is usually
+metadata/support for an edge or node claim; it should not become a biological
+edge unless the task is explicitly a literature-index graph.
 
+Canonical evidence files currently exist at:
+
+- `evidence/cell_line_from_organism.parquet` — `1,183` human cell-line metadata
+  support records.
 - `evidence/disease_associated_gene.parquet` — `2,928` Reactome support records.
 - `evidence/disease_involves_pathway.parquet` — `2,296` Reactome support records.
-- `evidence/mutation_affects_molecule_response.parquet` — `18,595` support records
-  (`5,543` OpenTargets pharmacogenomics source-record supports + `13,052` PMID
-  paper supports).
-- `evidence/mutation_associated_gene.parquet` — `535,093` OpenTargets L2G support
-  records preserving `studyLocusId` row-level support.
+- `evidence/gene_ortholog_gene.parquet` — `161,675` OpenTargets
+  target.homologues support records.
+- `evidence/molecule_targets_protein.parquet` — `41,239` conservative canonical
+  edge-derived supports, including OpenTargets MoA rows and legacy TxGNN
+  supports; evidence preserves the canonical legacy `y_type=gene` endpoints.
+- `evidence/mutation_affects_molecule_response.parquet` — `18,595` support
+  records (`5,543` OpenTargets pharmacogenomics source-record supports +
+  `13,052` PMID paper supports).
+- `evidence/mutation_associated_gene.parquet` — `535,093` OpenTargets L2G
+  support records preserving `studyLocusId` row-level support.
+- `evidence/mutation_causes_phenotype.parquet` — `26,980` EVA/ClinVar-style
+  support records for `25,545` mutation→phenotype edges.
 - `evidence/mutation_causes_protein_change.parquet` — `177,735` OpenTargets
   variant/protein-change support records.
-- `evidence/molecule_targets_protein.parquet` — `41,239` conservative canonical
-  edge-derived supports, including `14,559` OpenTargets MoA rows with
-  `drug_mechanism_of_action` metadata and `26,680` legacy TxGNN supports.
 
-Audits report zero unsupported/orphan records in
-`.omoc/reports/hermes-reactome-evidence-audit-*.json`,
-`.omoc/reports/hermes-pgx-evidence-audit-*.json`, and
-`.omoc/reports/hermes-three-evidence-audit-*.json`. For MoA, evidence preserves
-the canonical legacy `molecule_targets_protein` `y_type=gene` endpoints; do not
-remap ENSG targets to ENSP until a separate endpoint migration is designed.
+The latest combined audit is
+`.omoc/reports/hermes-evidence-nine-relations-audit-20260616T135126Z.json` and
+reports zero unsupported/orphan records for all nine. For MoA/protein-named
+legacy relations, do not remap ENSG/NCBI endpoints to ENSP until a separate
+endpoint migration is designed.
 
 ### Storage Layer
 
@@ -588,7 +633,7 @@ hetero_dgl  = kg.to_dgl()   # DGL HeteroGraph (legacy)
 - [x] Node types + ontology namespaces defined
 - [x] Full relation taxonomy with kind + direct flags
 - [x] Cross-reference / alias tables (EFO↔MONDO↔HP, Ensembl↔UniProt…)
-- [x] `txgnn/kg_schema.py` — Python schema as single source of truth
+- [x] `manage_db/kg_schema.py` — Python schema as single source of truth
 
 ### Phase 2 — LaminDB schema
 
@@ -657,10 +702,11 @@ semantics, endpoint validation, and evidence/audit criteria are satisfied.
       normalized `MONDO:` / `HP:` endpoints.
 - [x] `ingest_expression` added canonical OpenTargets `tissue_expresses_gene`
       (`3,800,648`) and `cell_type_expresses_gene` (`1,561,873`) plus legacy
-      `tissue_expresses_protein` (`1,538,088`). Pending work is evidence/source
-      provenance for expression edges and a source-backed
-      `cell_type_expresses_protein` mapping; do not treat this as a missing
-      rerun of the already-promoted gene-expression slice.
+      `tissue_expresses_protein` (`1,538,088`). The derived
+      `cell_type_expresses_protein` edge file (`7,205,547`) is also promoted
+      and endpoint-validated. Remaining work is evidence/source provenance for
+      expression edges and a stricter policy for `cell_line_expresses_protein`;
+      do not treat this as a missing rerun of the already-promoted gene-expression slice.
 - [x] `ingest_biosample`: OpenTargets `cell_type` nodes are present in the
       canonical export.
 - [x] `ingest_pharmacogenomics`: OpenTargets pharmacogenomics slice merged as
@@ -674,11 +720,13 @@ semantics, endpoint validation, and evidence/audit criteria are satisfied.
       `11,652,040` `mutation_affects_transcript`, and `8,563`
       `mutation_causes_protein_change` edges with `6.5G` peak RSS. Do **not**
       blindly promote full gene/transcript variant relations. The safe
-      protein-change slice is now promoted as `mutation_causes_protein_change`;
-      remaining pending variant relations are the broader `mutation_in_gene`,
-      `mutation_affects_transcript`, `mutation_overlaps_enhancer`,
-      `mutation_causes_phenotype`, and `mutation_associated_cell_type`, each
-      requiring stricter filters/source semantics before promotion. Track those
+      protein-change slice is now promoted as `mutation_causes_protein_change`.
+      The HP-only pathogenic/likely pathogenic EVA/ClinVar-style safe tranche is
+      also promoted as `mutation_causes_phenotype` with evidence. Remaining
+      pending variant relations are the broader `mutation_in_gene`,
+      `mutation_affects_transcript`, `mutation_overlaps_enhancer`, and
+      deprecated/candidate `mutation_associated_cell_type`, each requiring
+      stricter filters/source semantics before promotion. Track those
       as unresolved schema tasks, not as a generic partially failed variant
       ingest.
 - [x] `ingest_evidence_backed_variants` / dataset alias
@@ -714,9 +762,10 @@ semantics, endpoint validation, and evidence/audit criteria are satisfied.
       The retired combined variant scratch is archived at
       `/mnt/gcs/jouvencekb/kg/local-archive/home-ubuntu-data-txgnn-20260611T0940Z/txgnn-variant-combined-scratch.tar.zst` and had `2,419,072`
       nodes and `3,985,210` edges. Its `mutation_associated_disease` edges were merged with the GWAS disease
-      slice and promoted on 2026-06-11. Canonical GCS now has `52,889` disease
-      nodes and `4,656,171` `mutation_associated_disease` edges with targeted
-      endpoint validation reporting zero dangling mutation and disease endpoints.
+      slice and promoted on 2026-06-11. The intermediate `52,889` disease
+      rows were later normalized/collapsed to the current `41,859` canonical
+      disease rows; `mutation_associated_disease` remains `4,656,171` edges with
+      targeted endpoint validation reporting zero dangling mutation and disease endpoints.
 - [x] GWAS credible-set join. Datasets `credible_set`,
       `l2g_prediction`, and `study` are cached under
       `/mnt/gcs/jouvencekb/kg/local-archive/home-ubuntu-data-txgnn-20260611T0907Z/txgnn-gwas-join-scratch/opentargets`. Code now joins
@@ -807,6 +856,7 @@ data/kg/
 
 ### Phase 9 — Validation
 
+- [x] Baseline LaminDB/custom registry parity is verified for the current canonical node spaces; re-run parity after future canonical node promotions.
 - [x] Dangling edge checks (`KGLoader.validate()`)
 - [x] Schema coverage audit CLI:
       `uv run python -m manage_db.audit_kg_coverage /mnt/gcs/jouvencekb/kg/v2`
@@ -832,7 +882,7 @@ data/kg/
       historical. Use
       `uv run python -m manage_db.audit_node_ontology_coverage /mnt/gcs/jouvencekb/kg/v2 --json`
       for current namespace/xref coverage.
-- [ ] LaminDB parity audit and sync. 2026-06-10 bounded sync created
+- [x] LaminDB parity audit and sync baseline. 2026-06-10 bounded sync created
       `233,995` custom ENSP protein records and `2,588,052` mutation records
       needed by the combined/GWAS safe variant slices (`2,165,367` from the
       combined scratch plus `422,685` additional GWAS mutations; `7,312` GWAS
