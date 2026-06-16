@@ -41,7 +41,7 @@ def test_variant_transcript_enhancer_plan_documents_safe_sources_and_blockers() 
         assert f"`{relation_name}`" in text
 
     required_phrases = [
-        "Do not write canonical GCS from this tranche",
+        "Build locally, validate locally, then let the parent perform any",
         "OpenTargets `variant/transcriptConsequences`",
         "OpenTargets EVA/ClinVar-style known-variant evidence with `HP:` endpoints",
         "DuckDB interval join against canonical `nodes/enhancer.parquet`",
@@ -54,11 +54,13 @@ def test_variant_transcript_enhancer_plan_documents_safe_sources_and_blockers() 
         assert phrase in text
 
 
-def test_mutation_causes_phenotype_is_the_only_first_promotion_candidate() -> None:
+def test_mutation_causes_phenotype_promotion_is_recorded() -> None:
     text = PLAN_DOC.read_text()
-    first_candidate_line = next(
-        line for line in text.splitlines() if line.startswith("First promotion candidate:")
+    promoted_line = next(
+        line for line in text.splitlines() if line.startswith("Promoted first candidate:")
     )
-    assert "`mutation_causes_phenotype`" in first_candidate_line
-    assert "pathogenic/likely pathogenic" in first_candidate_line
-    assert "HP:" in first_candidate_line
+    assert "`mutation_causes_phenotype`" in promoted_line
+    assert "pathogenic/likely pathogenic" in promoted_line
+    assert "HP:" in promoted_line
+    assert "25,545" in text
+    assert "26,980" in text

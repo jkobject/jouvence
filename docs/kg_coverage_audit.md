@@ -31,9 +31,10 @@ Validation answers: "do present edges resolve to present node IDs?"
 Evidence audit answers: "which canonical edges have support rows, and are any
 support rows orphaned?"
 
-As of 2026-06-15 after the remaining OpenTargets-backed `target_essentiality`
-and `enhancer_to_gene` imports, the canonical export reports `15 / 15` node
-files and `40 / 80` edge files: `55,365,186` nodes and `144,155,654` edges.
+As of 2026-06-16 after the additive `cell_type_expresses_protein` and
+`mutation_causes_phenotype` tranche, the canonical export reports `15 / 15`
+node files and `42 / 80` edge files: `55,365,186` nodes and `151,386,746`
+edges.
 The formerly missing node files (`cell_line`, `dataset`, `enhancer`) are now
 present. The remaining missing edge files are schema/vision relations that still
 need explicit source mapping; do not create empty placeholder Parquets for them.
@@ -53,15 +54,24 @@ uv run --no-sync python -m manage_db.validate_kg /mnt/gcs/jouvencekb/kg/v2 \
 ```
 
 Evidence: `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
+That full run predates the 2026-06-16 additive tranche and reported
+`144,155,654` edges. The two new edge files were validated separately with
+targeted DuckDB anti-joins:
+
+- `cell_type_expresses_protein`: `7,205,547` edges, zero dangling endpoints.
+- `mutation_causes_phenotype`: `25,545` edges, zero dangling endpoints; its
+  `26,980` evidence rows pass `manage_db.audit_edge_evidence` with zero
+  unsupported/orphan support.
 
 Current evidence status is tracked in `CLAUDE.md` and
-`docs/evidence_and_edge_schema_plan.md`. As of the 2026-06-15 read-only audit,
-canonical evidence exists for six relations
+`docs/evidence_and_edge_schema_plan.md`. As of the 2026-06-16 targeted audit,
+canonical evidence exists for seven relations
 (`disease_associated_gene`, `disease_involves_pathway`,
 `mutation_affects_molecule_response`, `mutation_associated_gene`,
-`mutation_causes_protein_change`, and `molecule_targets_protein`) and targeted
+`mutation_causes_protein_change`, `molecule_targets_protein`, and
+`mutation_causes_phenotype`) and targeted
 `manage_db.audit_edge_evidence` reports zero unsupported/orphan records for all
-six. The active evidence backlog starts with `mutation_associated_disease`, then
+seven. The active evidence backlog starts with `mutation_associated_disease`, then
 clinical `molecule_treats_disease` / `molecule_contraindicates_disease`, then
 enhancer/expression/cell-line support tranches.
 

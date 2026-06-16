@@ -1,6 +1,6 @@
 # Evidence and edge-schema reconciliation
 
-Updated: 2026-06-15.
+Updated: 2026-06-16.
 
 This note reconciles the canonical KG coverage table with Jérémie's schema cleanup notes. It is intentionally non-destructive: relations that already have canonical Parquet files remain readable/valid until a migration explicitly archives or rewrites them.
 
@@ -11,16 +11,21 @@ Canonical KG root: `/mnt/gcs/jouvencekb/kg/v2`.
 Validated state:
 
 - node files: `15 / 15`
-- edge files: `40 / 80`
+- edge files: `42 / 80`
 - nodes: `55,365,186`
-- edges: `144,155,654`
+- edges: `151,386,746`
 - dangling endpoints: `0`
-- full KG validation evidence: `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`
-- evidence layer: `6` canonical evidence files, `777,886` total support rows,
-  audited read-only on 2026-06-15 with zero unsupported/orphan records for
+- last full KG validation evidence before the 2026-06-16 additive tranche:
+  `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`
+- evidence layer: `7` canonical evidence files, `804,866` total support rows,
+  audited read-only with zero unsupported/orphan records for
   `disease_associated_gene`, `disease_involves_pathway`,
   `mutation_affects_molecule_response`, `mutation_associated_gene`,
-  `mutation_causes_protein_change`, and `molecule_targets_protein`
+  `mutation_causes_protein_change`, `molecule_targets_protein`, and
+  `mutation_causes_phenotype`
+- 2026-06-16 targeted endpoint validation: `cell_type_expresses_protein`
+  (`7,205,547` edges) and `mutation_causes_phenotype` (`25,545` edges) both
+  have zero dangling endpoints by DuckDB anti-join.
 
 Important corrections relative to old notes:
 
@@ -38,6 +43,7 @@ Important corrections relative to old notes:
   - `mutation_associated_gene`: `535,093`
   - `mutation_associated_disease`: `4,656,171`
   - `mutation_causes_protein_change`: `177,735`
+  - `mutation_causes_phenotype`: `25,545`
 
 ## Relations to deprecate or treat as migration candidates
 

@@ -1,10 +1,16 @@
 # Variant / transcript / enhancer missing-edge tranche plan
 
-This note locks the next safe non-GCS tranche for the remaining variant,
-transcript, enhancer, and phenotype relations. Do not write canonical GCS from this tranche.
-Build locally, validate locally, then let the parent perform any
-explicit promotion. Do not create empty placeholder Parquets for unresolved
-relations.
+This note locks the source policy for remaining variant, transcript, enhancer,
+and phenotype relations. Do not create empty placeholder Parquets for unresolved
+relations. Build locally, validate locally, then let the parent perform any
+explicit canonical promotion.
+
+2026-06-16 update: the first candidate below, `mutation_causes_phenotype`, has
+now been promoted canonically from HP-only pathogenic/likely pathogenic EVA rows
+(`25,545` edges, `26,980` evidence support rows, zero dangling endpoints and
+zero unsupported/orphan support). The remaining unresolved relations are
+`mutation_in_gene`, `mutation_affects_transcript`, `mutation_overlaps_enhancer`,
+`enhancer_regulates_transcript`, and `enhancer_associated_disease`.
 
 ## Read-only source inspection
 
@@ -23,9 +29,9 @@ Bounded metadata/sample inspection found these available source caches:
 | `/mnt/gcs/jouvencekb/kg/local-archive/home-ubuntu-data-txgnn-20260611T0907Z/txgnn-gwas-join-scratch/opentargets/credible_set` | 3,491,182 | GWAS/QTL credible-set variants. Useful only after joining to studies/diseases and, for enhancer disease, interval-overlap evidence. |
 | `/mnt/gcs/jouvencekb/kg/scratch/remaining-slices-20260614T220351Z/opentargets/enhancer_to_gene` | 48,810,390 | E2G enhancer intervals and gene endpoints. Already promoted as enhancer nodes / gene regulatory/context edges. No current OpenTargets E2G transcript endpoint is present in this table. |
 
-## First promotion candidate
+## Promoted first candidate
 
-First promotion candidate: `mutation_causes_phenotype` from OpenTargets EVA/ClinVar-style known-variant evidence with `HP:` endpoints, restricted to pathogenic/likely pathogenic clinical significance and germline or otherwise causal assertions. This is the safest of the six because it uses explicit
+Promoted first candidate: `mutation_causes_phenotype` from OpenTargets EVA/ClinVar-style known-variant evidence with `HP:` endpoints, restricted to pathogenic/likely pathogenic clinical significance and germline or otherwise causal assertions. This was the safest of the six because it uses explicit
 variant-to-HPO rows, has bounded source columns, does not require an interval
 join, and avoids the known `mutation_in_gene` versus `mutation_associated_gene`
 semantic trap.
@@ -58,8 +64,8 @@ semantic trap.
 
 ## Recommended implementation order
 
-1. Implement and locally build `mutation_causes_phenotype` from HP-only
-   pathogenic/likely pathogenic EVA rows.
+1. ✅ Promoted `mutation_causes_phenotype` from HP-only pathogenic/likely
+   pathogenic EVA rows.
 2. Separately prototype `mutation_affects_transcript` and `mutation_in_gene`
    from `variant/transcriptConsequences`, with a row-count cap/sample audit first.
 3. Prototype `mutation_overlaps_enhancer` with a DuckDB interval join on a single

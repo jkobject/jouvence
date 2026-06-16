@@ -183,8 +183,8 @@ KG vision**. It is currently:
   `mutation_affects_molecule_response` edges.
 
 As of the 2026-06-15 remaining-slices promotion, the canonical export under
-`/mnt/gcs/jouvencekb/kg/v2` contains all `15 / 15` node files and `40 / 80`
-edge files, with `55,365,186` total nodes and `144,155,654` total edges. The
+`/mnt/gcs/jouvencekb/kg/v2` contains all `15 / 15` node files and `42 / 80`
+edge files, with `55,365,186` total nodes and `151,386,746` total edges. The
 largest new slice is `enhancer` (`48,808,144` nodes) plus enhancer regulatory
 edges. The default `manage_db.validate_kg` path is now an exact DuckDB anti-join
 validator intended for the mounted GCS-FUSE path, for example:
@@ -209,10 +209,14 @@ history stays in the phase notes below.
 **Current verified baseline**
 
 - Canonical KG root: `/mnt/gcs/jouvencekb/kg/v2`.
-- Coverage: `15 / 15` node files and `40 / 80` edge files from `kg_schema.py`.
-- Scale: `55,365,186` nodes and `144,155,654` edges.
-- Full DuckDB validation: `total_dangling_edges=0` under systemd limits; see
+- Coverage: `15 / 15` node files and `42 / 80` edge files from `kg_schema.py`.
+- Scale: `55,365,186` nodes and `151,386,746` edges.
+- Last full DuckDB validation before the 2026-06-16 additive tranche reported
+  `total_dangling_edges=0` under systemd limits; see
   `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
+  The 2026-06-16 `cell_type_expresses_protein` and
+  `mutation_causes_phenotype` files were validated with targeted DuckDB
+  endpoint anti-joins plus evidence audit where applicable.
 - LaminDB/custom registry parity: verified `missing_ids=0` for canonical
   `gene`, `molecule`, `pathway`, `tissue`, `cell_type`, `transcript`,
   `disease`, `protein`, `paper`, `mutation`, and `organism`; see
@@ -227,12 +231,13 @@ history stays in the phase notes below.
   primary edge; evidence can also be OpenTargets source rows, curated database
   records, datasets/cohorts/screens, studies, scores/effect observations, and
   extracted text spans.
-- Canonical evidence currently covers six relations with zero unsupported/orphan
+- Canonical evidence currently covers seven relations with zero unsupported/orphan
   records: `disease_associated_gene`, `disease_involves_pathway`,
   `mutation_affects_molecule_response`, `mutation_associated_gene`,
-  `mutation_causes_protein_change`, and `molecule_targets_protein`.
-- Latest six-relation evidence audit:
-  `.omoc/reports/hermes-evidence-six-relations-audit-20260615T113441Z.json`.
+  `mutation_causes_protein_change`, `molecule_targets_protein`, and
+  `mutation_causes_phenotype`.
+- Latest seven-relation evidence audit:
+  `.omoc/reports/hermes-evidence-seven-relations-audit-20260616T100720Z.json`.
 - Next evidence targets: `mutation_associated_disease`,
   `molecule_treats_disease`, `molecule_contraindicates_disease`, enhancer
   regulatory/context edges, and expression/DepMap/cell-line edges where source
@@ -281,18 +286,19 @@ updates.
 **Verified current state (read-only audit, 2026-06-15)**
 
 - Canonical GCS/FUSE root: `/mnt/gcs/jouvencekb/kg/v2`.
-- Physical coverage: all `15 / 15` schema node files and `40 / 80` schema edge
+- Physical coverage: all `15 / 15` schema node files and `42 / 80` schema edge
   files are present; remaining missing edges are unresolved schema/vision
   relations, not empty placeholders to create.
 - Parquet-metadata counts from the mounted canonical root: `55,365,186` nodes
-  and `144,155,654` edges.
-- Evidence files present: `6` relations, `777,886` total support rows.
+  and `151,386,746` edges.
+- Evidence files present: `7` relations, `804,866` total support rows.
 - Evidence audit passes with zero unsupported/orphan records for:
   `disease_associated_gene` (`2,928`), `disease_involves_pathway` (`2,296`),
   `mutation_affects_molecule_response` (`18,595` support rows for `4,866`
   collapsed edges), `mutation_associated_gene` (`535,093`),
-  `mutation_causes_protein_change` (`177,735`), and
-  `molecule_targets_protein` (`41,239`).
+  `mutation_causes_protein_change` (`177,735`),
+  `molecule_targets_protein` (`41,239`), and
+  `mutation_causes_phenotype` (`26,980`).
 
 **Unresolved schema/modeling work**
 
@@ -302,14 +308,15 @@ updates.
    expression edges, DepMap/cell-line edges, organism/dataset edges, and legacy
    literature index edges. Backfill source-aware evidence before using these as
    fully explainable assertions.
-2. `mutation_in_gene`, `mutation_affects_transcript`,
-   `mutation_overlaps_enhancer`, `mutation_causes_phenotype`, and
-   `mutation_associated_cell_type` remain unpromoted because each needs stricter
+2. `mutation_causes_phenotype` is now promoted from HP-only pathogenic/likely
+   pathogenic EVA/ClinVar-style rows (`25,545` edges, `26,980` support rows,
+   zero dangling endpoints/evidence orphans; build peak `2.3G` under systemd
+   `MemoryMax=5G`). `mutation_in_gene`, `mutation_affects_transcript`,
+   `mutation_overlaps_enhancer`, and `mutation_associated_cell_type` remain
+   unpromoted because each needs stricter
    locus/consequence/context semantics than the dense OpenTargets variant smoke
    output provided. The source-to-edge policy for the active non-GCS tranche is
-   locked in `docs/variant_transcript_enhancer_missing_edges.md`; first
-   promotion candidate is HP-only pathogenic/likely-pathogenic
-   `mutation_causes_phenotype` from EVA/ClinVar-style rows.
+   locked in `docs/variant_transcript_enhancer_missing_edges.md`.
 3. Several canonical `*protein*` relations still physically use `gene`
    endpoints. Keep their evidence tied to current canonical endpoints until a
    deliberate ENSG/NCBI→ENSP endpoint migration policy exists.
@@ -428,7 +435,7 @@ primary biological assertion.
 | `mutation_causes_protein_change`     | `mutation`   | `protein`    | `genetic`         | yes     | yes  |   177,735 | active; canonical edge + evidence files exist; ENSP protein endpoints      |
 | `mutation_overlaps_enhancer`         | `mutation`   | `enhancer`   | `genetic`         | yes     | no   |         - | active schema relation; needs bounded interval-overlap/provenance policy before promotion |
 | `mutation_associated_disease`        | `mutation`   | `disease`    | `genetic`         | no      | yes  | 4,656,171 | active canonical OpenTargets known-variant + GWAS disease edges; evidence backfill still next tranche |
-| `mutation_causes_phenotype`          | `mutation`   | `phenotype`  | `genetic`         | no      | no   |         - | active preferred forward phenotype-causality direction; not exported yet  |
+| `mutation_causes_phenotype`          | `mutation`   | `phenotype`  | `genetic`         | no      | yes  |    25,545 | OpenTargets EVA/ClinVar HP-only pathogenic/likely pathogenic assertions; evidence present |
 | `gene_associated_phenotype`          | `gene`       | `phenotype`  | `phenotype_assoc` | no      | no   |         - | preferred non-causal HPO gene→phenotype association direction             |
 | `mutation_affects_molecule_response` | `mutation`   | `molecule`   | `pharmacological` | no      | yes  |     4,866 | OpenTargets pharmacogenomics                                              |
 | `mutation_associated_cell_type`      | `mutation`   | `cell_type`  | `genetic`         | no      | no   |         - | TODEL/deprecated candidate unless a concrete eQTL/cell-type source is selected |
@@ -442,7 +449,7 @@ primary biological assertion.
 | `tissue_expresses_gene`              | `tissue`     | `gene`       | `expression`      | yes     | yes  | 3,800,648 | OpenTargets expression                                                    |
 | `tissue_expresses_protein`           | `tissue`     | `protein`    | `expression`      | yes     | yes  | 1,538,088 | legacy gene/protein endpoints (`y_type=gene`)                             |
 | `cell_type_expresses_gene`           | `cell_type`  | `gene`       | `expression`      | yes     | yes  | 1,561,873 | OpenTargets expression                                                    |
-| `cell_type_expresses_protein`        | `cell_type`  | `protein`    | `expression`      | yes     | no   |         - | not exported yet                                                          |
+| `cell_type_expresses_protein`        | `cell_type`  | `protein`    | `expression`      | yes     | yes  | 7,205,547 | derived from `cell_type_expresses_gene` via ENSG→ENSP mapping; zero dangling endpoints |
 | `cell_line_expresses_gene`           | `cell_line`  | `gene`       | `experimental`    | yes     | yes  | 20,928,056 | OpenTargets DepMap target essentiality/expression slice                   |
 | `cell_line_expresses_protein`        | `cell_line`  | `protein`    | `experimental`    | yes     | no   |         - | not exported yet                                                          |
 | `protein_interacts_protein`          | `protein`    | `protein`    | `physical`        | yes     | yes  |   642,150 | legacy gene/protein endpoints (`gene` → `gene`)                           |
@@ -776,9 +783,12 @@ data/kg/
 - Legacy TxGNN KG exported to `gs://jouvencekb/kg/v2`; paper, Reactome,
   molecule/MoA, biosample, expression, variant, organism, dataset, cell-line,
   and enhancer slices were later added. Current canonical GCS layout has
-  `15 / 15` node files and `40 / 80` edge files. The 2026-06-15 full DuckDB
-  validation over `/mnt/gcs/jouvencekb/kg/v2` reports `55,365,186` nodes,
-  `144,155,654` edges, and `total_dangling_edges: 0`.
+  `15 / 15` node files and `42 / 80` edge files. The 2026-06-15 full DuckDB
+  validation over `/mnt/gcs/jouvencekb/kg/v2` reported `55,365,186` nodes,
+  `144,155,654` edges, and `total_dangling_edges: 0` before the two 2026-06-16
+  additive tranches. Current metadata counts are `55,365,186` nodes and
+  `151,386,746` edges; the 2026-06-16 files were validated by targeted DuckDB
+  anti-joins.
 
 ### Phase 8 — KGLoader + graph export ✅ (complete)
 
@@ -800,8 +810,8 @@ data/kg/
 - [x] Schema coverage audit CLI:
       `uv run python -m manage_db.audit_kg_coverage /mnt/gcs/jouvencekb/kg/v2`
       reports physical node/edge file coverage against `kg_schema.py`. Current
-      canonical GCS export: `15 / 15` node files, `40 / 80` edge files,
-      `55,365,186` total nodes, and `144,155,654` total edges. See
+      canonical GCS export: `15 / 15` node files, `42 / 80` edge files,
+      `55,365,186` total nodes, and `151,386,746` total edges. See
       `docs/kg_coverage_audit.md`.
 - [x] Remote GCS validation after remaining-slice promotion: the 2026-06-15
       full DuckDB run of
@@ -810,6 +820,11 @@ data/kg/
       `55,365,186` nodes, `144,155,654` edges, and
       `total_dangling_edges: 0`. Evidence:
       `.omoc/reports/hermes-full-validate-duckdb-enhancer-20260615T084756Z.txt`.
+- [x] Targeted validation after the 2026-06-16 additive tranche:
+      `cell_type_expresses_protein` (`7,205,547` edges) and
+      `mutation_causes_phenotype` (`25,545` edges, `26,980` evidence rows)
+      both have zero dangling endpoints by DuckDB anti-join; the phenotype edge
+      also passes `audit_edge_evidence` with zero unsupported/orphan support.
 - [x] Node ontology coverage stats. The canonical node files are now complete
       (`cell_line`, `dataset`, and `enhancer` are present). Older 2026-06-11
       reports predate remaining-slice promotion and should be treated as
