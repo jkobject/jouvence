@@ -12,10 +12,10 @@ from manage_db.kg_storage import open_kg_root, write_edges
 _REQUIRED_EDGE = pd.DataFrame(
     [
         {
-            "x_id": "EFO:1",
-            "x_type": "disease",
-            "y_id": "ENSG1",
-            "y_type": "gene",
+            "x_id": "ENSG1",
+            "x_type": "gene",
+            "y_id": "EFO:1",
+            "y_type": "disease",
             "relation": "disease_associated_gene",
             "display_relation": "associated with",
             "source": "OpenTargets/reactome",
@@ -33,10 +33,10 @@ def test_write_read_evidence_deduplicates_support_records(tmp_path: Path) -> Non
         [
             {
                 "relation": "disease_associated_gene",
-                "x_id": "EFO:1",
-                "x_type": "disease",
-                "y_id": "ENSG1",
-                "y_type": "gene",
+                "x_id": "ENSG1",
+                "x_type": "gene",
+                "y_id": "EFO:1",
+                "y_type": "disease",
                 "evidence_type": "database_record",
                 "source": "OpenTargets",
                 "source_dataset": "reactome",
@@ -50,10 +50,10 @@ def test_write_read_evidence_deduplicates_support_records(tmp_path: Path) -> Non
             },
             {
                 "relation": "disease_associated_gene",
-                "x_id": "EFO:1",
-                "x_type": "disease",
-                "y_id": "ENSG1",
-                "y_type": "gene",
+                "x_id": "ENSG1",
+                "x_type": "gene",
+                "y_id": "EFO:1",
+                "y_type": "disease",
                 "evidence_type": "database_record",
                 "source": "OpenTargets",
                 "source_dataset": "reactome",
@@ -72,7 +72,7 @@ def test_write_read_evidence_deduplicates_support_records(tmp_path: Path) -> Non
 
     got = read_evidence(root, "disease_associated_gene")
     assert len(got) == 1
-    assert got.loc[0, "edge_key"] == "disease_associated_gene|EFO:1|ENSG1"
+    assert got.loc[0, "edge_key"] == "disease_associated_gene|ENSG1|EFO:1"
     assert got.loc[0, "source_record_id"] == "reactome:row-1"
     assert got.loc[0, "evidence_score"] == 0.9
 
@@ -84,11 +84,11 @@ def test_write_evidence_accepts_documented_molecule_target_gene_exception(tmp_pa
     root = open_kg_root(str(tmp_path / "kg"))
     assert write_evidence(
         root,
-        "molecule_targets_protein",
+        "molecule_targets_gene",
         pd.DataFrame(
             [
                 {
-                    "relation": "molecule_targets_protein",
+                    "relation": "molecule_targets_gene",
                     "x_id": "CHEMBL1",
                     "x_type": "molecule",
                     "y_id": "ENSG000001",
@@ -102,7 +102,7 @@ def test_write_evidence_accepts_documented_molecule_target_gene_exception(tmp_pa
         ),
     ) == 1
 
-    got = read_evidence(root, "molecule_targets_protein")
+    got = read_evidence(root, "molecule_targets_gene")
     assert got.loc[0, "y_type"] == "gene"
 
 
@@ -118,9 +118,9 @@ def test_write_evidence_still_rejects_other_schema_type_mismatches(tmp_path: Pat
                 [
                     {
                         "relation": "disease_associated_gene",
-                        "x_id": "EFO:1",
-                        "x_type": "disease",
-                        "y_id": "ENSG1",
+                        "x_id": "ENSG1",
+                        "x_type": "gene",
+                        "y_id": "ENSP1",
                         "y_type": "protein",
                         "evidence_type": "database_record",
                         "source": "OpenTargets",
@@ -145,10 +145,10 @@ def test_audit_edge_evidence_reports_missing_and_orphan_support(tmp_path: Path) 
             [
                 {
                     "relation": "disease_associated_gene",
-                    "x_id": "EFO:2",
-                    "x_type": "disease",
-                    "y_id": "ENSG2",
-                    "y_type": "gene",
+                    "x_id": "ENSG2",
+                    "x_type": "gene",
+                    "y_id": "EFO:2",
+                    "y_type": "disease",
                     "evidence_type": "paper",
                     "source": "EuropePMC",
                     "source_dataset": "europepmc",
@@ -184,10 +184,10 @@ def test_audit_edge_evidence_json_cli(tmp_path: Path, capsys) -> None:
             [
                 {
                     "relation": "disease_associated_gene",
-                    "x_id": "EFO:1",
-                    "x_type": "disease",
-                    "y_id": "ENSG1",
-                    "y_type": "gene",
+                    "x_id": "ENSG1",
+                    "x_type": "gene",
+                    "y_id": "EFO:1",
+                    "y_type": "disease",
                     "evidence_type": "database_record",
                     "source": "OpenTargets",
                     "source_dataset": "reactome",

@@ -28,7 +28,7 @@ def test_migrate_nodes_emits_storage_schema_columns() -> None:
     assert row["gene_name"] == "TP53"
 
 
-def test_migrate_edges_canonicalizes_bidirectional_legacy_relations() -> None:
+def test_migrate_edges_canonicalizes_bidirectional_txdata_relations() -> None:
     nodes = pd.DataFrame(
         [
             {"node_index": 1, "node_id": "1", "node_type": "drug", "node_name": "D", "node_source": "DrugBank"},
