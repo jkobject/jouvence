@@ -40,17 +40,6 @@ def test_project_cell_type_gene_expression_to_protein_edges_preserves_gene_metad
     )
     write_edges(
         source,
-        "gene_encodes_protein",
-        pd.DataFrame(
-            [
-                _edge("ENSG1", "gene", "ENSP1", "protein", "gene_encodes_protein"),
-                _edge("ENSG1", "gene", "ENSP2", "protein", "gene_encodes_protein"),
-                _edge("ENSG2", "gene", "ENSP3", "protein", "gene_encodes_protein"),
-            ]
-        ),
-    )
-    write_edges(
-        source,
         "cell_type_expresses_gene",
         pd.DataFrame(
             [
@@ -84,7 +73,7 @@ def test_project_cell_type_gene_expression_to_protein_edges_preserves_gene_metad
         {"x_id": "CL:2", "x_type": "cell_type", "y_id": "ENSP3", "y_type": "protein", "relation": "cell_type_expresses_protein"},
     ]
     assert set(edges["gene_id"]) == {"ENSG1", "ENSG2"}
-    assert set(edges["source"]) == {"test;projected_via_gene_encodes_protein"}
+    assert set(edges["source"]) == {"test;projected_via_protein_node_xref"}
     assert "tpm" in edges.columns
     assert "expression_level" in edges.columns
 
@@ -94,13 +83,13 @@ def test_project_expression_to_protein_respects_max_output_rows(tmp_path: Path) 
 
     source = open_kg_root(str(tmp_path / "source"))
     dest = open_kg_root(str(tmp_path / "dest"))
-    write_edges(
+    write_nodes(
         source,
-        "gene_encodes_protein",
+        "protein",
         pd.DataFrame(
             [
-                _edge("ENSG1", "gene", "ENSP1", "protein", "gene_encodes_protein"),
-                _edge("ENSG1", "gene", "ENSP2", "protein", "gene_encodes_protein"),
+                {"id": "ENSP1", "ensembl_gene_id": "ENSG1", "uniprot_id": None, "refseq_protein": None, "pdb_ids": None, "name": "p1", "source": "test"},
+                {"id": "ENSP2", "ensembl_gene_id": "ENSG1", "uniprot_id": None, "refseq_protein": None, "pdb_ids": None, "name": "p2", "source": "test"},
             ]
         ),
     )
@@ -177,3 +166,53 @@ def test_build_cell_line_protein_expression_duckdb_filters_and_writes_evidence(t
     assert evidence.loc[0, "source_dataset"] == "DepMap"
     assert evidence.loc[0, "predicate"] == "high_mrna_expression_projected_to_protein"
     assert evidence.loc[0, "evidence_score"] == 12.5
+
+
+
+def test_backfill_existing_cell_type_protein_expression_evidence(tmp_path: Path) -> None:
+    from manage_db.audit_edge_evidence import audit_edge_evidence
+    from manage_db.backfill_protein_expression import backfill_protein_expression_evidence_duckdb
+    from manage_db.kg_evidence import read_evidence
+    from manage_db.kg_storage import open_kg_root, write_edges
+
+    root = open_kg_root(str(tmp_path / "kg"))
+    write_edges(
+        root,
+        "cell_type_expresses_protein",
+        pd.DataFrame(
+            [
+                {
+                    "x_id": "CL:1",
+                    "x_type": "cell_type",
+                    "y_id": "ENSP1",
+                    "y_type": "protein",
+                    "relation": "cell_type_expresses_protein",
+                    "display_relation": "expresses protein",
+                    "source": "OpenTargets/HPA;projected_via_protein_node_xref",
+                    "credibility": 3,
+                    "gene_id": "ENSG1",
+                    "tpm": 12.5,
+                    "expression_level": 2,
+                }
+            ]
+        ),
+    )
+
+    assert backfill_protein_expression_evidence_duckdb(
+        kg_root=tmp_path / "kg",
+        relation="cell_type_expresses_protein",
+        source_dataset="HPA/OpenTargets expression",
+        predicate="rna_expression_projected_to_protein",
+        extraction_method="HPA/OpenTargets RNA expression projected through protein node xref",
+        duckdb_memory_limit="256MB",
+        threads=1,
+    ) == 1
+
+    evidence = read_evidence(root, "cell_type_expresses_protein")
+    assert len(evidence) == 1
+    assert evidence.loc[0, "edge_key"] == "cell_type_expresses_protein|CL:1|ENSP1"
+    assert evidence.loc[0, "source"] == "OpenTargets"
+    assert evidence.loc[0, "source_dataset"] == "HPA/OpenTargets expression"
+    assert evidence.loc[0, "evidence_score"] == 12.5
+    assert evidence.loc[0, "predicate"] == "rna_expression_projected_to_protein"
+    assert audit_edge_evidence(tmp_path / "kg", relations=["cell_type_expresses_protein"]).ok

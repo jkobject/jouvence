@@ -43,27 +43,11 @@ class ProjectionTooLargeError(RuntimeError):
 
 
 def _read_gene_protein_edges(root: kg_storage.KGRoot) -> pd.DataFrame:
-    """Return distinct ENSG→ENSP rows, preferring canonical gene_encodes_protein."""
+    """Return distinct ENSG→ENSP rows from ``nodes/protein.ensembl_gene_id``.
 
-    try:
-        edges = kg_storage.read_edges(
-            root,
-            "gene_encodes_protein",
-            columns=["x_id", "x_type", "y_id", "y_type"],
-        )
-    except Exception:
-        edges = pd.DataFrame()
-
-    if not edges.empty:
-        mapping = edges[
-            (edges["x_type"].astype(str) == NodeType.GENE.value)
-            & (edges["y_type"].astype(str) == NodeType.PROTEIN.value)
-            & edges["x_id"].astype(str).str.startswith("ENSG")
-            & edges["y_id"].astype(str).str.startswith("ENSP")
-        ][["x_id", "y_id"]].rename(columns={"x_id": "gene_id", "y_id": "protein_id"})
-        mapping = mapping.drop_duplicates().reset_index(drop=True)
-        if not mapping.empty:
-            return mapping
+    The historical ``gene_encodes_protein`` shortcut edge has been removed from
+    the active KG; this helper intentionally does not read or recreate it.
+    """
 
     proteins = kg_storage.read_nodes(
         root,
@@ -151,8 +135,8 @@ def project_expression_to_protein(
         out["relation"] = dest_relation
         out["display_relation"] = "expresses protein"
         out["source"] = out["source"].astype(str).str.replace(
-            ";projected_via_gene_encodes_protein", "", regex=False
-        ) + ";projected_via_gene_encodes_protein"
+            ";projected_via_protein_node_xref", "", regex=False
+        ) + ";projected_via_protein_node_xref"
         out["credibility"] = int(Credibility.ESTABLISHED_FACT)
         preferred = [
             "x_id",
@@ -324,6 +308,83 @@ def build_cell_line_protein_expression_duckdb(
     )
 
 
+def backfill_protein_expression_evidence_duckdb(
+    *,
+    kg_root: str | Path,
+    relation: str,
+    source_dataset: str,
+    predicate: str,
+    extraction_method: str,
+    duckdb_memory_limit: str = "4GB",
+    threads: int = 2,
+) -> int:
+    """Write evidence for an existing protein-expression edge file with DuckDB.
+
+    This is evidence-only: it does not modify edge files. It is intended for
+    already-promoted RNA→protein proxy relations where edge rows carry the
+    original gene and expression columns.
+    """
+
+    root = Path(kg_root)
+    edge_file = root / "edges" / f"{relation}.parquet"
+    evidence_dir = root / "evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    evidence_file = evidence_dir / f"{relation}.parquet"
+    if not edge_file.exists():
+        raise FileNotFoundError(edge_file)
+
+    con = duckdb.connect()
+    con.execute(f"PRAGMA memory_limit='{duckdb_memory_limit}'")
+    con.execute(f"PRAGMA threads={threads}")
+    columns = {row[0] for row in con.execute("DESCRIBE SELECT * FROM read_parquet(?)", [str(edge_file)]).fetchall()}
+    if "tpm" in columns and "expression" in columns:
+        score_expr = "COALESCE(TRY_CAST(tpm AS DOUBLE), TRY_CAST(expression AS DOUBLE))"
+    elif "tpm" in columns:
+        score_expr = "TRY_CAST(tpm AS DOUBLE)"
+    elif "expression" in columns:
+        score_expr = "TRY_CAST(expression AS DOUBLE)"
+    else:
+        score_expr = "NULL::DOUBLE"
+    effect_expr = "TRY_CAST(gene_effect AS DOUBLE)" if "gene_effect" in columns else "NULL::DOUBLE"
+    gene_expr = "COALESCE(gene_id, '')" if "gene_id" in columns else "''"
+    con.execute(
+        f"""
+        COPY (
+            SELECT
+                relation || '|' || x_id || '|' || y_id AS edge_key,
+                relation,
+                x_id,
+                x_type,
+                y_id,
+                y_type,
+                'database_record' AS evidence_type,
+                'OpenTargets' AS source,
+                '{source_dataset}' AS source_dataset,
+                source || ':' || relation || ':' || x_id || ':' || {gene_expr} || ':' || y_id AS source_record_id,
+                '' AS paper_id,
+                '' AS dataset_id,
+                '' AS study_id,
+                {score_expr} AS evidence_score,
+                {effect_expr} AS effect_size,
+                NULL::DOUBLE AS p_value,
+                '' AS direction,
+                '' AS confidence_interval,
+                '{predicate}' AS predicate,
+                '' AS text_span,
+                '' AS section,
+                '{extraction_method}' AS extraction_method,
+                '' AS license,
+                '' AS release,
+                '' AS created_at
+            FROM read_parquet('{edge_file}')
+        ) TO '{evidence_file}' (FORMAT PARQUET)
+        """
+    )
+    count = int(con.execute("SELECT count(*) FROM read_parquet(?)", [str(evidence_file)]).fetchone()[0])
+    con.close()
+    return count
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-kg-root", required=True, help="Read-only KG root to project from")
@@ -344,11 +405,40 @@ def main(argv: list[str] | None = None) -> int:
         help="Opt-in escape hatch; by default cell_line_expresses_protein is estimate-only.",
     )
     parser.add_argument(
+        "--evidence-only",
+        action="store_true",
+        help="Backfill evidence for an already-existing protein-expression edge file without rewriting edges.",
+    )
+    parser.add_argument(
         "--relation",
         choices=["cell_type_expresses_protein", "cell_line_expresses_protein"],
         default="cell_type_expresses_protein",
     )
     args = parser.parse_args(argv)
+
+    if args.evidence_only:
+        if args.relation == "cell_type_expresses_protein":
+            count = backfill_protein_expression_evidence_duckdb(
+                kg_root=args.source_kg_root,
+                relation=args.relation,
+                source_dataset="HPA/OpenTargets expression",
+                predicate="rna_expression_projected_to_protein",
+                extraction_method="HPA/OpenTargets RNA expression projected through protein node xref",
+                duckdb_memory_limit=args.duckdb_memory_limit,
+                threads=args.threads,
+            )
+        else:
+            count = backfill_protein_expression_evidence_duckdb(
+                kg_root=args.source_kg_root,
+                relation=args.relation,
+                source_dataset="DepMap",
+                predicate="high_mrna_expression_projected_to_protein",
+                extraction_method="DepMap expression threshold projected through protein.ensembl_gene_id",
+                duckdb_memory_limit=args.duckdb_memory_limit,
+                threads=args.threads,
+            )
+        print(f"{args.relation}	{count}")
+        return 0
 
     if args.relation == "cell_type_expresses_protein":
         source_relation = "cell_type_expresses_gene"

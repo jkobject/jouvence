@@ -8,7 +8,7 @@ Datasets handled
 target       → nodes/gene.parquet             (Ensembl IDs + xrefs)
 disease      → nodes/disease.parquet          (EFO IDs + xrefs)
 drug         → nodes/molecule.parquet         (ChEMBL IDs + xrefs)
-interaction  → edges/protein_interacts_protein.parquet
+interaction  → edges/gene_interacts_gene.parquet / protein_interacts_protein.parquet by endpoint
 evidence     → edges/disease_associated_gene.parquet
              → edges/molecule_treats_disease.parquet
              → edges/molecule_contraindicates_disease.parquet
@@ -18,9 +18,6 @@ go           → nodes/pathway.parquet          (GO terms merged with Reactome)
 reactome     → nodes/pathway.parquet          (Reactome pathways)
              → edges/pathway_child_of_pathway.parquet
 literature   → nodes/paper.parquet            (PubMed IDs)
-             → edges/paper_mentions_gene.parquet
-             → edges/paper_mentions_disease.parquet
-             → edges/paper_mentions_molecule.parquet
 indication   → edges/molecule_treats_disease.parquet
              → edges/molecule_contraindicates_disease.parquet
 
@@ -1246,449 +1243,7 @@ def ingest_evidence(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dic
                             NodeType.PATHWAY.value,
                             suffix=pathway_id,
                         ))
-                    if target_id.startswith("ENSG"):
-                        seen_genes.add(target_id)
-                        gene_disease_rows.append(_make_edge(
-                            x_id=disease_id, x_type=NodeType.DISEASE.value,
-                            y_id=target_id, y_type=NodeType.GENE.value,
-                            relation="disease_associated_gene",
-                            display_relation="associated gene",
-                            source=f"OpenTargets/{dsource}",
-                            credibility=cred,
-                            score=round(score, 4),
-                        ))
-                        gene_disease_evidence_rows.append(_evidence_row(
-                            "disease_associated_gene",
-                            disease_id,
-                            NodeType.DISEASE.value,
-                            target_id,
-                            NodeType.GENE.value,
-                        ))
-
-                # ── Gene-disease evidence ────────────────────────────────────
-                elif dtype in EVIDENCE_GENE_DISEASE_RELATIONS:
-                    if target_id.startswith("ENSG"):
-                        seen_genes.add(target_id)
-                        gene_disease_rows.append(_make_edge(
-                            x_id=disease_id, x_type=NodeType.DISEASE.value,
-                            y_id=target_id, y_type=NodeType.GENE.value,
-                            relation="disease_associated_gene",
-                            display_relation="associated gene",
-                            source=f"OpenTargets/{dsource}",
-                            credibility=cred,
-                            score=round(score, 4),
-                        ))
-                        gene_disease_evidence_rows.append(_evidence_row(
-                            "disease_associated_gene",
-                            disease_id,
-                            NodeType.DISEASE.value,
-                            target_id,
-                            NodeType.GENE.value,
-                        ))
-                else:
-                    # Unknown datatype — emit as gene-disease if IDs look right
-                    if target_id.startswith("ENSG"):
-                        seen_genes.add(target_id)
-                        gene_disease_rows.append(_make_edge(
-                            x_id=disease_id, x_type=NodeType.DISEASE.value,
-                            y_id=target_id, y_type=NodeType.GENE.value,
-                            relation="disease_associated_gene",
-                            display_relation="associated gene",
-                            source=f"OpenTargets/{dsource}",
-                            credibility=Credibility.SINGLE_EVIDENCE,
-                            score=round(score, 4),
-                        ))
-                        gene_disease_evidence_rows.append(_evidence_row(
-                            "disease_associated_gene",
-                            disease_id,
-                            NodeType.DISEASE.value,
-                            target_id,
-                            NodeType.GENE.value,
-                        ))
-
-            # Flush each chunk's rows immediately to temp files
-            if gene_disease_rows:
-                _write_chunk(pd.DataFrame(gene_disease_rows), gd_chunks)
-            if drug_disease_rows:
-                _write_chunk(pd.DataFrame(drug_disease_rows), dd_chunks)
-            if pathway_disease_rows:
-                _write_chunk(pd.DataFrame(pathway_disease_rows), pd_chunks)
-            if gene_disease_evidence_rows:
-                _write_chunk(pd.DataFrame(gene_disease_evidence_rows), gd_evidence_chunks)
-            if pathway_disease_evidence_rows:
-                _write_chunk(pd.DataFrame(pathway_disease_evidence_rows), pd_evidence_chunks)
-
-    dedup_edge = ["x_id", "y_id", "relation", "source"]
-    counts: dict[str, int] = {}
-    if seen_genes:
-        try:
-            existing_gene_ids = set(
-                kg_storage.read_nodes(root, NodeType.GENE.value, columns=["id"])["id"].astype(str)
-            )
-        except Exception:
-            existing_gene_ids = set()
-        missing_gene_ids = sorted(seen_genes - existing_gene_ids)
-        if missing_gene_ids:
-            kg_storage.write_nodes(
-                root,
-                NodeType.GENE.value,
-                pd.DataFrame(
-                    {
-                        "id": gene_id,
-                        "ncbi_gene_id": None,
-                        "hgnc_id": None,
-                        "uniprot_id": None,
-                        "gene_name": None,
-                        "name": gene_id,
-                        "source": "OpenTargets/evidence",
-                    }
-                    for gene_id in missing_gene_ids
-                ),
-                mode="append",
-            )
-            log.info("  added %d evidence-only gene stubs", len(missing_gene_ids))
-    if seen_pathways:
-        try:
-            existing_pathway_ids = set(
-                kg_storage.read_nodes(root, NodeType.PATHWAY.value, columns=["id"])["id"].astype(str)
-            )
-        except Exception:
-            existing_pathway_ids = set()
-        missing_pathway_ids = sorted(set(seen_pathways) - existing_pathway_ids)
-        if missing_pathway_ids:
-            kg_storage.write_nodes(
-                root,
-                NodeType.PATHWAY.value,
-                pd.DataFrame(
-                    {
-                        "id": pathway_id,
-                        "go_id": None,
-                        "reactome_id": pathway_id,
-                        "kegg_id": None,
-                        "name": seen_pathways.get(pathway_id) or pathway_id,
-                        "source": "OpenTargets/evidence",
-                    }
-                    for pathway_id in missing_pathway_ids
-                ),
-                mode="append",
-            )
-            log.info("  added %d evidence-only pathway stubs", len(missing_pathway_ids))
-    n = _finalize_chunks(
-        gd_chunks,
-        lambda df: kg_storage.write_edges(
-            root,
-            "disease_associated_gene",
-            df,
-            mode="append",
-        ),
-        dedup_edge,
-    )
-    if n: counts["disease_associated_gene"] = n
-    _finalize_chunks(
-        gd_evidence_chunks,
-        lambda df: kg_evidence.write_evidence(
-            root,
-            "disease_associated_gene",
-            df,
-            mode="append",
-        ),
-        ["relation", "x_id", "y_id", "source_record_id"],
-    )
-    n = _finalize_chunks(
-        dd_chunks,
-        lambda df: kg_storage.write_edges(
-            root,
-            "molecule_treats_disease",
-            df,
-            mode="append",
-        ),
-        dedup_edge,
-    )
-    if n: counts["molecule_treats_disease"] = n
-    n = _finalize_chunks(
-        pd_chunks,
-        lambda df: kg_storage.write_edges(
-            root,
-            "disease_involves_pathway",
-            df,
-            mode="append",
-        ),
-        dedup_edge,
-    )
-    if n: counts["disease_involves_pathway"] = n
-    _finalize_chunks(
-        pd_evidence_chunks,
-        lambda df: kg_evidence.write_evidence(
-            root,
-            "disease_involves_pathway",
-            df,
-            mode="append",
-        ),
-        ["relation", "x_id", "y_id", "source_record_id"],
-    )
-
-    log.info("  Evidence edges: %s", counts)
-    return counts
-
-
-# ---------------------------------------------------------------------------
-# 6. GO ingestion → pathway nodes + pathway_contains_gene edges
-# ---------------------------------------------------------------------------
-
-def ingest_go(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int, int]:
-    """Ingest GO annotations → pathway (GO) nodes + pathway_contains_gene edges.
-
-    OT's go/ directory only contains GO term definitions (id, name/label).
-    The gene↔GO associations live in target.go (a list-of-structs per gene).
-    Strategy:
-      1. Load go/ for term name lookup.
-      2. Iterate target dataset reading the nested `go` field per gene.
-
-    Returns (n_pathway_nodes, n_edges).
-    """
-    go_path     = ot_dir / "go"
-    target_path = ot_dir / "target"
-
-    # ── Step 1: build GO term name index ─────────────────────────────────────
-    go_names: dict[str, str] = {}
-    if go_path.exists():
-        df_go = _read_parquet_dir_available(go_path, columns=["id", "name", "label"])
-        for _, r in df_go.iterrows():
-            go_names[str(r["id"]).strip()] = str(r.get("name") or r.get("label") or "")
-        log.info("  Loaded %d GO term names", len(go_names))
-    else:
-        log.warning("'go' dataset not found in %s — term names will be empty", ot_dir)
-
-    if not target_path.exists():
-        log.warning("'target' dataset not found in %s — cannot extract GO associations", ot_dir)
-        return len(go_names), 0
-
-    log.info("Extracting GO associations from target.go  (chunked)")
-
-    chunks_base = out_dir / ".chunks"
-    pathway_chunks = chunks_base / "go_pathway"
-    edge_chunks = chunks_base / "pathway_contains_gene"
-    seen_pathways: set[str] = set()
-
-    import pyarrow.parquet as _pq
-
-    for target_file in sorted(target_path.glob("*.parquet")):
-        try:
-            batches = _pq.ParquetFile(target_file).iter_batches(
-                batch_size=10_000,
-                columns=["id", "go"],
-            )
-        except Exception as exc:
-            log.warning("Could not read %s: %s", target_file, exc)
-            continue
-        for batch in batches:
-            data = batch.to_pydict()
-            gene_ids = data.get("id", [])
-            go_lists = data.get("go", [])
-
-            pathway_rows: list[dict] = []
-            edge_rows: list[dict] = []
-            for gene_id, go_entries in zip(gene_ids, go_lists, strict=False):
-                gene_id = str(gene_id or "").strip()
-                if not gene_id.startswith("ENSG"):
-                    continue
-
-                for entry in _to_list(go_entries):
-                    if not isinstance(entry, dict):
-                        continue
-                    go_id    = str(entry.get("id") or "").strip()
-                    evidence = str(entry.get("evidence") or "").strip()
-                    aspect   = str(entry.get("aspect") or "").strip()
-
-                    if not go_id:
-                        continue
-
-                    if go_id not in seen_pathways:
-                        seen_pathways.add(go_id)
-                        pathway_rows.append({
-                            "id":     go_id,
-                            "name":   go_names.get(go_id, ""),
-                            "aspect": aspect,
-                            "go_id":  go_id,
-                            "source": SOURCE_NAME,
-                        })
-
-                    cred = (
-                        Credibility.ESTABLISHED_FACT
-                        if evidence in ("IDA", "IMP", "IGI", "IEP", "EXP", "TAS", "IC")
-                        else Credibility.SINGLE_EVIDENCE
-                    )
-                    edge_rows.append(_make_edge(
-                        x_id=go_id,   x_type=NodeType.PATHWAY.value,
-                        y_id=gene_id, y_type=NodeType.GENE.value,
-                        relation="pathway_contains_gene",
-                        display_relation="contains gene",
-                        source="OpenTargets/GO",
-                        credibility=cred,
-                        go_evidence=evidence,
-                        go_aspect=aspect,
-                    ))
-
-            if pathway_rows:
-                _write_chunk(pd.DataFrame(pathway_rows), pathway_chunks)
-            if edge_rows:
-                _write_chunk(pd.DataFrame(edge_rows), edge_chunks)
-
-    n_pathways = _finalize_chunks(
-        pathway_chunks,
-        lambda df: _save_node_df(df, root, NodeType.PATHWAY.value),
-        dedup_cols=["id"],
-    )
-    n_edges = _finalize_chunks(
-        edge_chunks,
-        lambda df: _save_edge_df(df, root, "pathway_contains_gene"),
-        dedup_cols=["x_id", "y_id", "relation", "source", "go_evidence"],
-    )
-
-    log.info("  %d GO pathway nodes, %d pathway→gene edges", n_pathways, n_edges)
-    return n_pathways, n_edges
-
-
-# ---------------------------------------------------------------------------
-# 7. Reactome ingestion → pathway nodes + hierarchy edges
-# ---------------------------------------------------------------------------
-
-def ingest_reactome(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int, int]:
-    """Ingest OT reactome dataset → pathway nodes + pathway_child_of_pathway edges.
-
-    Returns (n_pathway_nodes, n_hierarchy_edges).
-    """
-    reactome_path = ot_dir / "reactome"
-    if not reactome_path.exists():
-        log.warning("'reactome' dataset not found in %s — skipping", ot_dir)
-        return 0, 0
-
-    log.info("Loading reactome dataset from %s", reactome_path)
-
-    df = _read_parquet_dir(
-        reactome_path,
-        columns=["id", "label", "ancestors", "descendants", "children"],
-    )
-    log.info("  %d reactome pathway rows", len(df))
-
-    pathway_rows: list[dict] = []
-    hier_rows: list[dict] = []
-
-    for _, row in df.iterrows():
-        pathway_id = str(row["id"]).strip()
-        label      = str(row.get("label") or "").strip()
-
-        pathway_rows.append({
-            "id":     pathway_id,
-            "name":   label,
-            "source": SOURCE_NAME,
-        })
-
-        # Children → pathway_child_of_pathway (child is_a parent)
-        for child_id in _to_list(row.get("children")):
-                child_id = str(child_id).strip()
-                if child_id and child_id != pathway_id:
-                    hier_rows.append(_make_edge(
-                        x_id=child_id,  x_type=NodeType.PATHWAY.value,
-                        y_id=pathway_id, y_type=NodeType.PATHWAY.value,
-                        relation="pathway_child_of_pathway",
-                        display_relation="child pathway of",
-                        source=SOURCE_NAME,
-                        credibility=Credibility.ESTABLISHED_FACT,
-                    ))
-
-    if pathway_rows:
-        _save_node_df(pd.DataFrame(pathway_rows), root, NodeType.PATHWAY.value)
-    if hier_rows:
-        _save_edge_df(pd.DataFrame(hier_rows), root, "pathway_child_of_pathway")
-
-    log.info("  %d Reactome pathway nodes, %d hierarchy edges", len(pathway_rows), len(hier_rows))
-    return len(pathway_rows), len(hier_rows)
-
-
-# ---------------------------------------------------------------------------
-# 8. Literature ingestion → paper nodes + mention edges
-# ---------------------------------------------------------------------------
-
-def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> tuple[int, int]:
-    """Ingest paper mentions from evidence_europepmc → paper nodes + mention edges.
-
-    OT's literature_vector directory contains word embeddings, not paper mentions.
-    Paper mentions are in evidence_europepmc which has targetId, diseaseId, and
-    a `literature` column with lists of PMIDs.
-
-    Returns (n_papers, n_mention_edges).
-    """
-    lit_path = ot_dir / "evidence_europepmc"
-    if not lit_path.exists():
-        log.warning("'evidence_europepmc' dataset not found in %s — skipping", ot_dir)
-        return 0, 0
-
-    log.info("Loading europepmc evidence from %s  (chunked)", lit_path)
-
-    chunks_base   = out_dir / ".chunks"
-    paper_chunks  = chunks_base / "paper"
-    gene_chunks   = chunks_base / "paper_mentions_gene"
-    dis_chunks    = chunks_base / "paper_mentions_disease"
-    seen_papers: set[str] = set()
-    seen_genes: set[str] = set()
-    seen_diseases: set[str] = set()
-
-    for chunk in _read_parquet_dir_chunked(
-        lit_path,
-        columns=["targetId", "diseaseId", "literature", "publicationYear"],
-        chunksize=200_000,
-    ):
-        paper_rows: list[dict] = []
-        gene_mention_rows: list[dict] = []
-        disease_mention_rows: list[dict] = []
-
-        for _, row in chunk.iterrows():
-            target_id  = str(row.get("targetId") or "").strip()
-            disease_id = normalize_disease_id(row.get("diseaseId")) or ""
-            pmids      = _to_list(row.get("literature"))
-            year       = row.get("publicationYear")
-
-            for pmid in pmids:
-                pmid = str(pmid).strip()
-                if not pmid:
-                    continue
-                paper_id = f"PMID:{pmid}"
-
-                if paper_id not in seen_papers:
-                    seen_papers.add(paper_id)
-                    paper_rows.append({
-                        "id":       paper_id,
-                        "doi":      None,
-                        "pmc_id":   None,
-                        "arxiv_id": None,
-                        "year":     year,
-                        "source":   SOURCE_NAME,
-                    })
-
-                if target_id.startswith("ENSG"):
-                    seen_genes.add(target_id)
-                    gene_mention_rows.append(_make_edge(
-                        x_id=paper_id, x_type=NodeType.PAPER.value,
-                        y_id=target_id, y_type=NodeType.GENE.value,
-                        relation="paper_mentions_gene",
-                        display_relation="mentions gene",
-                        source="OpenTargets/europepmc",
-                        credibility=Credibility.SINGLE_EVIDENCE,
-                    ))
-
-                if disease_id:
-                    seen_diseases.add(disease_id)
-                    disease_mention_rows.append(_make_edge(
-                        x_id=paper_id, x_type=NodeType.PAPER.value,
-                        y_id=disease_id, y_type=NodeType.DISEASE.value,
-                        relation="paper_mentions_disease",
-                        display_relation="mentions disease",
-                        source="OpenTargets/europepmc",
-                        credibility=Credibility.SINGLE_EVIDENCE,
-                    ))
-
-        # Flush each chunk immediately to temp files
+            # Flush each chunk immediately to temp files
         if paper_rows:
             _write_chunk(pd.DataFrame(paper_rows), paper_chunks)
         if gene_mention_rows:
@@ -1706,87 +1261,8 @@ def ingest_literature(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
         ),
         dedup_cols=["id"],
     )
-    if seen_genes:
-        try:
-            existing_gene_ids = set(
-                kg_storage.read_nodes(root, NodeType.GENE.value, columns=["id"])["id"].astype(str)
-            )
-        except Exception:
-            existing_gene_ids = set()
-        missing_gene_ids = sorted(seen_genes - existing_gene_ids)
-        if missing_gene_ids:
-            gene_stub_rows = [
-                {
-                    "id": gene_id,
-                    "ncbi_gene_id": None,
-                    "hgnc_id": None,
-                    "uniprot_id": None,
-                    "gene_name": None,
-                    "name": gene_id,
-                    "source": "OpenTargets/europepmc",
-                }
-                for gene_id in missing_gene_ids
-            ]
-            kg_storage.write_nodes(
-                root,
-                NodeType.GENE.value,
-                pd.DataFrame(gene_stub_rows),
-                mode="append",
-            )
-            log.info("  added %d literature-only gene stubs", len(missing_gene_ids))
-    if seen_diseases:
-        try:
-            existing_disease_ids = set(
-                kg_storage.read_nodes(root, NodeType.DISEASE.value, columns=["id"])["id"].astype(str)
-            )
-        except Exception:
-            existing_disease_ids = set()
-        missing_disease_ids = sorted(seen_diseases - existing_disease_ids)
-        if missing_disease_ids:
-            disease_stub_rows = [
-                {
-                    "id": disease_id,
-                    "mondo_id": None,
-                    "omim_id": None,
-                    "doid_id": None,
-                    "icd10_code": None,
-                    "mesh_id": None,
-                    "hp_id": None,
-                    "name": disease_id,
-                    "source": "OpenTargets/europepmc",
-                }
-                for disease_id in missing_disease_ids
-            ]
-            kg_storage.write_nodes(
-                root,
-                NodeType.DISEASE.value,
-                pd.DataFrame(disease_stub_rows),
-                mode="append",
-            )
-            log.info("  added %d literature-only disease stubs", len(missing_disease_ids))
-    n_gene = _finalize_chunks(
-        gene_chunks,
-        lambda df: kg_storage.write_edges(
-            root,
-            "paper_mentions_gene",
-            df,
-            mode="overwrite",
-        ),
-        dedup_cols=["x_id", "y_id", "relation", "source"],
-    )
-    n_dis = _finalize_chunks(
-        dis_chunks,
-        lambda df: kg_storage.write_edges(
-            root,
-            "paper_mentions_disease",
-            df,
-            mode="overwrite",
-        ),
-        dedup_cols=["x_id", "y_id", "relation", "source"],
-    )
-    total_mentions = n_gene + n_dis
-    log.info("  %d papers, %d mention edges", n_papers, total_mentions)
-    return n_papers, total_mentions
+    log.info("  %d papers", n_papers)
+    return n_papers, 0
 
 
 # ---------------------------------------------------------------------------
@@ -1869,11 +1345,11 @@ def ingest_indication(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> t
 
 
 # ---------------------------------------------------------------------------
-# 10. mechanismOfAction → molecule_targets_protein edges
+# 10. mechanismOfAction → molecule_targets_gene edges
 # ---------------------------------------------------------------------------
 
 def ingest_mechanism_of_action(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
-    """Ingest OT mechanismOfAction dataset → molecule_targets_protein edges.
+    """Ingest OT mechanismOfAction dataset → molecule_targets_gene edges.
 
     Returns number of edges written.
     """
@@ -1917,7 +1393,7 @@ def ingest_mechanism_of_action(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
                 edge_rows.append(_make_edge(
                     x_id=chembl_id, x_type=NodeType.MOLECULE.value,
                     y_id=gene_id,   y_type=NodeType.GENE.value,
-                    relation="molecule_targets_protein",
+                    relation="molecule_targets_gene",
                     display_relation=moa_label or action or "targets",
                     source=SOURCE_NAME,
                     credibility=Credibility.ESTABLISHED_FACT,
@@ -1925,7 +1401,7 @@ def ingest_mechanism_of_action(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
                 ))
 
     if edge_rows:
-        _save_edge_df(pd.DataFrame(edge_rows), root, "molecule_targets_protein")
+        _save_edge_df(pd.DataFrame(edge_rows), root, "molecule_targets_gene")
     log.info("  %d molecule→gene (MoA) edges saved", len(edge_rows))
     return len(edge_rows)
 
@@ -1953,11 +1429,9 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
     chunks_base = out_dir / ".chunks" / "target_essentiality"
     cell_line_chunks = chunks_base / "cell_line"
     expr_chunks = chunks_base / "cell_line_expresses_gene"
-    protein_expr_chunks = chunks_base / "cell_line_expresses_protein"
     tissue_chunks = chunks_base / "cell_line_derived_from_tissue"
-    disease_chunks = chunks_base / "cell_line_associated_disease"
+    disease_chunks = chunks_base / "cell_line_models_disease"
     dataset_cell_line_chunks = chunks_base / "dataset_contains_cell_line"
-    dataset_gene_chunks = chunks_base / "dataset_contains_gene"
     dataset_tissue_chunks = chunks_base / "dataset_contains_tissue"
     dataset_disease_chunks = chunks_base / "dataset_contains_disease"
 
@@ -1976,7 +1450,6 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
     )
 
     seen_cell_lines: set[str] = set()
-    gene_to_proteins = _build_gene_to_protein_map(root)
 
     for chunk in _read_parquet_dir_chunked(
         te_dir,
@@ -1985,11 +1458,9 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
     ):
         cell_line_rows: list[dict[str, object]] = []
         expr_rows: list[dict[str, object]] = []
-        protein_expr_rows: list[dict[str, object]] = []
         tissue_rows: list[dict[str, object]] = []
         disease_rows: list[dict[str, object]] = []
         dataset_cell_line_rows: list[dict[str, object]] = []
-        dataset_gene_rows: list[dict[str, object]] = []
         dataset_tissue_rows: list[dict[str, object]] = []
         dataset_disease_rows: list[dict[str, object]] = []
 
@@ -1997,17 +1468,6 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
             gene_id = str(row.get("id") or "").strip()
             if not gene_id.startswith("ENSG"):
                 continue
-            dataset_gene_rows.append(_make_edge(
-                x_id=dataset_id,
-                x_type=NodeType.DATASET.value,
-                y_id=gene_id,
-                y_type=NodeType.GENE.value,
-                relation="dataset_contains_gene",
-                display_relation="contains gene",
-                source="OpenTargets/target_essentiality",
-                credibility=Credibility.ESTABLISHED_FACT,
-            ))
-
             for essentiality in _to_list(row.get("geneEssentiality")):
                 if not isinstance(essentiality, dict):
                     continue
@@ -2081,22 +1541,6 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
                             expression=expression,
                             is_essential=is_essential,
                         ))
-                        for protein_id in gene_to_proteins.get(gene_id, []):
-                            protein_expr_rows.append(_make_edge(
-                                x_id=cell_line_id,
-                                x_type=NodeType.CELL_LINE.value,
-                                y_id=protein_id,
-                                y_type=NodeType.PROTEIN.value,
-                                relation="cell_line_expresses_protein",
-                                display_relation="expresses protein",
-                                source="OpenTargets/DepMap;projected_via_gene_encodes_protein",
-                                credibility=Credibility.ESTABLISHED_FACT,
-                                gene_id=gene_id,
-                                gene_effect=gene_effect,
-                                expression=expression,
-                                is_essential=is_essential,
-                            ))
-
                         if tissue_id.startswith("UBERON:"):
                             tissue_rows.append(_make_edge(
                                 x_id=cell_line_id,
@@ -2116,7 +1560,7 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
                                 x_type=NodeType.CELL_LINE.value,
                                 y_id=disease_id,
                                 y_type=NodeType.DISEASE.value,
-                                relation="cell_line_associated_disease",
+                                relation="cell_line_models_disease",
                                 display_relation="associated disease",
                                 source="OpenTargets/DepMap",
                                 credibility=Credibility.ESTABLISHED_FACT,
@@ -2136,7 +1580,6 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
         for df, chunk_dir in [
             (pd.DataFrame(cell_line_rows), cell_line_chunks),
             (pd.DataFrame(expr_rows), expr_chunks),
-            (pd.DataFrame(protein_expr_rows), protein_expr_chunks),
             (pd.DataFrame(tissue_rows), tissue_chunks),
             (pd.DataFrame(disease_rows), disease_chunks),
             (pd.DataFrame(dataset_cell_line_rows), dataset_cell_line_chunks),
@@ -2159,27 +1602,20 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
         "cell_line_expresses_gene",
         dedup_cols=["x_id", "y_id", "relation", "source"],
     )
-    results["cell_line_expresses_protein"] = _finalize_edge_chunks_streaming(
-        protein_expr_chunks,
-        root,
-        "cell_line_expresses_protein",
-        dedup_cols=["x_id", "y_id", "relation", "source"],
-    )
     results["cell_line_derived_from_tissue"] = _finalize_edge_chunks_streaming(
         tissue_chunks,
         root,
         "cell_line_derived_from_tissue",
         dedup_cols=["x_id", "y_id", "relation", "source"],
     )
-    results["cell_line_associated_disease"] = _finalize_edge_chunks_streaming(
+    results["cell_line_models_disease"] = _finalize_edge_chunks_streaming(
         disease_chunks,
         root,
-        "cell_line_associated_disease",
+        "cell_line_models_disease",
         dedup_cols=["x_id", "y_id", "relation", "source"],
     )
     for relation, chunk_dir in [
         ("dataset_contains_cell_line", dataset_cell_line_chunks),
-        ("dataset_contains_gene", dataset_gene_chunks),
         ("dataset_contains_tissue", dataset_tissue_chunks),
         ("dataset_contains_disease", dataset_disease_chunks),
     ]:
@@ -2370,9 +1806,7 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
 
     tissue_rows:    list[dict] = []
     cell_type_rows: list[dict] = []
-    cell_type_protein_rows: list[dict] = []
     seen_genes: set[str] = set()
-    gene_to_proteins = _build_gene_to_protein_map(root)
 
     for chunk in _read_parquet_dir_chunked(
         exp_dir, columns=["id", "tissues"], chunksize=50_000
@@ -2426,20 +1860,6 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
                         credibility=int(Credibility.ESTABLISHED_FACT),
                         **extra,
                     ))
-                    for protein_id in gene_to_proteins.get(gene_id, []):
-                        cell_type_protein_rows.append(_make_edge(
-                            x_id=efo_code,
-                            x_type=NodeType.CELL_TYPE.value,
-                            y_id=protein_id,
-                            y_type=NodeType.PROTEIN.value,
-                            relation="cell_type_expresses_protein",
-                            display_relation="expresses",
-                            source="OpenTargets/HPA;projected_via_gene_encodes_protein",
-                            credibility=int(Credibility.ESTABLISHED_FACT),
-                            gene_id=gene_id,
-                            **extra,
-                        ))
-
     dedup = ["x_id", "y_id", "relation", "source"]
     results: dict[str, int] = {}
     if seen_genes:
@@ -2473,7 +1893,6 @@ def ingest_expression(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> d
     for relation, rows in [
         ("tissue_expresses_gene",    tissue_rows),
         ("cell_type_expresses_gene", cell_type_rows),
-        ("cell_type_expresses_protein", cell_type_protein_rows),
     ]:
         if not rows:
             log.warning("ingest_expression: no rows for %s", relation)
@@ -3575,38 +2994,98 @@ def ingest_enhancers(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> di
     return results
 
 
+def ingest_go(opentargets_dir: Path, kg_dir: Path, root: kg_storage.KGRoot) -> tuple[int, int]:
+    """Ingest GO pathway nodes and target GO memberships.
+
+    Kept small and source-native: GO terms become `pathway` nodes and target GO
+    annotations become `pathway_contains_gene` edges.
+    """
+
+    go_dir = opentargets_dir / "go"
+    target_dir = opentargets_dir / "target"
+    pathway_rows = pd.DataFrame()
+    if go_dir.exists():
+        go = _read_parquet_dir(go_dir)
+        if not go.empty:
+            pathway_rows = pd.DataFrame(
+                {
+                    "id": go.get("id", pd.Series(dtype=str)).astype(str).map(lambda v: normalize_ontology_curie(v) or v),
+                    "name": go.get("label", go.get("name", pd.Series(dtype=str))).astype(str),
+                    "source": SOURCE_NAME + "/go",
+                }
+            ).drop_duplicates(subset=["id"])
+            kg_storage.write_nodes(root, NodeType.PATHWAY.value, pathway_rows, mode="append")
+
+    edge_rows: list[dict[str, object]] = []
+    if target_dir.exists():
+        targets = _read_parquet_dir_available(target_dir, ["id", "go"])
+        for _, row in targets.iterrows():
+            gene_id = str(row.get("id", ""))
+            if not gene_id.startswith("ENSG"):
+                continue
+            for item in _as_list(row.get("go")):
+                if not isinstance(item, dict):
+                    continue
+                go_id = normalize_ontology_curie(item.get("id")) or str(item.get("id", ""))
+                if not go_id.startswith("GO:"):
+                    continue
+                edge_rows.append(
+                    {
+                        "x_id": go_id,
+                        "x_type": NodeType.PATHWAY.value,
+                        "y_id": gene_id,
+                        "y_type": NodeType.GENE.value,
+                        "relation": "pathway_contains_gene",
+                        "display_relation": "contains gene",
+                        "source": SOURCE_NAME + "/go",
+                        "credibility": int(Credibility.ESTABLISHED_FACT),
+                        "predicate": item.get("evidence", ""),
+                        "aspect": item.get("aspect", ""),
+                    }
+                )
+    edge_df = pd.DataFrame(edge_rows)
+    edge_count = 0
+    if not edge_df.empty:
+        edge_count = kg_storage.write_edges(root, "pathway_contains_gene", edge_df, mode="append")
+    return len(pathway_rows), int(edge_count)
+
+
 # ---------------------------------------------------------------------------
 # Dataset dispatch table
 # ---------------------------------------------------------------------------
 
+_DATASET_FUNCTION_NAMES = {
+    "target": "ingest_targets",
+    "orthology": "ingest_orthology",
+    "target_homologues": "ingest_orthology",
+    "disease": "ingest_diseases",
+    "drug_molecule": "ingest_drugs",
+    "molecule": "ingest_drugs",
+    "drug": "ingest_drugs",
+    "interaction": "ingest_interactions",
+    "evidence": "ingest_evidence",
+    "reactome": "ingest_reactome",
+    "literature": "ingest_literature",
+    "drug_indication": "ingest_indication",
+    "indication": "ingest_indication",
+    "drug_mechanism_of_action": "ingest_mechanism_of_action",
+    "mechanismOfAction": "ingest_mechanism_of_action",
+    "target_essentiality": "ingest_target_essentiality",
+    "disease_phenotype": "ingest_disease_phenotype",
+    "expression": "ingest_expression",
+    "biosample": "ingest_biosample",
+    "pharmacogenomics": "ingest_pharmacogenomics",
+    "variant": "ingest_variant_protein_changes",
+    "evidence_backed_variant": "ingest_evidence_backed_variants",
+    "known_variant": "ingest_evidence_backed_variants",
+    "enhancer_to_gene": "ingest_enhancers",
+    "enhancers": "ingest_enhancers",
+}
+
 DATASET_FUNCTIONS = {
-    "target":                   ingest_targets,
-    "orthology":                ingest_orthology,
-    "target_homologues":        ingest_orthology,
-    "disease":                  ingest_diseases,
-    "drug_molecule":            ingest_drugs,
-    "molecule":                 ingest_drugs,   # alias
-    "drug":                     ingest_drugs,   # alias
-    "interaction":              ingest_interactions,
-    "evidence":                 ingest_evidence,
-    "go":                       ingest_go,
-    "reactome":                 ingest_reactome,
-    "literature":               ingest_literature,
-    "drug_indication":          ingest_indication,
-    "indication":               ingest_indication,  # alias
-    "drug_mechanism_of_action": ingest_mechanism_of_action,
-    "mechanismOfAction":        ingest_mechanism_of_action,  # alias
-    "target_essentiality":      ingest_target_essentiality,
-    # Phase 5 additions
-    "disease_phenotype":        ingest_disease_phenotype,
-    "expression":               ingest_expression,
-    "biosample":                ingest_biosample,
-    "pharmacogenomics":         ingest_pharmacogenomics,
-    "variant":                  ingest_variant_protein_changes,
-    "evidence_backed_variant":  ingest_evidence_backed_variants,
-    "known_variant":            ingest_evidence_backed_variants,
-    "enhancer_to_gene":         ingest_enhancers,
-    "enhancers":                ingest_enhancers,  # alias
+    dataset: globals()[function_name]
+    for dataset, function_name in _DATASET_FUNCTION_NAMES.items()
+    if function_name in globals()
 }
 
 

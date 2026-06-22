@@ -1,6 +1,6 @@
 """Phase 3 — TxGNN KG migration.
 
-Reads the legacy TxGNN knowledge graph (nodes.tab + edges.csv) and converts
+Reads the TxData knowledge graph (nodes.tab + edges.csv) and converts
 it to the new edge Parquet schema defined in kg_schema.py.
 
 Outputs
@@ -45,12 +45,12 @@ except ImportError:  # pragma: no cover - script fallback
 
 try:
     from .kg_schema import (
-        LEGACY_NODE_TYPE_MAP, LEGACY_RELATION_MAP, LEGACY_RELATION_FLIP,
+        TXDATA_NODE_TYPE_MAP, TXDATA_RELATION_MAP, TXDATA_RELATION_FLIP,
         NODE_TYPES, RELATION_BY_NAME, NodeType, Credibility,
     )
 except ImportError:
     from kg_schema import (  # type: ignore[no-redef]
-        LEGACY_NODE_TYPE_MAP, LEGACY_RELATION_MAP, LEGACY_RELATION_FLIP,
+        TXDATA_NODE_TYPE_MAP, TXDATA_RELATION_MAP, TXDATA_RELATION_FLIP,
         NODE_TYPES, RELATION_BY_NAME, NodeType, Credibility,
     )
 
@@ -65,11 +65,11 @@ def _fmt_zero(prefix: str, raw_id: str, width: int = 7) -> str:
     return f"{prefix}:{int(raw_id):0{width}d}"
 
 
-def normalise_node_id(raw_id: str, legacy_type: str, source: str) -> str:
+def normalise_node_id(raw_id: str, txdata_type: str, source: str) -> str:
     """Return a normalised ontology ID for a single node."""
     rid = str(raw_id).strip()
 
-    match legacy_type:
+    match txdata_type:
         case "gene/protein":
             return f"NCBI:{rid}"
 
@@ -102,7 +102,7 @@ def normalise_node_id(raw_id: str, legacy_type: str, source: str) -> str:
             return _fmt_zero("UBERON", rid)
 
         case _:
-            log.warning("Unknown legacy node type %r — keeping raw id %r", legacy_type, rid)
+            log.warning("Unknown TxData node type %r — keeping raw id %r", txdata_type, rid)
             return rid
 
 
@@ -126,24 +126,24 @@ def migrate_nodes(nodes_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, str]]
 
     for _, row in nodes_df.iterrows():
         raw_id = str(row["node_id"]).strip()
-        legacy_type = str(row["node_type"]).strip()
+        txdata_type = str(row["node_type"]).strip()
         source = str(row["node_source"]).strip()
         name = str(row["node_name"]).strip()
         idx = int(row["node_index"])
 
-        new_id = normalise_node_id(raw_id, legacy_type, source)
-        new_type = LEGACY_NODE_TYPE_MAP.get(legacy_type)
+        new_id = normalise_node_id(raw_id, txdata_type, source)
+        new_type = TXDATA_NODE_TYPE_MAP.get(txdata_type)
         if new_type is None:
-            log.warning("Unmapped legacy type %r (node_index=%d) — skipping", legacy_type, idx)
+            log.warning("Unmapped legacy type %r (node_index=%d) — skipping", txdata_type, idx)
             continue
 
         index_to_id[idx] = new_id
         record = {
             "id": new_id,
             "node_type": new_type.value,
-            "legacy_type": legacy_type,
-            "legacy_id": raw_id,
-            "legacy_index": idx,
+            "txdata_type": txdata_type,
+            "txdata_id": raw_id,
+            "txdata_index": idx,
             "source": source,
         }
         for col in NODE_TYPES[new_type].xref_columns:
@@ -152,7 +152,7 @@ def migrate_nodes(nodes_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, str]]
         if new_type == NodeType.GENE:
             record["ncbi_gene_id"] = raw_id
             record["gene_name"] = name
-        elif new_type == NodeType.MOLECULE and legacy_type == "drug":
+        elif new_type == NodeType.MOLECULE and txdata_type == "drug":
             record["drugbank_id"] = raw_id
         elif new_type == NodeType.DISEASE:
             record["mondo_id"] = new_id if new_id.startswith("MONDO:") else None
@@ -176,23 +176,23 @@ def migrate_edges(
     nodes_df: pd.DataFrame,
     index_to_id: dict[int, str],
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Convert legacy edges to new Parquet schema.
+    """Convert TxData edges to new Parquet schema.
 
     Returns
     -------
     new_edges_df
         Columns: x_id, x_type, y_id, y_type, relation, display_relation, source, credibility
     unmapped_relations
-        List of legacy relation names that had no mapping in LEGACY_RELATION_MAP
+        List of TxData relation names that had no mapping in TXDATA_RELATION_MAP
     """
-    node_types = nodes_df["node_type"].astype(str).str.strip().map(LEGACY_NODE_TYPE_MAP)
+    node_types = nodes_df["node_type"].astype(str).str.strip().map(TXDATA_NODE_TYPE_MAP)
     index_to_type = pd.Series(
         [nt.value if isinstance(nt, NodeType) else nt for nt in node_types],
         index=pd.to_numeric(nodes_df["node_index"], errors="coerce"),
     ).dropna()
 
     legacy_rel = edges_df["relation"].astype(str).str.strip()
-    new_rel = legacy_rel.map(LEGACY_RELATION_MAP)
+    new_rel = legacy_rel.map(TXDATA_RELATION_MAP)
     unmapped = sorted(set(legacy_rel[new_rel.isna()]))
 
     x_idx = pd.to_numeric(edges_df["x_index"], errors="coerce")
@@ -208,18 +208,18 @@ def migrate_edges(
             "display_relation": edges_df.get("display_relation", pd.Series("", index=edges_df.index)).astype(str).str.strip(),
             "source": "TxGNN",
             "credibility": Credibility.ESTABLISHED_FACT.value,
-            "_legacy_relation": legacy_rel,
+            "_txdata_relation": legacy_rel,
         }
     )
     out = out.dropna(subset=["x_id", "x_type", "y_id", "y_type", "relation"]).reset_index(drop=True)
 
-    flip = out["_legacy_relation"].isin(LEGACY_RELATION_FLIP)
+    flip = out["_txdata_relation"].isin(TXDATA_RELATION_FLIP)
     if bool(flip.any()):
         out.loc[flip, ["x_id", "y_id"]] = out.loc[flip, ["y_id", "x_id"]].to_numpy()
         out.loc[flip, ["x_type", "y_type"]] = out.loc[flip, ["y_type", "x_type"]].to_numpy()
 
     def legacy_node_type(node_type: NodeType) -> str:
-        # Legacy TxGNN conflates protein with gene/protein nodes stored as gene.
+        # TxData conflates protein with gene/protein nodes stored as gene.
         if node_type == NodeType.PROTEIN:
             return NodeType.GENE.value
         return node_type.value
@@ -231,7 +231,7 @@ def migrate_edges(
         out.loc[reverse, ["x_id", "y_id"]] = out.loc[reverse, ["y_id", "x_id"]].to_numpy()
         out.loc[reverse, ["x_type", "y_type"]] = out.loc[reverse, ["y_type", "x_type"]].to_numpy()
 
-    out = out.drop(columns=["_legacy_relation"])
+    out = out.drop(columns=["_txdata_relation"])
     return out, unmapped
 
 

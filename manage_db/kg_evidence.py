@@ -66,14 +66,7 @@ _DEDUP_COLUMNS = [
     "predicate",
 ]
 
-# Historical canonical exports currently store OpenTargets mechanism-of-action
-# rows in the ``molecule_targets_protein`` relation with Ensembl gene endpoints
-# (``y_type=gene``), even though the schema-level relation target is protein.
-# Evidence must preserve the actual canonical edge row type so audit joins by
-# relation|x_id|y_id remain truthful; do not remap ENSG targets to ENSP here.
-_LEGACY_RELATION_TYPE_EXCEPTIONS = {
-    ("molecule_targets_protein", "molecule", "gene"),
-}
+_RELATION_TYPE_EXCEPTIONS: set[tuple[str, str, str]] = set()
 
 
 def evidence_schema() -> pa.Schema:
@@ -125,7 +118,7 @@ def _coerce_evidence_frame(table: pa.Table | pd.DataFrame, relation: str) -> pd.
     if not df.empty:
         types = df[["x_type", "y_type"]].astype(str)
         allowed = (types["x_type"] == spec.source.value) & (types["y_type"] == spec.target.value)
-        for exception_relation, exception_x, exception_y in _LEGACY_RELATION_TYPE_EXCEPTIONS:
+        for exception_relation, exception_x, exception_y in _RELATION_TYPE_EXCEPTIONS:
             if relation == exception_relation:
                 allowed |= (types["x_type"] == exception_x) & (types["y_type"] == exception_y)
         bad = types.loc[~allowed]

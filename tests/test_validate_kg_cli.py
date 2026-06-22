@@ -40,30 +40,30 @@ def test_validate_kg_cli_streams_edges_and_reports_dangling(tmp_path: Path, caps
     from manage_db.kg_storage import write_edges
 
     root = open_kg_root(str(tmp_path / "kg"))
-    write_nodes(root, "gene", _node_frame(NodeType.GENE, ["ENSG1"]))
+    write_nodes(root, "transcript", _node_frame(NodeType.TRANSCRIPT, ["ENST1"]))
     write_nodes(root, "protein", _node_frame(NodeType.PROTEIN, ["ENSP1"]))
     write_edges(
         root,
-        "gene_encodes_protein",
+        "transcript_encodes_protein",
         pd.DataFrame(
             [
                 {
-                    "x_id": "ENSG1",
-                    "x_type": "gene",
+                    "x_id": "ENST1",
+                    "x_type": "transcript",
                     "y_id": "ENSP1",
                     "y_type": "protein",
-                    "relation": "gene_encodes_protein",
-                    "display_relation": "encodes",
+                    "relation": "transcript_encodes_protein",
+                    "display_relation": "encodes protein",
                     "source": "test",
                     "credibility": 3,
                 },
                 {
-                    "x_id": "ENSG_MISSING",
-                    "x_type": "gene",
+                    "x_id": "ENST_MISSING",
+                    "x_type": "transcript",
                     "y_id": "ENSP1",
                     "y_type": "protein",
-                    "relation": "gene_encodes_protein",
-                    "display_relation": "encodes",
+                    "relation": "transcript_encodes_protein",
+                    "display_relation": "encodes protein",
                     "source": "test",
                     "credibility": 3,
                 },
@@ -75,7 +75,7 @@ def test_validate_kg_cli_streams_edges_and_reports_dangling(tmp_path: Path, caps
 
     out = capsys.readouterr().out
     assert "total_dangling_edges: 1" in out
-    assert "gene_encodes_protein: 1" in out
+    assert "transcript_encodes_protein: 1" in out
 
 def test_validate_kg_cli_pyarrow_streaming_mode(tmp_path: Path, capsys) -> None:
     root = open_kg_root(str(tmp_path / "kg"))

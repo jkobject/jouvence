@@ -308,17 +308,10 @@ class RelationKind(str, Enum):
 
 
 class RelationStatus(str, Enum):
-    """Lifecycle status for relation names in the schema.
-
-    ``RELATIONS`` remains a compatibility list of readable/valid relation names;
-    status metadata records schema-cleanup decisions without destructively
-    removing relations that may already have canonical Parquet files.
-    """
+    """Lifecycle status for active relation names in the schema."""
 
     ACTIVE = "active"
     DERIVED = "derived"
-    LEGACY_INDEX = "legacy_index"
-    DEPRECATED = "deprecated"
 
 
 @dataclass(frozen=True)
@@ -332,9 +325,8 @@ class Relation:
         kind: Semantic category of the relation.
         direct: True = direct biological interaction; False = associative/indirect.
         notes: Free-text annotation (data sources, caveats…).
-        status: Lifecycle/compatibility status. Deprecated/legacy relations remain
-                readable unless an explicit data migration removes or archives them.
-        replacement: Preferred relation/modeling pattern when status is not active.
+        status: Lifecycle status for active schema relations.
+        replacement: Modeling pattern for derived relations.
     """
 
     name: str
@@ -377,26 +369,6 @@ RELATIONS: list[Relation] = [
         True,
         "Translation",
     ),
-    Relation(
-        "gene_encodes_protein",
-        NodeType.GENE,
-        NodeType.PROTEIN,
-        RelationKind.CENTRAL_DOGMA,
-        False,
-        "Shortcut/derived edge kept for legacy compatibility; prefer explicit transcript path",
-        RelationStatus.DERIVED,
-        "gene_has_transcript + transcript_encodes_protein",
-    ),
-    Relation(
-        "transcript_alternative_transcript",
-        NodeType.TRANSCRIPT,
-        NodeType.TRANSCRIPT,
-        RelationKind.CENTRAL_DOGMA,
-        True,
-        "TODEL/deprecated ambiguous transcript-transcript shortcut; alternative isoforms are better represented by shared gene_has_transcript membership and transcript/protein feature metadata",
-        RelationStatus.DEPRECATED,
-        "gene_has_transcript plus transcript feature metadata (canonical isoform, MANE/RefSeq/CCDS xrefs)",
-    ),
     # ── Genetic ─────────────────────────────────────────────────────────────
     Relation(
         "mutation_in_gene",
@@ -435,8 +407,8 @@ RELATIONS: list[Relation] = [
         NodeType.MUTATION,
         NodeType.ENHANCER,
         RelationKind.GENETIC,
-        True,
-        "Regulatory variant interval overlap; active schema relation but not canonical until a bounded enhancer-overlap source/provenance policy is selected",
+        False,
+        "Variant-enhancer interval overlap retained only for variants that also have disease, phenotype, drug-response, or other downstream association evidence; overlap itself is contextual evidence, not a standalone causal edge.",
     ),
     Relation(
         "mutation_associated_disease",
@@ -447,12 +419,12 @@ RELATIONS: list[Relation] = [
         "GWAS / ClinVar / OpenTargets known-variant disease association; canonical edge exists, evidence backfill remains next tranche",
     ),
     Relation(
-        "mutation_causes_phenotype",
+        "mutation_associated_phenotype",
         NodeType.MUTATION,
         NodeType.PHENOTYPE,
         RelationKind.GENETIC,
         False,
-        "OpenTargets EVA/ClinVar HP-only pathogenic/likely pathogenic mutation→phenotype consequence; preferred forward phenotype-causality direction; canonical edge and evidence files exist",
+        "OpenTargets EVA/ClinVar HP-only mutation→phenotype association; include all clinical-significance classes and preserve the exact assertion in edge/evidence metadata rather than restricting the relation to pathogenic/likely pathogenic.",
     ),
     Relation(
         "gene_associated_phenotype",
@@ -471,16 +443,6 @@ RELATIONS: list[Relation] = [
         "Pharmacogenomics",
     ),
     Relation(
-        "mutation_associated_cell_type",
-        NodeType.MUTATION,
-        NodeType.CELL_TYPE,
-        RelationKind.GENETIC,
-        False,
-        "TODEL/deprecated candidate; likely better as evidence/context metadata unless a concrete eQTL/cell-type source is selected",
-        RelationStatus.DEPRECATED,
-        "evidence/context metadata on variant/gene or variant/disease assertions",
-    ),
-    Relation(
         "gene_ortholog_gene",
         NodeType.GENE,
         NodeType.GENE,
@@ -495,7 +457,7 @@ RELATIONS: list[Relation] = [
         NodeType.GENE,
         RelationKind.REGULATORY,
         False,
-        "ChIP-seq / Hi-C",
+        "ENCODE-rE2G composite enhancer-to-gene prediction; preserve biosample, assay feature scores, distance, study, and model score in edge/evidence metadata.",
     ),
     Relation(
         "enhancer_regulates_transcript",
@@ -504,30 +466,6 @@ RELATIONS: list[Relation] = [
         RelationKind.REGULATORY,
         True,
         "transcript-specific/TSS-specific regulation; require a source that directly names ENST/TSS endpoints and is not inferred by expanding enhancer→gene to all transcripts",
-    ),
-    Relation(
-        "enhancer_active_in_cell_type",
-        NodeType.ENHANCER,
-        NodeType.CELL_TYPE,
-        RelationKind.REGULATORY,
-        True,
-        "ATAC-seq / ChIP-seq",
-    ),
-    Relation(
-        "enhancer_active_in_tissue",
-        NodeType.ENHANCER,
-        NodeType.TISSUE,
-        RelationKind.REGULATORY,
-        True,
-        "Bulk ATAC / DNase-seq",
-    ),
-    Relation(
-        "enhancer_associated_disease",
-        NodeType.ENHANCER,
-        NodeType.DISEASE,
-        RelationKind.DISEASE_ASSOC,
-        False,
-        "GWAS/credible-set variant overlap with enhancer interval plus disease/study mapping; do not infer transitively through enhancer→gene→disease",
     ),
     # ── Expression ──────────────────────────────────────────────────────────
     Relation(
@@ -552,7 +490,7 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.EXPRESSION,
         True,
-        "HPA / proteomics",
+        "Direct Human Protein Atlas tissue protein expression/staining with protein measurement metadata; do not populate from RNA projection.",
     ),
     Relation(
         "cell_type_expresses_gene",
@@ -568,7 +506,7 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.EXPRESSION,
         True,
-        "OpenTargets/HPA RNA projected through Ensembl gene→protein mapping; replace or supplement with CyTOF / sc-proteomics when curated source is selected",
+        "Direct cell-type protein abundance/staining source only; do not populate from RNA projection.",
     ),
     Relation(
         "cell_line_expresses_gene",
@@ -584,16 +522,64 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.EXPERIMENTAL,
         True,
-        "OpenTargets/DepMap expression projected through Ensembl gene→protein mapping; replace or supplement with CCLE proteomics when curated source is selected",
+        "Direct cell-line proteomics source only; do not populate from mRNA projection.",
+    ),
+    Relation(
+        "cell_line_gene_essentiality",
+        NodeType.CELL_LINE,
+        NodeType.GENE,
+        RelationKind.EXPERIMENTAL,
+        False,
+        "DepMap/Project Score/CRISPR gene essentiality or dependency measurement; preserve score/effect/study fields in evidence or feature tables and do not model as protein expression.",
     ),
     # ── Physical ────────────────────────────────────────────────────────────
+    Relation(
+        "gene_interacts_gene",
+        NodeType.GENE,
+        NodeType.GENE,
+        RelationKind.PHYSICAL,
+        False,
+        "Keep broad for current OpenTargets interaction because canonical endpoints are gene-level; preserve source-specific evidence metadata and do not project text_span product IDs into protein/transcript/TF/enhancer relations.",
+    ),
+    Relation(
+        "tf_regulates_gene",
+        NodeType.GENE,
+        NodeType.GENE,
+        RelationKind.REGULATORY,
+        True,
+        "Transcription-factor gene product regulates target gene expression; require source-native TF/regulator semantics, not from canonical gene_interacts_gene, and preserve direction, sign/effect, assay, source database, score, and record IDs in evidence.",
+    ),
+    Relation(
+        "tf_binds_enhancer",
+        NodeType.GENE,
+        NodeType.ENHANCER,
+        RelationKind.REGULATORY,
+        True,
+        "Transcription-factor gene product binds enhancer/regulatory interval; require source-native enhancer endpoints, not from canonical gene_interacts_gene, and preserve assay/cell context, coordinates, source database, score, and record IDs in evidence.",
+    ),
+    Relation(
+        "transcript_interacts_protein",
+        NodeType.TRANSCRIPT,
+        NodeType.PROTEIN,
+        RelationKind.PHYSICAL,
+        True,
+        "RNA/transcript to protein binding or interaction with transcript/protein-native source-native endpoints, not from canonical gene_interacts_gene; preserve interaction assay, source database, score, and record IDs in evidence.",
+    ),
+    Relation(
+        "transcript_interacts_gene",
+        NodeType.TRANSCRIPT,
+        NodeType.GENE,
+        RelationKind.REGULATORY,
+        False,
+        "Transcript/RNA to gene regulatory or interaction assertion when the source names transcript/RNA and gene endpoints; require source-native transcript/RNA assertion, not from canonical gene_interacts_gene, and preserve mechanism, direction, sign/effect, source database, and record IDs in evidence.",
+    ),
     Relation(
         "protein_interacts_protein",
         NodeType.PROTEIN,
         NodeType.PROTEIN,
         RelationKind.PHYSICAL,
         True,
-        "PPI (STRING, IntAct…)",
+        "Direct protein/isoform interaction only, with source-native protein endpoints plus source database and evidence metadata; not from canonical gene_interacts_gene gene endpoints or text_span projection.",
     ),
     # ── Pathway ─────────────────────────────────────────────────────────────
     Relation(
@@ -610,7 +596,7 @@ RELATIONS: list[Relation] = [
         NodeType.PROTEIN,
         RelationKind.PATHWAY,
         False,
-        "Reactome / KEGG",
+        "Protein-native pathway or complex membership source only, with protein endpoints plus source database and evidence metadata.",
     ),
     Relation(
         "pathway_child_of_pathway",
@@ -630,12 +616,20 @@ RELATIONS: list[Relation] = [
     ),
     # ── Pharmacological ─────────────────────────────────────────────────────
     Relation(
+        "molecule_targets_gene",
+        NodeType.MOLECULE,
+        NodeType.GENE,
+        RelationKind.PHARMACOLOGICAL,
+        True,
+        "Drug/compound target relation for sources whose native target endpoint is a gene or OpenTargets Ensembl target ID; preserve source MoA/action metadata in evidence.",
+    ),
+    Relation(
         "molecule_targets_protein",
         NodeType.MOLECULE,
         NodeType.PROTEIN,
         RelationKind.PHARMACOLOGICAL,
         True,
-        "Drug-target binding",
+        "Drug/compound target relation for sources that directly identify a protein or isoform endpoint; preserve source database and evidence metadata.",
     ),
     Relation(
         "molecule_treats_disease",
@@ -654,12 +648,20 @@ RELATIONS: list[Relation] = [
         "Contraindication",
     ),
     Relation(
-        "molecule_interacts_molecule",
+        "molecule_synergizes_molecule",
         NodeType.MOLECULE,
         NodeType.MOLECULE,
         RelationKind.PHARMACOLOGICAL,
         False,
-        "Drug-drug interaction",
+        "Drug combination synergy or interaction-effect relation; not a physical molecular interaction.",
+    ),
+    Relation(
+        "molecule_parent_of_molecule",
+        NodeType.MOLECULE,
+        NodeType.MOLECULE,
+        RelationKind.ONTOLOGICAL,
+        True,
+        "Chemical/drug parent-child hierarchy relation.",
     ),
     Relation(
         "cell_type_responds_to_molecule",
@@ -678,16 +680,6 @@ RELATIONS: list[Relation] = [
         "GDSC / PRISM viability",
     ),
     Relation(
-        "phenotype_associated_molecule",
-        NodeType.PHENOTYPE,
-        NodeType.MOLECULE,
-        RelationKind.PHARMACOLOGICAL,
-        False,
-        "Legacy phenotype-indexed side-effect/rescue association retained for existing canonical files; inverted relative to the preferred molecule→phenotype direction",
-        RelationStatus.LEGACY_INDEX,
-        "molecule_associated_phenotype",
-    ),
-    Relation(
         "molecule_associated_phenotype",
         NodeType.MOLECULE,
         NodeType.PHENOTYPE,
@@ -698,27 +690,27 @@ RELATIONS: list[Relation] = [
     # ── Disease associations ─────────────────────────────────────────────────
     Relation(
         "disease_associated_gene",
-        NodeType.DISEASE,
         NodeType.GENE,
+        NodeType.DISEASE,
         RelationKind.DISEASE_ASSOC,
-        False,
-        "GWAS / rare variant",
+        True,
+        "Gene→disease direction for causal/directed disease association; source/evidence rows preserve predicate, score, and provenance.",
     ),
     Relation(
         "disease_associated_protein",
-        NodeType.DISEASE,
         NodeType.PROTEIN,
+        NodeType.DISEASE,
         RelationKind.DISEASE_ASSOC,
-        False,
-        "Proteomics / genetics",
+        True,
+        "Protein→disease direction for protein-native causal/directed disease association; use only protein-specific evidence.",
     ),
     Relation(
         "disease_involves_pathway",
-        NodeType.DISEASE,
         NodeType.PATHWAY,
+        NodeType.DISEASE,
         RelationKind.DISEASE_ASSOC,
-        False,
-        "Pathway enrichment",
+        True,
+        "Pathway→disease direction for causal/directed pathway involvement; source/evidence rows preserve enrichment/provenance.",
     ),
     Relation(
         "disease_manifests_in_tissue",
@@ -756,57 +748,11 @@ RELATIONS: list[Relation] = [
     # ── Phenotype associations ───────────────────────────────────────────────
     Relation(
         "phenotype_observed_in_tissue",
-        NodeType.PHENOTYPE,
         NodeType.TISSUE,
-        RelationKind.PHENOTYPE_ASSOC,
-        False,
-        "Anatomical manifestation",
-    ),
-    Relation(
-        "phenotype_caused_by_mutation",
-        NodeType.PHENOTYPE,
-        NodeType.MUTATION,
-        RelationKind.GENETIC,
-        False,
-        "Deprecated/inverted causal wording; keep only for compatibility until migrated",
-        RelationStatus.DEPRECATED,
-        "mutation_causes_phenotype",
-    ),
-    Relation(
-        "phenotype_associated_gene",
-        NodeType.PHENOTYPE,
-        NodeType.GENE,
-        RelationKind.PHENOTYPE_ASSOC,
-        False,
-        "Deprecated inverted HPO association name/direction; the association should be represented as gene→phenotype",
-        RelationStatus.DEPRECATED,
-        "gene_associated_phenotype",
-    ),
-    Relation(
-        "phenotype_associated_protein",
-        NodeType.PHENOTYPE,
-        NodeType.PROTEIN,
-        RelationKind.PHENOTYPE_ASSOC,
-        False,
-        "Legacy/inferred via gene; canonical file may contain legacy gene endpoints; inverted relative to the preferred protein→phenotype direction",
-        RelationStatus.LEGACY_INDEX,
-        "protein_associated_phenotype",
-    ),
-    Relation(
-        "protein_associated_phenotype",
-        NodeType.PROTEIN,
         NodeType.PHENOTYPE,
         RelationKind.PHENOTYPE_ASSOC,
-        False,
-        "Non-causal protein-to-phenotype association; direction is protein→phenotype",
-    ),
-    Relation(
-        "phenotype_associated_cell_type",
-        NodeType.PHENOTYPE,
-        NodeType.CELL_TYPE,
-        RelationKind.PHENOTYPE_ASSOC,
-        False,
-        "Cell type enrichment",
+        True,
+        "Tissue→phenotype direction for directed tissue manifestation context; source/evidence rows preserve phenotype observation provenance.",
     ),
     Relation(
         "phenotype_subtype_of_phenotype",
@@ -883,16 +829,6 @@ RELATIONS: list[Relation] = [
         True,
         "Donor species",
     ),
-    Relation(
-        "cell_line_associated_disease",
-        NodeType.CELL_LINE,
-        NodeType.DISEASE,
-        RelationKind.EXPERIMENTAL,
-        False,
-        "Deprecated ambiguous association; prefer curated model relation",
-        RelationStatus.DEPRECATED,
-        "cell_line_models_disease",
-    ),
     # ── Organism ─────────────────────────────────────────────────────────────
     Relation(
         "organism_has_gene",
@@ -903,16 +839,6 @@ RELATIONS: list[Relation] = [
         "Ensembl species",
     ),
     Relation(
-        "organism_models_disease",
-        NodeType.ORGANISM,
-        NodeType.DISEASE,
-        RelationKind.EXPERIMENTAL,
-        False,
-        "Deprecated/deprioritized for current human-only KG; retain only for future model-organism expansion",
-        RelationStatus.DEPRECATED,
-        "human-only organism_has_gene/organism_has_tissue metadata or future model-organism slice",
-    ),
-    Relation(
         "organism_has_tissue",
         NodeType.ORGANISM,
         NodeType.TISSUE,
@@ -921,58 +847,6 @@ RELATIONS: list[Relation] = [
         "Anatomy ontology",
     ),
     # ── Literature ───────────────────────────────────────────────────────────
-    Relation(
-        "paper_mentions_gene",
-        NodeType.PAPER,
-        NodeType.GENE,
-        RelationKind.LITERATURE,
-        False,
-        "Legacy literature/co-mention index; weak evidence, not a biological assertion",
-        RelationStatus.LEGACY_INDEX,
-        "edge evidence records with paper_id where a biological relation is asserted",
-    ),
-    Relation(
-        "paper_mentions_disease",
-        NodeType.PAPER,
-        NodeType.DISEASE,
-        RelationKind.LITERATURE,
-        False,
-        "Legacy literature/co-mention index; weak evidence, not a biological assertion",
-        RelationStatus.LEGACY_INDEX,
-        "edge evidence records with paper_id where a biological relation is asserted",
-    ),
-    Relation(
-        "paper_mentions_protein",
-        NodeType.PAPER,
-        NodeType.PROTEIN,
-        RelationKind.LITERATURE,
-        False,
-        "NLP / Europe PMC",
-    ),
-    Relation(
-        "paper_mentions_molecule",
-        NodeType.PAPER,
-        NodeType.MOLECULE,
-        RelationKind.LITERATURE,
-        False,
-        "NLP / Europe PMC",
-    ),
-    Relation(
-        "paper_mentions_mutation",
-        NodeType.PAPER,
-        NodeType.MUTATION,
-        RelationKind.LITERATURE,
-        False,
-        "NLP / Europe PMC",
-    ),
-    Relation(
-        "paper_mentions_pathway",
-        NodeType.PAPER,
-        NodeType.PATHWAY,
-        RelationKind.LITERATURE,
-        False,
-        "NLP / Europe PMC",
-    ),
     Relation(
         "paper_produced_dataset",
         NodeType.PAPER,
@@ -990,14 +864,6 @@ RELATIONS: list[Relation] = [
         "Citation graph",
     ),
     # ── Dataset metadata ─────────────────────────────────────────────────────
-    Relation(
-        "dataset_contains_gene",
-        NodeType.DATASET,
-        NodeType.GENE,
-        RelationKind.METADATA,
-        True,
-        "Measured entity",
-    ),
     Relation(
         "dataset_contains_disease",
         NodeType.DATASET,
@@ -1307,10 +1173,10 @@ XREF_BY_COLUMN: dict[tuple[str, NodeType], XrefResolution] = {
 
 
 # ---------------------------------------------------------------------------
-# Legacy TxGNN node type → new NodeType mapping
+# TxData node type → new NodeType mapping
 # ---------------------------------------------------------------------------
 
-LEGACY_NODE_TYPE_MAP: dict[str, NodeType] = {
+TXDATA_NODE_TYPE_MAP: dict[str, NodeType] = {
     "gene/protein": NodeType.GENE,  # TxGNN conflates gene+protein; split on load
     "drug": NodeType.MOLECULE,
     "disease": NodeType.DISEASE,
@@ -1323,33 +1189,33 @@ LEGACY_NODE_TYPE_MAP: dict[str, NodeType] = {
     "exposure": NodeType.MOLECULE,  # environmental perturbation
 }
 
-# Legacy TxGNN relation → new canonical Relation.name
-LEGACY_RELATION_MAP: dict[str, str] = {
+# TxData relation → new canonical Relation.name
+TXDATA_RELATION_MAP: dict[str, str] = {
     "indication": "molecule_treats_disease",
     "contraindication": "molecule_contraindicates_disease",
     "off-label use": "molecule_treats_disease",
-    "target": "molecule_targets_protein",
-    "enzyme": "molecule_targets_protein",
-    "transporter": "molecule_targets_protein",
-    "carrier": "molecule_targets_protein",
+    "target": "molecule_targets_gene",
+    "enzyme": "molecule_targets_gene",
+    "transporter": "molecule_targets_gene",
+    "carrier": "molecule_targets_gene",
     "biomarker": "disease_associated_gene",
-    "disease_protein": "disease_associated_protein",
-    "protein_protein": "protein_interacts_protein",
-    "drug_protein": "molecule_targets_protein",
-    "drug_drug": "molecule_interacts_molecule",
-    "phenotype_protein": "protein_associated_phenotype",
+    "disease_protein": "disease_associated_gene",
+    "protein_protein": "gene_interacts_gene",
+    "drug_protein": "molecule_targets_gene",
+    "drug_drug": "molecule_synergizes_molecule",
+    "phenotype_protein": "gene_associated_phenotype",
     "phenotype_phenotype": "phenotype_subtype_of_phenotype",
     "disease_phenotype_positive": "disease_has_phenotype",
     "disease_phenotype_negative": "disease_has_phenotype",
     "disease_disease": "disease_subtype_of_disease",
-    "anatomy_protein_present": "tissue_expresses_protein",
-    "anatomy_protein_absent": "tissue_expresses_protein",
+    "anatomy_protein_present": "tissue_expresses_gene",
+    "anatomy_protein_absent": "tissue_expresses_gene",
     "anatomy_anatomy": "tissue_subtype_of_tissue",
     "drug_disease": "molecule_treats_disease",
     "drug_effect": "molecule_associated_phenotype",
     "pathway_pathway": "pathway_child_of_pathway",
-    "pathway_protein": "pathway_contains_protein",
-    "protein_pathway": "pathway_contains_protein",  # alternate form
+    "pathway_protein": "pathway_contains_gene",
+    "protein_pathway": "pathway_contains_gene",  # alternate form
     "drug_pathway": "molecule_in_pathway",
     "disease_pathway": "disease_involves_pathway",
     # GO term → gene/protein edges (biological_process / molfunc / cellcomp)
@@ -1362,27 +1228,26 @@ LEGACY_RELATION_MAP: dict[str, str] = {
     "cellcomp_cellcomp": "pathway_child_of_pathway",
     # Exposure (environmental molecule) edges
     "exposure_disease": "molecule_treats_disease",
-    "exposure_protein": "molecule_targets_protein",
+    "exposure_protein": "molecule_targets_gene",
     "exposure_bioprocess": "molecule_in_pathway",
     "exposure_molfunc": "molecule_in_pathway",
     "exposure_cellcomp": "molecule_in_pathway",
-    "exposure_exposure": "molecule_interacts_molecule",
+    "exposure_exposure": "molecule_synergizes_molecule",
     "biomarker_disease": "disease_associated_gene",
 }
 
 
-# Relations where the legacy edge (x→y) direction is the *reverse* of the
+# Relations where the TxData edge (x→y) direction is the *reverse* of the
 # canonical relation direction and therefore x/y must be swapped on migration.
-LEGACY_RELATION_FLIP: frozenset[str] = frozenset(
+TXDATA_RELATION_FLIP: frozenset[str] = frozenset(
     {
-        "disease_protein",  # gene/protein→disease  → flip → disease→gene  (disease_associated_protein)
-        "anatomy_protein_present",  # gene/protein→anatomy  → flip → tissue→gene   (tissue_expresses_protein)
-        "anatomy_protein_absent",  # gene/protein→anatomy  → flip → tissue→gene   (tissue_expresses_protein)
+        "disease_protein",  # gene/protein→disease  → flip → disease→gene  (disease_associated_gene)
+        "anatomy_protein_present",  # gene/protein→anatomy  → flip → tissue→gene   (tissue_expresses_gene)
+        "anatomy_protein_absent",  # gene/protein→anatomy  → flip → tissue→gene   (tissue_expresses_gene)
         "bioprocess_protein",  # gene/protein→pathway  → flip → pathway→gene  (pathway_contains_gene)
         "molfunc_protein",  # gene/protein→pathway  → flip → pathway→gene  (pathway_contains_gene)
         "cellcomp_protein",  # gene/protein→pathway  → flip → pathway→gene  (pathway_contains_gene)
-        "pathway_protein",  # gene/protein→pathway  → flip → pathway→gene  (pathway_contains_protein)
-
+        "pathway_protein",  # gene/protein→pathway  → flip → pathway→gene
     }
 )
 

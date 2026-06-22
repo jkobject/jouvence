@@ -12,6 +12,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from manage_db import kg_evidence, kg_storage
+from manage_db.kg_schema import Credibility, NodeType
 
 
 def _split_source(source: str) -> tuple[str, str]:
@@ -104,24 +105,90 @@ def _protein_change_evidence_row(row: pd.Series, relation: str, x_id: str, y_id:
     }
 
 
-def _edge_source_metadata(row: pd.Series, relation: str, source_raw: str) -> tuple[str, str, str, str]:
-    """Return source, source_dataset, source-record suffix, and predicate for an edge row."""
+def _edge_source_metadata(
+    row: pd.Series, relation: str, source_raw: str
+) -> tuple[str, str, str, str, str, str, str]:
+    """Return source metadata for an edge row.
+
+    The tuple is ``(source, source_dataset, source_record_prefix,
+    source_record_suffix, predicate, direction, text_span)``.  Keep broad
+    normalized relation names in ``relation`` and preserve source-native detail
+    in evidence metadata.
+    """
 
     source, source_dataset = _split_source(source_raw)
     predicate = relation
+    direction = _clean_str(row.get("direction"))
     suffix_parts: list[str] = []
+    source_record_prefix = source_raw or source
+    text_span = ""
 
-    if relation == "molecule_targets_protein" and source == "OpenTargets":
+    if relation == "molecule_targets_gene" and source == "OpenTargets":
         # Historical canonical exports use this relation name for OpenTargets
         # mechanism-of-action rows whose target endpoint is still an ENSG gene.
         # Preserve the canonical endpoint and action metadata; do not remap to ENSP.
         source_dataset = source_dataset or "drug_mechanism_of_action"
+        source_record_prefix = f"{source}:{source_dataset}"
         action_type = _clean_str(row.get("action_type"))
         if action_type:
             predicate = action_type
+            direction = action_type
             suffix_parts.append(action_type)
+        mechanism = _clean_str(row.get("display_relation"))
+        target_class = _clean_str(row.get("target_class") or row.get("targetClass"))
+        release = _clean_str(row.get("release") or row.get("source_release") or row.get("datasourceVersion"))
+        text_span = json.dumps(
+            {
+                "mechanism_of_action": mechanism or None,
+                "action_type": action_type or None,
+                "target_class": target_class or None,
+                "target_id_namespace": "ENSG" if _clean_str(row.get("y_id")).startswith("ENSG") else None,
+                "endpoint_policy": "OpenTargets MoA row retained as molecule->gene; no gene-to-protein projection",
+                "release": release or None,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
 
-    return source, source_dataset, ":".join(suffix_parts), predicate
+    elif relation == "molecule_targets_gene" and source == "TxGNN":
+        # TxGNN/TxData legacy relation labels used protein wording even when
+        # endpoint IDs are NCBI genes.  Do not propagate the stale protein token
+        # into evidence predicate/direction/source_record_id.
+        x_id = _clean_str(row.get("x_id"))
+        y_type = _clean_str(row.get("y_type"))
+        stale_dataset = source_dataset in {"", "molecule_targets_protein"}
+        if x_id.startswith("DB"):
+            source_dataset = "drug_protein" if stale_dataset else source_dataset
+            predicate = "drug_protein"
+        elif x_id.startswith("CTD:"):
+            source_dataset = "ctd_chemical_gene" if stale_dataset else source_dataset
+            predicate = "chemical_gene_target"
+        else:
+            source_dataset = "txdata_molecule_gene_target" if stale_dataset else source_dataset
+            predicate = "targets_gene"
+        direction = ""
+        source_record_prefix = f"{source}:{source_dataset}"
+        text_span = json.dumps(
+            {
+                "legacy_relation": "molecule_targets_protein",
+                "legacy_source_dataset": _split_source(source_raw)[1] or None,
+                "endpoint_policy": f"TxGNN molecule target row retained as molecule->{y_type or 'gene'}; no gene-to-protein projection",
+                "source_detail_recovery": "x_id namespace heuristic: DrugBank DB* vs CTD:*",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    return source, source_dataset, source_record_prefix, ":".join(suffix_parts), predicate, direction, text_span
+
+
+def _release_from_edge(row: pd.Series, source: str, source_dataset: str) -> str:
+    release = _clean_str(row.get("release") or row.get("source_release") or row.get("datasourceVersion"))
+    if release:
+        return release
+    if source == "OpenTargets" and source_dataset == "drug_mechanism_of_action":
+        return "26.03"
+    return ""
 
 
 def _mutation_associated_gene_l2g_evidence_from_edges(edges: pd.DataFrame) -> pd.DataFrame:
@@ -180,9 +247,132 @@ def _mutation_associated_gene_l2g_evidence_from_edges(edges: pd.DataFrame) -> pd
     return pd.DataFrame(rows)
 
 
+def _pathway_source_dataset(x_id: str, go_aspect: str) -> str:
+    if x_id.startswith("R-HSA-"):
+        return "txgnn_legacy_reactome"
+    if go_aspect in {"P", "F", "C"}:
+        return {"P": "go_biological_process", "F": "go_molecular_function", "C": "go_cellular_component"}[go_aspect]
+    if x_id.startswith("GO:"):
+        return "txgnn_legacy_go"
+    return "pathway_membership"
+
+
+def _pathway_contains_gene_evidence_from_edges(edges: pd.DataFrame) -> pd.DataFrame:
+    """Build pathway→gene evidence while keeping current endpoints gene-level.
+
+    OpenTargets GO annotations already carry source-native evidence/aspect on
+    canonical edge rows. TxGNN/PrimeKG inherited rows do not preserve the raw
+    legacy source row, PMID, or protein/participant endpoint; those rows are
+    therefore marked as edge-derived legacy fallbacks instead of being projected
+    to ``pathway_contains_protein``.
+    """
+
+    rows: list[dict] = []
+    relation = "pathway_contains_gene"
+    for _, row in edges.iterrows():
+        if _clean_str(row.get("relation")) != relation:
+            continue
+        x_id = _clean_str(row.get("x_id"))
+        y_id = _clean_str(row.get("y_id"))
+        if not x_id or not y_id:
+            continue
+        x_type = _clean_str(row.get("x_type")) or "pathway"
+        y_type = _clean_str(row.get("y_type")) or "gene"
+        if y_type != "gene":
+            raise ValueError(
+                "pathway_contains_gene backfill refuses non-gene endpoints; "
+                "use a protein-native pathway builder for protein endpoints"
+            )
+
+        source_raw = _clean_str(row.get("source"))
+        source, source_dataset = _split_source(source_raw)
+        go_evidence = _clean_str(row.get("go_evidence") or row.get("predicate"))
+        go_aspect = _clean_str(row.get("go_aspect") or row.get("aspect"))
+        release = _clean_str(row.get("release") or row.get("source_release"))
+        paper_id = _pmid(row.get("pmid") or row.get("paper_id"))
+
+        if source == "OpenTargets":
+            source_dataset = "go"
+            predicate = go_evidence or "go_annotation"
+            direction = "gene_product_annotation"
+            extraction_method = "OpenTargets target.go pathway membership"
+            source_record_id = ":".join(
+                part
+                for part in [
+                    "OpenTargets/go",
+                    release,
+                    y_id,
+                    x_id,
+                    go_evidence,
+                    go_aspect,
+                ]
+                if part
+            )
+            fallback = False
+        else:
+            source = source or "TxGNN"
+            source_dataset = source_dataset or _pathway_source_dataset(x_id, go_aspect)
+            predicate = go_evidence or "pathway_membership"
+            direction = relation
+            extraction_method = "TxGNN legacy edge-derived pathway membership fallback"
+            source_record_id = ":".join(
+                part
+                for part in [
+                    source_raw or source,
+                    source_dataset,
+                    relation,
+                    x_id,
+                    y_id,
+                    go_evidence,
+                    go_aspect,
+                ]
+                if part
+            )
+            fallback = True
+
+        text_span = json.dumps(
+            {
+                "original_source": source_raw,
+                "source_pathway_id": x_id,
+                "source_gene_id": y_id,
+                "go_evidence": go_evidence or None,
+                "go_aspect": go_aspect or None,
+                "endpoint_policy": "gene-level pathway membership; no gene-to-protein projection",
+                "edge_derived_legacy_fallback": fallback,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        rows.append(
+            {
+                "relation": relation,
+                "x_id": x_id,
+                "x_type": x_type,
+                "y_id": y_id,
+                "y_type": y_type,
+                "evidence_type": "database_record",
+                "source": source,
+                "source_dataset": source_dataset,
+                "source_record_id": source_record_id,
+                "paper_id": paper_id,
+                "dataset_id": "",
+                "study_id": "",
+                "evidence_score": row.get("score"),
+                "direction": direction,
+                "predicate": predicate,
+                "text_span": text_span,
+                "extraction_method": extraction_method,
+                "release": release,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def _evidence_from_edges(edges: pd.DataFrame) -> pd.DataFrame:
     if not edges.empty and set(edges["relation"].astype(str)) == {"mutation_associated_gene"}:
         return _mutation_associated_gene_l2g_evidence_from_edges(edges)
+    if not edges.empty and set(edges["relation"].astype(str)) == {"pathway_contains_gene"}:
+        return _pathway_contains_gene_evidence_from_edges(edges)
 
     rows: list[dict] = []
     for _, row in edges.iterrows():
@@ -194,12 +384,16 @@ def _evidence_from_edges(edges: pd.DataFrame) -> pd.DataFrame:
             continue
 
         source_raw = _clean_str(row.get("source"))
-        source, source_dataset, source_record_suffix, predicate = _edge_source_metadata(
-            row, relation, source_raw
-        )
-        source_record_id = f"{source_raw}:{relation}:{x_id}:{y_id}"
-        if source_dataset and source_raw == source:
-            source_record_id = f"{source}:{source_dataset}:{relation}:{x_id}:{y_id}"
+        (
+            source,
+            source_dataset,
+            source_record_prefix,
+            source_record_suffix,
+            predicate,
+            direction,
+            text_span,
+        ) = _edge_source_metadata(row, relation, source_raw)
+        source_record_id = f"{source_record_prefix}:{relation}:{x_id}:{y_id}"
         if source_record_suffix:
             source_record_id = f"{source_record_id}:{source_record_suffix}"
         rows.append(
@@ -217,8 +411,10 @@ def _evidence_from_edges(edges: pd.DataFrame) -> pd.DataFrame:
                 "dataset_id": "",
                 "study_id": "",
                 "evidence_score": row.get("score"),
-                "direction": predicate if relation == "molecule_targets_protein" else str(row.get("direction") or ""),
+                "direction": direction,
                 "predicate": predicate,
+                "text_span": text_span,
+                "release": _release_from_edge(row, source, source_dataset),
             }
         )
     return pd.DataFrame(rows)
@@ -237,6 +433,152 @@ def backfill_edge_evidence(kg_path: str | Path, relations: list[str]) -> dict[st
         evidence = _evidence_from_edges(edges)
         counts[relation] = kg_evidence.write_evidence(root, relation, evidence, mode="overwrite")
     return counts
+
+
+def _is_protein_native_id(value: str) -> bool:
+    return value.startswith(("ENSP", "UniProt:", "UNIPROT:", "RefSeqProtein:", "NP_", "XP_"))
+
+
+def _frame_column(df: pd.DataFrame, name: str, default: object) -> pd.Series:
+    if name in df.columns:
+        return df[name]
+    return pd.Series([default] * len(df), index=df.index)
+
+
+def build_molecule_targets_protein_staged(
+    kg_path: str | Path,
+    source_rows: pd.DataFrame | str | Path,
+    *,
+    mode: str = "overwrite",
+) -> dict[str, int]:
+    """Stage source-native molecule→protein target edges and evidence.
+
+    This is intentionally not a gene→protein projection helper. Every input row
+    must already carry a protein endpoint (``y_type='protein'`` plus a protein
+    or isoform-looking ID such as ENSP/UniProt/RefSeq protein). Gene endpoint
+    rows belong in ``molecule_targets_gene`` and are rejected here.
+    """
+
+    if mode not in {"overwrite", "append"}:
+        raise ValueError("mode must be 'overwrite' or 'append'")
+    if isinstance(source_rows, (str, Path)):
+        df = pd.read_parquet(source_rows)
+    else:
+        df = source_rows.copy()
+    if df.empty:
+        return {"molecule_targets_protein": 0}
+
+    required = {"x_id", "y_id", "y_type", "source", "source_dataset"}
+    missing = sorted(required - set(df.columns))
+    if missing:
+        raise ValueError(f"molecule_targets_protein source rows missing required columns: {missing}")
+
+    df["x_id"] = df["x_id"].map(_clean_str)
+    df["y_id"] = df["y_id"].map(_clean_str)
+    df["y_type"] = df["y_type"].map(_clean_str)
+    bad = df[(df["y_type"] != NodeType.PROTEIN.value) | ~df["y_id"].map(_is_protein_native_id)]
+    if not bad.empty:
+        examples = bad[["x_id", "y_id", "y_type"]].head(5).to_dict("records")
+        raise ValueError(
+            "molecule_targets_protein requires source-native protein endpoints; "
+            f"refusing gene/projected rows: {examples}"
+        )
+
+    relation = "molecule_targets_protein"
+    root = kg_storage.open_kg_root(str(kg_path))
+    x_type = _frame_column(df, "x_type", NodeType.MOLECULE.value).map(_clean_str).replace("", NodeType.MOLECULE.value)
+    display_relation = _frame_column(
+        df,
+        "mechanism",
+        pd.NA,
+    ).combine_first(_frame_column(df, "display_relation", pd.NA)).combine_first(
+        _frame_column(df, "action_type", "targets protein")
+    ).map(_clean_str).replace("", "targets protein")
+    source = df["source"].map(_clean_str)
+    source_dataset = df["source_dataset"].map(_clean_str)
+    edges = pd.DataFrame(
+        {
+            "x_id": df["x_id"],
+            "x_type": x_type,
+            "y_id": df["y_id"],
+            "y_type": NodeType.PROTEIN.value,
+            "relation": relation,
+            "display_relation": display_relation,
+            "source": source,
+            "credibility": pd.to_numeric(
+                _frame_column(df, "credibility", int(Credibility.ESTABLISHED_FACT)),
+                errors="coerce",
+            ).fillna(int(Credibility.ESTABLISHED_FACT)).astype("int64"),
+        }
+    )
+    edge_count = kg_storage.write_edges(root, relation, edges, mode=mode)  # type: ignore[arg-type]
+
+    text_span = []
+    for _, row in df.iterrows():
+        y_id = _clean_str(row.get("y_id"))
+        payload = {
+            "mechanism_of_action": _clean_str(row.get("mechanism") or row.get("display_relation")) or None,
+            "action_type": _clean_str(row.get("action_type")) or None,
+            "target_class": _clean_str(row.get("target_class") or row.get("targetClass")) or None,
+            "source_database": _clean_str(row.get("source")) or None,
+            "source_dataset": _clean_str(row.get("source_dataset")) or None,
+            "target_id_namespace": "ENSP" if y_id.startswith("ENSP") else "protein",
+            "endpoint_policy": "source-native molecule->protein row; not projected from gene endpoint",
+        }
+        for source_col, payload_key in {
+            "target_chembl_id": "target_chembl_id",
+            "target_uniprot_id": "target_uniprot_id",
+            "target_component_id": "target_component_id",
+            "target_component_relationship": "target_component_relationship",
+            "target_component_description": "target_component_description",
+            "target_confidence": "target_confidence",
+            "mechanism_comment": "mechanism_comment",
+            "binding_site_comment": "binding_site_comment",
+            "selectivity_comment": "selectivity_comment",
+        }.items():
+            value = _clean_str(row.get(source_col))
+            if value:
+                payload[payload_key] = value
+        text_span.append(
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+
+    source_record = _frame_column(df, "source_record_id", "").map(_clean_str)
+    fallback_record = source + ":" + source_dataset + ":" + relation + ":" + df["x_id"] + ":" + df["y_id"]
+    evidence = pd.DataFrame(
+        {
+            "relation": relation,
+            "x_id": df["x_id"],
+            "x_type": x_type,
+            "y_id": df["y_id"],
+            "y_type": NodeType.PROTEIN.value,
+            "evidence_type": "database_record",
+            "source": source,
+            "source_dataset": source_dataset,
+            "source_record_id": source_record.where(source_record != "", fallback_record),
+            "paper_id": _frame_column(df, "paper_id", "").map(_clean_str),
+            "dataset_id": "",
+            "study_id": _frame_column(df, "study_id", "").map(_clean_str),
+            "evidence_score": pd.to_numeric(
+                _frame_column(df, "score", pd.NA).combine_first(_frame_column(df, "evidence_score", pd.NA)),
+                errors="coerce",
+            ),
+            "direction": _frame_column(df, "direction", "").map(_clean_str),
+            "predicate": _frame_column(df, "predicate", pd.NA).combine_first(
+                _frame_column(df, "action_type", "protein_target")
+            ).map(_clean_str).replace("", "protein_target"),
+            "text_span": text_span,
+            "release": _frame_column(df, "release", pd.NA).combine_first(
+                _frame_column(df, "source_release", "")
+            ).map(_clean_str),
+        }
+    )
+    evidence_count = kg_evidence.write_evidence(root, relation, evidence, mode=mode)  # type: ignore[arg-type]
+    return {relation: min(edge_count, evidence_count)}
 
 
 def _mutation_disease_batch_to_evidence(batch: pa.RecordBatch, row_offset: int) -> pa.Table:
