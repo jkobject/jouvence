@@ -1,8 +1,8 @@
 # Source-native `molecule_targets_protein` staged pilot — ChEMBL mechanisms
 
-Date: 2026-06-22  
-Task: `t_84bf3876`  
-Staging root: `.omoc/staging/molecule-targets-protein-chembl-20260622-t_84bf3876`  
+Date: 2026-06-22
+Task: `t_84bf3876`
+Staging root: `.omoc/staging/molecule-targets-protein-chembl-20260622-t_84bf3876`
 Remote staging root: `gs://jouvencekb/kg/v2/staging/molecule-targets-protein-chembl-20260622-t_84bf3876`
 
 ## Prior B3/C3 findings reviewed

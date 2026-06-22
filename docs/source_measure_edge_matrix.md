@@ -85,5 +85,3 @@ These policy decisions override earlier proposal-only wording until a later huma
 | miRNA target source with gene-level measurement | miRNA/miR entity and gene target | gene-level miRNA target relation once approved (`mirna_targets_gene` / `mirna_regulates_gene` naming); do not force transcript endpoints | assay/support class, target gene ID, effect/readout, context, PMID, source record/release |
 | miRNA target source with transcript/UTR/site-level endpoint | miRNA/miR entity and transcript/UTR endpoint | `mirna_targets_transcript` when transcript endpoint is source-native or validated | transcript/UTR/site ID, binding site, assay/support class, context, score, PMID, source record/release |
 | ABC/rE2G, motif scans, coexpression/correlation, disease-association-only modules | source-native endpoints and context | allowed non-causal exceptions only when explicitly typed as predictive/correlative/association/candidate/context-specific evidence | evidence type, score/effect size, model/features, tissue/cell/biosample/disease context, dataset, source record/release |
-
-

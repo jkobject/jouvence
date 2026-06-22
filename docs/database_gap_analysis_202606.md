@@ -124,4 +124,3 @@ Created only for sources with clear unique value and acceptable or auditable acc
 5. Structural-variation schema/source design: source-design card only, not ingestion, because SV metadata/relation policy must be finalized before DGV/dbVar/gnomAD/ClinGen/ClinVar-SV ingestion.
 
 No child card was created for ClinPGx direct ingestion (already covered through OpenTargets; optional provenance cleanup only), OMIM (license gate), HumanCyc (license + metabolism schema gate), IID/InnateDB/MINT standalone ingestion (second-pass/overlap/license uncertainty).
-

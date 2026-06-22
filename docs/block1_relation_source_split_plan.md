@@ -128,4 +128,3 @@ Immediate implications:
 1. `gene_interacts_gene` already has enough subdatabase detail to start designing splits, but OpenTargets interaction remains mostly gene-target level; do not populate `protein_interacts_protein` from `intA/intB` unless endpoint mapping and assertion policy are explicitly validated.
 2. `pathway_contains_gene` needs evidence materialization first.
 3. `molecule_targets_gene` needs TxGNN evidence provenance cleanup first; OpenTargets MoA rows are gene-target assertions unless a protein-native endpoint is recovered.
-
