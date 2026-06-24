@@ -4,7 +4,9 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import platform
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -28,8 +30,8 @@ except Exception:  # pragma: no cover
     torch = None  # type: ignore[assignment]
     nn = None  # type: ignore[assignment]
 
-TASK_ID = "t_8892763b"
-RUN_ID = "foundation_embedding_scaffold_20260624_t_8892763b"
+TASK_ID = os.environ.get("HERMES_KANBAN_TASK", "t_8892763b")
+RUN_ID = f"foundation_embedding_scaffold_20260624_{TASK_ID}"
 POLICY_VERSION = "foundation_embedding_policy_v1+edge_embedding_policy_v1"
 TEXT_MODEL_NAME = "pritamdeka/S-BioBERT-snli-multinli-stsb"
 TEXT_MODEL_VERSION = "pritamdeka/S-BioBERT-snli-multinli-stsb@huggingface-main+policy_v1"
@@ -191,6 +193,52 @@ def write_parquet(rows: list[dict[str, Any]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pylist(rows)
     pq.write_table(table, path, compression="zstd")
+
+
+def gcs_join(root: str, *parts: str) -> str:
+    return "/".join([root.rstrip("/"), *(part.strip("/") for part in parts)])
+
+
+def gcloud_object_exists(uri: str) -> bool:
+    result = subprocess.run(["gcloud", "storage", "ls", uri], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return result.returncode == 0
+
+
+def copy_gcs_object_if_exists(uri: str, destination: Path, required: bool) -> bool:
+    if not gcloud_object_exists(uri):
+        if required:
+            raise FileNotFoundError(f"Required GCS input not found: {uri}")
+        return False
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["gcloud", "storage", "cp", "--quiet", uri, str(destination)], check=True)
+    return True
+
+
+def prepare_local_cache_from_gcs(gcs_kg_root: str, local_cache_dir: Path, edge_relations: list[str]) -> dict[str, Any]:
+    copied: list[str] = []
+    skipped_optional: list[str] = []
+    for table_name in TEXTUAL_TABLES:
+        uri = gcs_join(gcs_kg_root, "features", table_name)
+        destination = local_cache_dir / "features" / table_name
+        if copy_gcs_object_if_exists(uri, destination, required=False):
+            copied.append(str(destination))
+        else:
+            skipped_optional.append(uri)
+    for relation in edge_relations:
+        for subdir, required in [("edges", True), ("evidence", False)]:
+            uri = gcs_join(gcs_kg_root, subdir, f"{relation}.parquet")
+            destination = local_cache_dir / subdir / f"{relation}.parquet"
+            if copy_gcs_object_if_exists(uri, destination, required=required):
+                copied.append(str(destination))
+            else:
+                skipped_optional.append(uri)
+    return {
+        "source_gcs_root": gcs_kg_root.rstrip("/"),
+        "local_cache_dir": str(local_cache_dir),
+        "copied_files": copied,
+        "skipped_optional_inputs": skipped_optional,
+        "command_family": "gcloud storage cp local cache prep; avoids brittle macOS FUSE Path.exists() calls",
+    }
 
 
 def build_text_embeddings(kg_root: Path, output_dir: Path, encoder: TextEncoder, limit_per_table: int, batch_size: int) -> dict[str, Any]:
@@ -524,9 +572,21 @@ def write_summary(output_dir: Path, manifest: dict[str, Any]) -> str:
         "Staged-only derived features. No canonical KG files were promoted or overwritten.",
         "This run uses real local model inference for official textual summaries: S-BioBERT via sentence-transformers, not HashingVectorizer.",
         "Edge embeddings use a local PyTorch relation/value/evidence MLP path over S-BioBERT evidence payload vectors plus numeric evidence/edge fields, then weighted pooling to one vector per edge.",
+    ]
+    if manifest.get("input_cache"):
+        cache = manifest["input_cache"]
+        lines.extend(
+            [
+                "Input cache: canonical GCS objects were copied to a local cache with `gcloud storage cp` before reading Parquet, so this run does not depend on the macOS FUSE mount being healthy.",
+                f"- source GCS root: `{cache['source_gcs_root']}`",
+                f"- local cache dir: `{cache['local_cache_dir']}`",
+                f"- copied files: `{len(cache['copied_files'])}`",
+            ]
+        )
+    lines.extend([
         "",
         "## Outputs",
-    ]
+    ])
     for table, info in manifest["outputs"]["node_text_embeddings"].items():
         if info.get("status") == "embedded":
             lines.append(f"- text `{table}`: {info['embedded_rows']} rows, dim {info['embedding_dim']} -> `{info['output_path']}`")
@@ -567,6 +627,8 @@ def run(
     batch_size: int = 16,
     clean: bool = False,
     test_deterministic_encoder: bool = False,
+    gcs_kg_root: str | None = None,
+    local_cache_dir: Path | None = None,
 ) -> dict[str, Any]:
     if clean and output_dir.exists():
         import shutil
@@ -576,6 +638,12 @@ def run(
     start = time.perf_counter()
     if edge_relations is None:
         edge_relations = ["molecule_targets_gene", "tissue_expresses_protein"]
+    input_cache: dict[str, Any] | None = None
+    if gcs_kg_root:
+        if local_cache_dir is None:
+            local_cache_dir = output_dir.parent / f"{output_dir.name}_kg_cache"
+        input_cache = prepare_local_cache_from_gcs(gcs_kg_root, local_cache_dir, edge_relations)
+        kg_root = local_cache_dir
     encoder = TextEncoder(TEXT_MODEL_NAME, test_deterministic=test_deterministic_encoder)
     edge_outputs = build_edge_embeddings(kg_root, output_dir, encoder, edge_relations, edge_limit_per_relation, batch_size) if edge_relations else {}
     outputs = {
@@ -596,6 +664,7 @@ def run(
         "staged_only": True,
         "canonical_promotion": False,
         "kg_root": str(kg_root),
+        "input_cache": input_cache,
         "output_dir": str(output_dir),
         "policy_version": POLICY_VERSION,
         "models": {
@@ -608,7 +677,7 @@ def run(
         "environment": {"python": platform.python_version(), "platform": platform.platform(), "numpy": np.__version__, "pandas": pd.__version__, "pyarrow": pa.__version__, "torch_available": torch is not None, "sentence_transformers_available": SentenceTransformer is not None or test_deterministic_encoder},
         "recompute_command": " ".join([
             "uv run --with sentence-transformers python -m manage_db.build_real_embeddings",
-            f"--kg-root {kg_root}",
+            *( [f"--gcs-kg-root {input_cache['source_gcs_root']}", f"--local-cache-dir {input_cache['local_cache_dir']}"] if input_cache else [f"--kg-root {kg_root}"] ),
             f"--output-dir {output_dir}",
             f"--text-limit-per-table {text_limit_per_table}",
             f"--edge-limit-per-relation {edge_limit_per_relation}",
@@ -626,6 +695,8 @@ def run(
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Build staged real node/edge embeddings from official Jouvence KG features.")
     parser.add_argument("--kg-root", type=Path, default=Path("/Users/jkobject/mnt/gcs/jouvencekb-kg/v2"))
+    parser.add_argument("--gcs-kg-root", default=None, help="Canonical GCS KG root, e.g. gs://jouvencekb/kg/v2. When set, copy required inputs to --local-cache-dir first and read from that local cache instead of FUSE.")
+    parser.add_argument("--local-cache-dir", type=Path, default=None, help="Local cache destination for --gcs-kg-root inputs; defaults next to --output-dir.")
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/staged/t_8892763b/text_sbiobert_smoke"))
     parser.add_argument("--text-limit-per-table", type=int, default=16)
     parser.add_argument("--edge-relations", nargs="+", default=["molecule_targets_gene", "tissue_expresses_protein"])
@@ -644,6 +715,8 @@ def main(argv: list[str] | None = None) -> None:
         batch_size=args.batch_size,
         clean=args.clean,
         test_deterministic_encoder=args.test_deterministic_encoder,
+        gcs_kg_root=args.gcs_kg_root,
+        local_cache_dir=args.local_cache_dir,
     )
     print(json.dumps({"manifest_path": str(Path(manifest["output_dir"]) / "manifest.json"), "summary_path": manifest["summary_path"], "validation": manifest["validation"], "runtime_seconds": manifest["runtime_seconds"]}, indent=2, sort_keys=True))
 
