@@ -256,6 +256,10 @@ def test_run_pyg_gnn_smoke_trains_on_exported_heterodata(tmp_path: Path) -> None
         "test_negative_edges": 1,
     }
     assert result.metrics["epochs"] == 2.0
+    assert result.config["relation_role"] == "primary_link_prediction_relation_with_other_relations_as_auxiliary_message_passing_context"
+    assert result.graph_sizes["primary_relation"] == "disease_associated_gene"
+    assert result.graph_sizes["primary_message_passing_edge_count"] == result.split_counts["train_positive_edges"]
+    assert result.graph_sizes["auxiliary_forward_relations"] == ["molecule_targets_gene"]
     assert "test_loss" in result.metrics
     assert "test_accuracy" in result.metrics
     assert result.validation["checks"]["heldout_edges_removed_from_message_passing"] is True
@@ -397,6 +401,11 @@ def test_run_pyg_gnn_smoke_cli_writes_leak_free_metrics(tmp_path: Path, capsys) 
         assert result["validation"]["checks"]["heldout_edges_removed_from_message_passing"] is True
         assert result["validation"]["checks"]["message_passing_edge_count_matches_train_split"] is True
         assert result["validation"]["checks"]["selected_edge_attr_consumed_by_predictor"] is True
+        assert result["validation"]["edge_attr_usage"]["selected_edge_attr_consumed_by_predictor"] is True
+        assert result["graph_sizes"]["primary_relation"] == "disease_associated_gene"
+        assert result["graph_sizes"]["primary_message_passing_edge_count"] == 2
+        assert result["graph_sizes"]["auxiliary_forward_relations"] == ["molecule_targets_gene"]
+        assert result["config"]["seed"] == 7423
         assert result["metrics"]["train_loss_trace"]
 
 
@@ -507,3 +516,5 @@ def test_pyg_export_wires_real_embeddings_and_learned_fallbacks(tmp_path: Path) 
     assert smoke.status == "pass"
     assert smoke.validation["checks"]["edge_attr_tensors_present"] is True
     assert smoke.validation["checks"]["selected_edge_attr_consumed_by_predictor"] is True
+    assert smoke.validation["edge_attr_usage"]["all_edge_types_have_edge_attr"] is True
+    assert smoke.graph_sizes["forward_edge_counts"] == {"disease_associated_gene": 4, "molecule_targets_gene": 2}
