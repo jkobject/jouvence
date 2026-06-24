@@ -12,7 +12,13 @@ from manage_db import kg_storage
 from manage_db import build_pyg_export as build_mod
 from manage_db.build_pyg_export import BuildConfig, build_pyg_export, main
 from manage_db.kg_schema import GRAPH_DISCONNECTED_RELATIONS
-from manage_db.run_pyg_gnn_smoke import SmokeConfig, _build_training_message_passing_graph, _split_edges, run_smoke
+from manage_db.run_pyg_gnn_smoke import (
+    SmokeConfig,
+    _build_training_message_passing_graph,
+    _split_edges,
+    main as smoke_main,
+    run_smoke,
+)
 
 
 def _node_df(ids: list[str], **extra: list[str]) -> pd.DataFrame:
@@ -700,3 +706,91 @@ def test_pyg_gnn_smoke_message_passing_graph_excludes_valid_and_test_labels() ->
     assert [3, 4] not in mp_data[edge_type].edge_index.t().tolist()
     assert [2, 1] not in mp_data[reverse_edge_type].edge_index.t().tolist()
     assert [4, 3] not in mp_data[reverse_edge_type].edge_index.t().tolist()
+
+
+def _extend_disease_edges_for_smoke(kg_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(kg_path))
+    kg_storage.write_nodes(
+        root,
+        "disease",
+        _node_df(
+            ["EFO:0000001", "EFO:0000002", "EFO:0000003", "EFO:0000004"],
+            mondo_id=["MONDO:1", "MONDO:2", "MONDO:3", "MONDO:4"],
+            omim_id=["OMIM:1", "OMIM:2", "OMIM:3", "OMIM:4"],
+            doid_id=["DOID:1", "DOID:2", "DOID:3", "DOID:4"],
+            icd10_code=["A", "B", "C", "D"],
+            mesh_id=["M1", "M2", "M3", "M4"],
+            hp_id=["HP:1", "HP:2", "HP:3", "HP:4"],
+        ),
+    )
+    kg_storage.write_edges(
+        root,
+        "disease_associated_gene",
+        _edge_df(
+            "disease_associated_gene",
+            "gene",
+            "disease",
+            [
+                ("ENSG000001", "EFO:0000001"),
+                ("ENSG000002", "EFO:0000002"),
+                ("ENSG000003", "EFO:0000003"),
+                ("ENSG000001", "EFO:0000004"),
+            ],
+        ),
+    )
+
+
+def test_run_pyg_gnn_smoke_cli_writes_leak_free_metrics(tmp_path: Path, capsys) -> None:
+    kg_path = _build_tiny_kg(tmp_path)
+    _extend_disease_edges_for_smoke(kg_path)
+    output_path = tmp_path / "pyg-smoke-cli"
+    metrics_path = tmp_path / "smoke-cli-metrics.json"
+    build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=None,
+            max_edges_per_relation=10,
+            strict=True,
+            build_name="unit-smoke-cli",
+        )
+    )
+
+    rc = smoke_main(
+        [
+            "--export-root",
+            str(output_path),
+            "--relation",
+            "disease_associated_gene",
+            "--epochs",
+            "1",
+            "--hidden-channels",
+            "4",
+            "--max-train-edges",
+            "2",
+            "--seed",
+            "7423",
+            "--output-json",
+            str(metrics_path),
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    persisted = json.loads(metrics_path.read_text())
+    for result in (payload, persisted):
+        assert result["status"] == "pass"
+        assert result["split_counts"] == {
+            "train_positive_edges": 2,
+            "train_negative_edges": 2,
+            "valid_positive_edges": 1,
+            "valid_negative_edges": 1,
+            "test_positive_edges": 1,
+            "test_negative_edges": 1,
+        }
+        assert result["validation"]["checks"]["heldout_edges_removed_from_message_passing"] is True
+        assert result["validation"]["checks"]["message_passing_edge_count_matches_train_split"] is True
+        assert result["validation"]["checks"]["selected_edge_attr_consumed_by_predictor"] is True
+        assert result["metrics"]["train_loss_trace"]
