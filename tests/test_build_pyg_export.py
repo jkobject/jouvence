@@ -14,7 +14,7 @@ pytest.importorskip("torch_geometric", reason="PyG export HeteroData/smoke tests
 
 from manage_db import kg_storage
 from manage_db.build_pyg_export import BuildConfig, build_pyg_export, main
-from manage_db.run_pyg_gnn_smoke import SmokeConfig, _build_training_message_passing_graph, _split_edges, run_smoke
+from manage_db.run_pyg_gnn_smoke import SmokeConfig, _build_training_message_passing_graph, _split_edges, main as smoke_main, run_smoke
 
 
 def _node_df(ids: list[str], **extra: list[str]) -> pd.DataFrame:
@@ -342,6 +342,62 @@ def test_build_pyg_export_cli(tmp_path: Path, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["edge_counts"] == {"disease_associated_gene": 2}
     assert (output_path / "README.md").exists()
+
+
+def test_run_pyg_gnn_smoke_cli_writes_leak_free_metrics(tmp_path: Path, capsys) -> None:
+    kg_path = _build_tiny_kg(tmp_path)
+    _extend_disease_edges_for_smoke(kg_path)
+    output_path = tmp_path / "pyg-smoke-cli"
+    metrics_path = tmp_path / "smoke-cli-metrics.json"
+    build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=None,
+            max_edges_per_relation=10,
+            strict=True,
+            build_name="unit-smoke-cli",
+        )
+    )
+
+    rc = smoke_main(
+        [
+            "--export-root",
+            str(output_path),
+            "--relation",
+            "disease_associated_gene",
+            "--epochs",
+            "1",
+            "--hidden-channels",
+            "4",
+            "--max-train-edges",
+            "2",
+            "--seed",
+            "7423",
+            "--output-json",
+            str(metrics_path),
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    persisted = json.loads(metrics_path.read_text())
+    for result in (payload, persisted):
+        assert result["status"] == "pass"
+        assert result["split_counts"] == {
+            "train_positive_edges": 2,
+            "train_negative_edges": 2,
+            "valid_positive_edges": 1,
+            "valid_negative_edges": 1,
+            "test_positive_edges": 1,
+            "test_negative_edges": 1,
+        }
+        assert result["validation"]["checks"]["heldout_edges_removed_from_message_passing"] is True
+        assert result["validation"]["checks"]["message_passing_edge_count_matches_train_split"] is True
+        assert result["validation"]["checks"]["selected_edge_attr_consumed_by_predictor"] is True
+        assert result["metrics"]["train_loss_trace"]
 
 
 def _write_unit_embeddings(root: kg_storage.KGRoot) -> Path:
