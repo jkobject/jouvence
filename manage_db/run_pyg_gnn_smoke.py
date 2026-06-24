@@ -48,7 +48,7 @@ class SmokeResult:
     edge_types: list[tuple[str, str, str]]
     feature_shapes: dict[str, list[int]]
     split_counts: dict[str, int]
-    metrics: dict[str, float]
+    metrics: dict[str, Any]
     validation: dict[str, Any]
 
 
@@ -139,11 +139,12 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
             "valid_negative_edges": int(valid_neg.size(1)),
         },
         metrics={
+            "epochs": float(config.epochs),
+            "train_loss_trace": losses,
             "initial_train_loss": losses[0],
             "final_train_loss": losses[-1],
             "valid_loss": float(valid_loss.detach().cpu()),
             "valid_accuracy": float(accuracy.detach().cpu()),
-            "epochs": float(config.epochs),
         },
         validation=validation,
     )
