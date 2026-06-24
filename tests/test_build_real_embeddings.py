@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pyarrow.parquet as pq
 
-from manage_db.build_real_embeddings import EDGE_EMBEDDING_DIM, TEXT_MODEL_DIM, run
+from manage_db.build_real_embeddings import EDGE_EMBEDDING_DIM, RUN_ID, TASK_ID, TEXT_MODEL_DIM, run
 
 
 def _write_fixture(root: Path) -> None:
@@ -111,6 +111,8 @@ def test_real_embedding_builder_outputs_staged_vectors_and_manifest(tmp_path: Pa
         test_deterministic_encoder=True,
     )
 
+    assert manifest["task_id"] == TASK_ID
+    assert manifest["run_id"] == RUN_ID
     assert manifest["staged_only"] is True
     assert manifest["canonical_promotion"] is False
     assert manifest["validation"]["passed"] is True
@@ -144,3 +146,25 @@ def test_real_embedding_builder_outputs_staged_vectors_and_manifest(tmp_path: Pa
 
     assert (output_dir / "manifest.json").exists()
     assert (output_dir / "real_embedding_summary.md").exists()
+
+
+def test_text_only_scaffold_smoke_skips_edge_inputs(tmp_path: Path) -> None:
+    kg_root = tmp_path / "kg"
+    output_dir = tmp_path / "out-text-only"
+    _write_fixture(kg_root)
+
+    manifest = run(
+        kg_root=kg_root,
+        output_dir=output_dir,
+        text_limit_per_table=1,
+        edge_relations=[],
+        clean=True,
+        test_deterministic_encoder=True,
+    )
+
+    assert manifest["outputs"]["edge_evidence_embeddings"] == {}
+    assert "--skip-edge-embeddings" in manifest["recompute_command"]
+    protein_path = Path(manifest["outputs"]["node_text_embeddings"]["protein_textual_summary.parquet"]["output_path"])
+    assert protein_path.exists()
+    assert pq.ParquetFile(protein_path).metadata.num_rows == 1
+    assert manifest["validation"]["passed"] is True

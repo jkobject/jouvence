@@ -28,14 +28,14 @@ except Exception:  # pragma: no cover
     torch = None  # type: ignore[assignment]
     nn = None  # type: ignore[assignment]
 
-TASK_ID = "t_f8bae791"
-RUN_ID = "real_embeddings_20260623_t_f8bae791"
+TASK_ID = "t_8892763b"
+RUN_ID = "foundation_embedding_scaffold_20260624_t_8892763b"
 POLICY_VERSION = "foundation_embedding_policy_v1+edge_embedding_policy_v1"
 TEXT_MODEL_NAME = "pritamdeka/S-BioBERT-snli-multinli-stsb"
 TEXT_MODEL_VERSION = "pritamdeka/S-BioBERT-snli-multinli-stsb@huggingface-main+policy_v1"
 TEXT_MODEL_DIM = 768
 EDGE_ENCODER_NAME = "local_pytorch_relation_value_evidence_mlp"
-EDGE_ENCODER_VERSION = "edge_policy_v1+torch_seed_20260623+untrained_projection_smoke"
+EDGE_ENCODER_VERSION = "edge_policy_v1+torch_seed_20260624+untrained_projection_smoke"
 EDGE_EMBEDDING_DIM = 256
 CREATED_AT = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 TEXTUAL_TABLES = [
@@ -574,17 +574,19 @@ def run(
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     start = time.perf_counter()
-    edge_relations = edge_relations or ["molecule_targets_gene", "tissue_expresses_protein"]
+    if edge_relations is None:
+        edge_relations = ["molecule_targets_gene", "tissue_expresses_protein"]
     encoder = TextEncoder(TEXT_MODEL_NAME, test_deterministic=test_deterministic_encoder)
+    edge_outputs = build_edge_embeddings(kg_root, output_dir, encoder, edge_relations, edge_limit_per_relation, batch_size) if edge_relations else {}
     outputs = {
         "node_text_embeddings": build_text_embeddings(kg_root, output_dir, encoder, text_limit_per_table, batch_size),
-        "edge_evidence_embeddings": build_edge_embeddings(kg_root, output_dir, encoder, edge_relations, edge_limit_per_relation, batch_size),
+        "edge_evidence_embeddings": edge_outputs,
         "learned_fallback_config": write_fallback_artifacts(kg_root, output_dir),
     }
     blocked_modalities = [
-        {"modality": "protein_sequence_esm2", "input": str(kg_root / "features" / "protein_sequence.parquet"), "reason": "official source feature is available, but fair-esm/ESM2 checkpoint is not installed/pinned in this repo environment for this bounded run"},
-        {"modality": "transcript_cdna_nucleotide_transformer", "input": str(kg_root / "features" / "transcript_sequence.parquet"), "reason": "official source feature is available, but Nucleotide Transformer/DNABERT-2 checkpoint and long-sequence window policy are not installed/pinned for this bounded run"},
-        {"modality": "molecule_smiles_chemberta", "input": str(kg_root / "features" / "molecule_fingerprint.parquet"), "reason": "official molecule fingerprint/SMILES feature is available; learned ChemBERTa/MolFormer checkpoint was not installed/pinned for this run, so Morgan baseline remains source feature only"},
+        {"modality": "protein_sequence_esm2", "input": str(kg_root / "features" / "protein_sequence.parquet"), "reason": "official source feature is available; run in envs/embeddings/protein_esm2 with GPU and explicit long-sequence windowing"},
+        {"modality": "transcript_cdna_nucleotide_transformer", "input": str(kg_root / "features" / "transcript_sequence.parquet"), "reason": "official source feature is available; run in envs/embeddings/nucleotide_transformer after length/window audit"},
+        {"modality": "molecule_smiles_chemberta", "input": str(kg_root / "features" / "molecule_fingerprint.parquet"), "reason": "official Morgan fingerprint/SMILES-derived source feature is available; run learned SMILES encoder in envs/embeddings/molecule_smiles"},
         {"modality": "gene_enhancer_mutation_dna", "input": "gene/enhancer/mutation genomic sequence features", "reason": "source feature tables remain missing/deferred by policy; use model-side learned fallback until reviewed sequence/coordinate features exist"},
     ]
     manifest: dict[str, Any] = {
@@ -604,7 +606,15 @@ def run(
         "blocked_modalities": blocked_modalities,
         "runtime_seconds": time.perf_counter() - start,
         "environment": {"python": platform.python_version(), "platform": platform.platform(), "numpy": np.__version__, "pandas": pd.__version__, "pyarrow": pa.__version__, "torch_available": torch is not None, "sentence_transformers_available": SentenceTransformer is not None or test_deterministic_encoder},
-        "recompute_command": f"uv run --with sentence-transformers python -m manage_db.build_real_embeddings --kg-root {kg_root} --output-dir {output_dir} --text-limit-per-table {text_limit_per_table} --edge-limit-per-relation {edge_limit_per_relation} --edge-relations {' '.join(edge_relations)} --clean",
+        "recompute_command": " ".join([
+            "uv run --with sentence-transformers python -m manage_db.build_real_embeddings",
+            f"--kg-root {kg_root}",
+            f"--output-dir {output_dir}",
+            f"--text-limit-per-table {text_limit_per_table}",
+            f"--edge-limit-per-relation {edge_limit_per_relation}",
+            *( ["--edge-relations", *edge_relations] if edge_relations else ["--skip-edge-embeddings"] ),
+            "--clean",
+        ]),
     }
     manifest["validation"] = validate_outputs(manifest)
     manifest["summary_path"] = write_summary(output_dir, manifest)
@@ -616,9 +626,10 @@ def run(
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Build staged real node/edge embeddings from official Jouvence KG features.")
     parser.add_argument("--kg-root", type=Path, default=Path("/Users/jkobject/mnt/gcs/jouvencekb-kg/v2"))
-    parser.add_argument("--output-dir", type=Path, default=Path("artifacts/staged/real_embeddings_20260623_t_f8bae791"))
+    parser.add_argument("--output-dir", type=Path, default=Path("artifacts/staged/t_8892763b/text_sbiobert_smoke"))
     parser.add_argument("--text-limit-per-table", type=int, default=16)
     parser.add_argument("--edge-relations", nargs="+", default=["molecule_targets_gene", "tissue_expresses_protein"])
+    parser.add_argument("--skip-edge-embeddings", action="store_true", help="Run only node textual embeddings; useful for a first text-model smoke when edge inputs are not staged locally.")
     parser.add_argument("--edge-limit-per-relation", type=int, default=16)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--clean", action="store_true")
@@ -628,7 +639,7 @@ def main(argv: list[str] | None = None) -> None:
         kg_root=args.kg_root,
         output_dir=args.output_dir,
         text_limit_per_table=args.text_limit_per_table,
-        edge_relations=args.edge_relations,
+        edge_relations=[] if args.skip_edge_embeddings else args.edge_relations,
         edge_limit_per_relation=args.edge_limit_per_relation,
         batch_size=args.batch_size,
         clean=args.clean,
