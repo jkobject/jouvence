@@ -4,7 +4,9 @@ The input is an export produced by :mod:`manage_db.build_pyg_export`.  The smoke
 job intentionally stays small and deterministic: it loads the exported
 ``HeteroData`` object, validates node features/edge tensors/reverse edges/splits,
 then trains a two-layer heterogeneous GraphSAGE encoder plus dot-product link
-predictor on one selected relation.
+predictor on one selected primary relation. Other forward/reverse relations in
+the HeteroData object remain in the message-passing graph as auxiliary context;
+heldout leakage checks apply to the selected primary relation.
 """
 
 from __future__ import annotations
@@ -46,10 +48,13 @@ class SmokeResult:
     reverse_edge_type: tuple[str, str, str] | None
     node_types: list[str]
     edge_types: list[tuple[str, str, str]]
+    auxiliary_edge_types: list[tuple[str, str, str]]
+    graph_sizes: dict[str, Any]
     feature_shapes: dict[str, list[int]]
     split_counts: dict[str, int]
     metrics: dict[str, Any]
     validation: dict[str, Any]
+    config: dict[str, Any]
 
 
 class HeteroSageLinkPredictor(nn.Module):
@@ -142,6 +147,8 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
         reverse_edge_type=reverse_edge_type,
         node_types=list(data.node_types),
         edge_types=list(data.edge_types),
+        auxiliary_edge_types=[et for et in data.edge_types if et not in {edge_type, reverse_edge_type}],
+        graph_sizes=_graph_sizes(data, edge_type, reverse_edge_type, message_passing_data),
         feature_shapes={node_type: list(data[node_type].x.shape) for node_type in data.node_types},
         split_counts={
             "train_positive_edges": int(train_pos.size(1)),
@@ -162,6 +169,14 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
             "test_accuracy": float(test_accuracy.detach().cpu()),
         },
         validation=validation,
+        config={
+            "epochs": config.epochs,
+            "hidden_channels": config.hidden_channels,
+            "seed": config.seed,
+            "max_train_edges": config.max_train_edges,
+            "learning_rate": config.learning_rate,
+            "relation_role": "primary_link_prediction_relation_with_other_relations_as_auxiliary_message_passing_context",
+        },
     )
     if config.output_json:
         config.output_json.parent.mkdir(parents=True, exist_ok=True)
@@ -261,6 +276,48 @@ def _evaluate_edges(
     loss = F.binary_cross_entropy_with_logits(logits, labels)
     accuracy = ((torch.sigmoid(logits) >= 0.5) == labels.bool()).float().mean()
     return loss, accuracy
+
+def _graph_sizes(
+    data: HeteroData,
+    primary_edge_type: tuple[str, str, str],
+    reverse_edge_type: tuple[str, str, str] | None,
+    message_passing_data: HeteroData,
+) -> dict[str, Any]:
+    return {
+        "node_counts": {node_type: int(data[node_type].num_nodes) for node_type in data.node_types},
+        "edge_counts": {str(edge_type): int(data[edge_type].edge_index.size(1)) for edge_type in data.edge_types},
+        "forward_edge_counts": {
+            edge_type[1]: int(data[edge_type].edge_index.size(1))
+            for edge_type in data.edge_types
+            if not edge_type[1].startswith("rev_")
+        },
+        "primary_relation": primary_edge_type[1],
+        "primary_edge_type": primary_edge_type,
+        "primary_edge_count": int(data[primary_edge_type].edge_index.size(1)),
+        "primary_message_passing_edge_count": int(message_passing_data[primary_edge_type].edge_index.size(1)),
+        "primary_reverse_edge_type": reverse_edge_type,
+        "auxiliary_forward_relations": [
+            edge_type[1]
+            for edge_type in data.edge_types
+            if not edge_type[1].startswith("rev_") and edge_type != primary_edge_type
+        ],
+        "auxiliary_edge_types": [edge_type for edge_type in data.edge_types if edge_type not in {primary_edge_type, reverse_edge_type}],
+    }
+
+
+def _edge_attr_usage(data: HeteroData, edge_type: tuple[str, str, str], selected_edge_attr_consumed: bool) -> dict[str, Any]:
+    edge_attr_shapes: dict[str, list[int] | None] = {}
+    for et in data.edge_types:
+        value = data[et].edge_attr if hasattr(data[et], "edge_attr") else None
+        edge_attr_shapes[str(et)] = list(value.shape) if value is not None else None
+    return {
+        "all_edge_types_have_edge_attr": all(shape is not None for shape in edge_attr_shapes.values()),
+        "selected_edge_type": edge_type,
+        "selected_edge_attr_shape": edge_attr_shapes.get(str(edge_type)),
+        "selected_edge_attr_consumed_by_predictor": bool(selected_edge_attr_consumed),
+        "edge_attr_shapes": edge_attr_shapes,
+    }
+
 
 
 def _build_training_message_passing_graph(
@@ -388,7 +445,11 @@ def _validate_data(
         checks["reverse_edges_present"] = False
         checks["reverse_edge_count_matches"] = False
         checks["reverse_edges_are_transpose"] = False
-    return {"status": "pass" if all(bool(v) for v in checks.values()) else "fail", "checks": checks}
+    return {
+        "status": "pass" if all(bool(v) for v in checks.values()) else "fail",
+        "checks": checks,
+        "edge_attr_usage": _edge_attr_usage(data, edge_type, selected_edge_attr_consumed),
+    }
 
 
 def _edge_label_bounds_ok(data: HeteroData, edge_type: tuple[str, str, str], edge_index: torch.Tensor) -> bool:
