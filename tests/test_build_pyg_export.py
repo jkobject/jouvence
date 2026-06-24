@@ -12,7 +12,7 @@ from manage_db import kg_storage
 from manage_db import build_pyg_export as build_mod
 from manage_db.build_pyg_export import BuildConfig, build_pyg_export, main
 from manage_db.kg_schema import GRAPH_DISCONNECTED_RELATIONS
-from manage_db.run_pyg_gnn_smoke import SmokeConfig, run_smoke
+from manage_db.run_pyg_gnn_smoke import SmokeConfig, _build_training_message_passing_graph, _split_edges, run_smoke
 
 
 def _node_df(ids: list[str], **extra: list[str]) -> pd.DataFrame:
@@ -644,3 +644,59 @@ def test_pyg_export_wires_real_embeddings_and_learned_fallbacks(tmp_path: Path) 
     assert smoke.status == "pass"
     assert smoke.validation["checks"]["edge_attr_tensors_present"] is True
     assert smoke.validation["checks"]["selected_edge_attr_consumed_by_predictor"] is True
+
+
+def test_pyg_gnn_smoke_split_includes_disjoint_heldout_test_edges() -> None:
+    import torch
+
+    edge_index = torch.tensor(
+        [
+            [0, 1, 2, 3, 4, 5],
+            [10, 11, 12, 13, 14, 15],
+        ],
+        dtype=torch.long,
+    )
+
+    train_pos, valid_pos, test_pos, train_idx, valid_idx, test_idx = _split_edges(
+        edge_index, max_train_edges=2, seed=7423
+    )
+
+    assert train_pos.size(1) == 2
+    assert valid_pos.size(1) == 1
+    assert test_pos.size(1) == 1
+    assert len(set(train_idx.tolist()) & set(valid_idx.tolist())) == 0
+    assert len(set(train_idx.tolist()) & set(test_idx.tolist())) == 0
+    assert len(set(valid_idx.tolist()) & set(test_idx.tolist())) == 0
+
+
+def test_pyg_gnn_smoke_message_passing_graph_excludes_valid_and_test_labels() -> None:
+    import torch
+    from torch_geometric.data import HeteroData
+
+    data = HeteroData()
+    data["gene"].num_nodes = 6
+    data["gene"].x = torch.randn(6, 4)
+    data["disease"].num_nodes = 6
+    data["disease"].x = torch.randn(6, 4)
+    edge_type = ("gene", "disease_associated_gene", "disease")
+    reverse_edge_type = ("disease", "rev_disease_associated_gene", "gene")
+    data[edge_type].edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long)
+    data[edge_type].edge_attr = torch.arange(12, dtype=torch.float32).view(4, 3)
+    data[reverse_edge_type].edge_index = data[edge_type].edge_index[[1, 0], :]
+    data[reverse_edge_type].edge_attr = data[edge_type].edge_attr.clone()
+
+    train_idx = torch.tensor([0, 2], dtype=torch.long)
+    valid_idx = torch.tensor([1], dtype=torch.long)
+    test_idx = torch.tensor([3], dtype=torch.long)
+
+    mp_data = _build_training_message_passing_graph(
+        data, edge_type, reverse_edge_type, train_idx, valid_idx, test_idx
+    )
+
+    assert mp_data[edge_type].edge_index.tolist() == [[0, 2], [1, 3]]
+    assert mp_data[reverse_edge_type].edge_index.tolist() == [[1, 3], [0, 2]]
+    assert mp_data[edge_type].edge_attr.tolist() == [[0.0, 1.0, 2.0], [6.0, 7.0, 8.0]]
+    assert [1, 2] not in mp_data[edge_type].edge_index.t().tolist()
+    assert [3, 4] not in mp_data[edge_type].edge_index.t().tolist()
+    assert [2, 1] not in mp_data[reverse_edge_type].edge_index.t().tolist()
+    assert [4, 3] not in mp_data[reverse_edge_type].edge_index.t().tolist()

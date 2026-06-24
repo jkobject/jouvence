@@ -102,9 +102,11 @@ The fallback policy is model-side learned fallback only; it is not a fabricated 
 
 - sample a random permutation over positive `molecule_targets_gene` edges;
 - validation positives: `min(edge_count // 5, 1024)`, here 12;
+- test positives: `min(edge_count // 5, 1024)`, here 12;
 - training positives: up to `--max-train-edges 32`, here 32;
-- negative train/validation edges are sampled uniformly from molecule/gene index pairs not present in the selected positive edge set;
-- train and validation both include equal positive/negative counts.
+- negative train/validation/test edges are sampled uniformly from molecule/gene index pairs not present in the selected positive edge set;
+- train, validation, and test all include equal positive/negative counts;
+- validation/test metrics are computed on a leak-free message-passing graph that retains only the training positive `molecule_targets_gene` edges and their reverse edges. Validation and test positive labels are removed from both forward and reverse adjacency before `model.encode(...)`.
 
 Observed split:
 
@@ -113,7 +115,9 @@ Observed split:
   "train_positive_edges": 32,
   "train_negative_edges": 32,
   "valid_positive_edges": 12,
-  "valid_negative_edges": 12
+  "valid_negative_edges": 12,
+  "test_positive_edges": 12,
+  "test_negative_edges": 12
 }
 ```
 
@@ -143,7 +147,9 @@ The PASS validation confirms edge attributes were present and consumed:
   "nonempty_splits": true,
   "reverse_edges_present": true,
   "reverse_edge_count_matches": true,
-  "reverse_edges_are_transpose": true
+  "reverse_edges_are_transpose": true,
+  "message_passing_edge_count_matches_train_split": true,
+  "heldout_edges_removed_from_message_passing": true
 }
 ```
 
@@ -155,20 +161,22 @@ Command output status: `pass`.
 {
   "epochs": 5.0,
   "train_loss_trace": [
-    0.6925448179244995,
-    0.6362915635108948,
-    0.5817175507545471,
-    0.522309422492981,
-    0.4607660174369812
+    0.6924418210983276,
+    0.6362107396125793,
+    0.5813294053077698,
+    0.5217739343643188,
+    0.4602312445640564
   ],
-  "initial_train_loss": 0.6925448179244995,
-  "final_train_loss": 0.4607660174369812,
-  "valid_loss": 0.4588026702404022,
-  "valid_accuracy": 0.9166666865348816
+  "initial_train_loss": 0.6924418210983276,
+  "final_train_loss": 0.4602312445640564,
+  "valid_loss": 0.5280608534812927,
+  "valid_accuracy": 0.8333333134651184,
+  "test_loss": 0.5178394913673401,
+  "test_accuracy": 0.875
 }
 ```
 
-Because the subset is tiny and negatives are sampled, the validation accuracy is only a smoke metric. It should not be interpreted as production biology/model quality.
+Because the subset is tiny and negatives are sampled, the validation/test accuracies are only leak-free heldout smoke metrics. They should not be interpreted as production biology/model quality.
 
 ## Commands to rerun
 
@@ -235,16 +243,13 @@ Observed:
 Targeted tests in the dedicated review worktree:
 
 ```bash
-uv run --group dev --group gnn pytest \
-  tests/test_build_pyg_export.py::test_run_pyg_gnn_smoke_trains_on_exported_heterodata \
-  tests/test_build_pyg_export.py::test_pyg_export_wires_real_embeddings_and_learned_fallbacks \
-  -q
+uv run --group dev --group gnn pytest tests/test_build_pyg_export.py -q
 ```
 
 Observed:
 
 ```text
-2 passed in 10.84s
+6 passed in 2.13s
 ```
 
 Compile check:
@@ -269,5 +274,5 @@ It trained for 3 epochs on `molecule_targets_gene` with 4096 train positives and
 - Only `molecule_targets_gene` was trained/evaluated.
 - Only 64 positive edges were included in the strict embedding/fallback run.
 - Real embedding rows are sparse in this staged embedding artifact: most node/edge rows use model-side learned fallback tensors.
-- The reported validation accuracy is a smoke metric on a tiny random split, not a therapeutic prediction benchmark.
+- The reported validation/test accuracies are leak-free heldout smoke metrics on a tiny random split, not therapeutic prediction benchmarks.
 - No canonical KG promotion was performed.

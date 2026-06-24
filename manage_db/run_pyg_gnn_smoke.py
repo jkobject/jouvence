@@ -88,10 +88,12 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
     _ensure_features(data)
     edge_type = _select_edge_type(data, config.relation)
     reverse_edge_type = _find_reverse_edge_type(data, edge_type)
-    train_pos, valid_pos, train_idx, valid_idx = _split_edges(data[edge_type].edge_index, config.max_train_edges, config.seed)
+    train_pos, valid_pos, test_pos, train_idx, valid_idx, test_idx = _split_edges(data[edge_type].edge_index, config.max_train_edges, config.seed)
     train_neg = _negative_edges(data, edge_type, train_pos.size(1), config.seed + 1)
     valid_neg = _negative_edges(data, edge_type, valid_pos.size(1), config.seed + 2)
+    test_neg = _negative_edges(data, edge_type, test_pos.size(1), config.seed + 3)
     edge_attr_dim = int(data[edge_type].edge_attr.size(1)) if hasattr(data[edge_type], "edge_attr") and data[edge_type].edge_attr is not None else None
+    message_passing_data = _build_training_message_passing_graph(data, edge_type, reverse_edge_type, train_idx, valid_idx, test_idx)
 
     model = HeteroSageLinkPredictor(data.metadata(), in_channels=data[data.node_types[0]].x.size(1), hidden_channels=config.hidden_channels, edge_attr_dim=edge_attr_dim)
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
@@ -100,7 +102,7 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
     for _ in range(config.epochs):
         model.train()
         optimizer.zero_grad()
-        z_dict = model.encode(data)
+        z_dict = model.encode(message_passing_data)
         train_edge_attr = data[edge_type].edge_attr[train_idx] if edge_attr_dim else None
         pos_score = model.score(z_dict, edge_type, train_pos, train_edge_attr)
         neg_score = model.score(z_dict, edge_type, train_neg, None)
@@ -113,16 +115,25 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
 
     model.eval()
     with torch.no_grad():
-        z_dict = model.encode(data)
+        z_dict = model.encode(message_passing_data)
         valid_edge_attr = data[edge_type].edge_attr[valid_idx] if edge_attr_dim else None
-        pos_score = model.score(z_dict, edge_type, valid_pos, valid_edge_attr)
-        neg_score = model.score(z_dict, edge_type, valid_neg, None)
-        valid_logits = torch.cat([pos_score, neg_score], dim=0)
-        valid_labels = torch.cat([torch.ones_like(pos_score), torch.zeros_like(neg_score)], dim=0)
-        valid_loss = F.binary_cross_entropy_with_logits(valid_logits, valid_labels)
-        accuracy = ((torch.sigmoid(valid_logits) >= 0.5) == valid_labels.bool()).float().mean()
+        valid_loss, valid_accuracy = _evaluate_edges(model, z_dict, edge_type, valid_pos, valid_neg, valid_edge_attr)
+        test_edge_attr = data[edge_type].edge_attr[test_idx] if edge_attr_dim else None
+        test_loss, test_accuracy = _evaluate_edges(model, z_dict, edge_type, test_pos, test_neg, test_edge_attr)
 
-    validation = _validate_data(data, edge_type, reverse_edge_type, train_pos, valid_pos, train_neg, valid_neg, edge_attr_dim is not None)
+    validation = _validate_data(
+        data,
+        message_passing_data,
+        edge_type,
+        reverse_edge_type,
+        train_pos,
+        valid_pos,
+        test_pos,
+        train_neg,
+        valid_neg,
+        test_neg,
+        edge_attr_dim is not None,
+    )
     result = SmokeResult(
         status="pass" if validation["status"] == "pass" and losses else "fail",
         export_root=str(config.export_root),
@@ -137,6 +148,8 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
             "train_negative_edges": int(train_neg.size(1)),
             "valid_positive_edges": int(valid_pos.size(1)),
             "valid_negative_edges": int(valid_neg.size(1)),
+            "test_positive_edges": int(test_pos.size(1)),
+            "test_negative_edges": int(test_neg.size(1)),
         },
         metrics={
             "epochs": float(config.epochs),
@@ -144,7 +157,9 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
             "initial_train_loss": losses[0],
             "final_train_loss": losses[-1],
             "valid_loss": float(valid_loss.detach().cpu()),
-            "valid_accuracy": float(accuracy.detach().cpu()),
+            "valid_accuracy": float(valid_accuracy.detach().cpu()),
+            "test_loss": float(test_loss.detach().cpu()),
+            "test_accuracy": float(test_accuracy.detach().cpu()),
         },
         validation=validation,
     )
@@ -220,8 +235,8 @@ def _select_edge_type(data: HeteroData, relation: str | None) -> tuple[str, str,
     if not candidates:
         raise ValueError(f"No forward edge type found for relation={relation!r}; available={data.edge_types}")
     edge_type = max(candidates, key=lambda et: int(data[et].edge_index.size(1)))
-    if int(data[edge_type].edge_index.size(1)) < 2:
-        raise ValueError(f"Need at least 2 positive edges for train/valid split, got {data[edge_type].edge_index.size(1)} for {edge_type}")
+    if int(data[edge_type].edge_index.size(1)) < 3:
+        raise ValueError(f"Need at least 3 positive edges for train/valid/test split, got {data[edge_type].edge_index.size(1)} for {edge_type}")
     return edge_type
 
 
@@ -231,17 +246,93 @@ def _find_reverse_edge_type(data: HeteroData, edge_type: tuple[str, str, str]) -
     return rev if rev in data.edge_types else None
 
 
-def _split_edges(edge_index: torch.Tensor, max_train_edges: int, seed: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+def _evaluate_edges(
+    model: HeteroSageLinkPredictor,
+    z_dict: dict[str, torch.Tensor],
+    edge_type: tuple[str, str, str],
+    pos_edges: torch.Tensor,
+    neg_edges: torch.Tensor,
+    pos_edge_attr: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    pos_score = model.score(z_dict, edge_type, pos_edges, pos_edge_attr)
+    neg_score = model.score(z_dict, edge_type, neg_edges, None)
+    logits = torch.cat([pos_score, neg_score], dim=0)
+    labels = torch.cat([torch.ones_like(pos_score), torch.zeros_like(neg_score)], dim=0)
+    loss = F.binary_cross_entropy_with_logits(logits, labels)
+    accuracy = ((torch.sigmoid(logits) >= 0.5) == labels.bool()).float().mean()
+    return loss, accuracy
+
+
+def _build_training_message_passing_graph(
+    data: HeteroData,
+    edge_type: tuple[str, str, str],
+    reverse_edge_type: tuple[str, str, str] | None,
+    train_idx: torch.Tensor,
+    valid_idx: torch.Tensor,
+    test_idx: torch.Tensor,
+) -> HeteroData:
+    if set(train_idx.tolist()) & set(valid_idx.tolist()) or set(train_idx.tolist()) & set(test_idx.tolist()) or set(valid_idx.tolist()) & set(test_idx.tolist()):
+        raise ValueError("Train/validation/test positive edge indices must be disjoint")
+    del valid_idx, test_idx  # validated above; heldout labels are excluded by retaining train_idx only.
+    message_passing_data = data.clone()
+    message_passing_data[edge_type].edge_index = data[edge_type].edge_index[:, train_idx].long().contiguous()
+    if hasattr(data[edge_type], "edge_attr") and data[edge_type].edge_attr is not None:
+        message_passing_data[edge_type].edge_attr = data[edge_type].edge_attr[train_idx].contiguous()
+    if reverse_edge_type is not None:
+        message_passing_data[reverse_edge_type].edge_index = data[edge_type].edge_index[[1, 0], :][:, train_idx].long().contiguous()
+        if hasattr(data[reverse_edge_type], "edge_attr") and data[reverse_edge_type].edge_attr is not None:
+            message_passing_data[reverse_edge_type].edge_attr = data[reverse_edge_type].edge_attr[train_idx].contiguous()
+    return message_passing_data
+
+
+def _edge_pair_set(edge_index: torch.Tensor) -> set[tuple[int, int]]:
+    return set(map(tuple, edge_index.t().tolist()))
+
+
+def _heldout_edges_removed_from_message_passing(
+    message_passing_data: HeteroData,
+    edge_type: tuple[str, str, str],
+    reverse_edge_type: tuple[str, str, str] | None,
+    valid_pos: torch.Tensor,
+    test_pos: torch.Tensor,
+) -> bool:
+    heldout_pairs = _edge_pair_set(valid_pos) | _edge_pair_set(test_pos)
+    message_pairs = _edge_pair_set(message_passing_data[edge_type].edge_index)
+    if heldout_pairs & message_pairs:
+        return False
+    if reverse_edge_type is not None:
+        reverse_heldout_pairs = {(dst, src) for src, dst in heldout_pairs}
+        reverse_message_pairs = _edge_pair_set(message_passing_data[reverse_edge_type].edge_index)
+        if reverse_heldout_pairs & reverse_message_pairs:
+            return False
+    return True
+
+
+def _split_edges(edge_index: torch.Tensor, max_train_edges: int, seed: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     edge_count = int(edge_index.size(1))
+    if edge_count < 3:
+        raise ValueError(f"Need at least 3 positive edges for train/valid/test split, got {edge_count}")
     generator = torch.Generator().manual_seed(seed)
     perm = torch.randperm(edge_count, generator=generator)
+    test_count = max(1, min(edge_count // 5, 1024))
     valid_count = max(1, min(edge_count // 5, 1024))
-    train_count = max(1, min(edge_count - valid_count, max_train_edges))
+    remaining_for_train = edge_count - valid_count - test_count
+    if remaining_for_train < 1:
+        valid_count = 1
+        test_count = 1
+        remaining_for_train = edge_count - 2
+    train_count = max(1, min(remaining_for_train, max_train_edges))
     train_idx = perm[:train_count]
     valid_idx = perm[train_count : train_count + valid_count]
-    if valid_idx.numel() == 0:
-        valid_idx = perm[-1:]
-    return edge_index[:, train_idx].long(), edge_index[:, valid_idx].long(), train_idx.long(), valid_idx.long()
+    test_idx = perm[train_count + valid_count : train_count + valid_count + test_count]
+    return (
+        edge_index[:, train_idx].long(),
+        edge_index[:, valid_idx].long(),
+        edge_index[:, test_idx].long(),
+        train_idx.long(),
+        valid_idx.long(),
+        test_idx.long(),
+    )
 
 
 def _negative_edges(data: HeteroData, edge_type: tuple[str, str, str], count: int, seed: int) -> torch.Tensor:
@@ -266,12 +357,15 @@ def _negative_edges(data: HeteroData, edge_type: tuple[str, str, str], count: in
 
 def _validate_data(
     data: HeteroData,
+    message_passing_data: HeteroData,
     edge_type: tuple[str, str, str],
     reverse_edge_type: tuple[str, str, str] | None,
     train_pos: torch.Tensor,
     valid_pos: torch.Tensor,
+    test_pos: torch.Tensor,
     train_neg: torch.Tensor,
     valid_neg: torch.Tensor,
+    test_neg: torch.Tensor,
     selected_edge_attr_consumed: bool,
 ) -> dict[str, Any]:
     checks: dict[str, Any] = {}
@@ -280,8 +374,10 @@ def _validate_data(
     checks["edge_attr_tensors_present"] = all(hasattr(data[et], "edge_attr") and data[et].edge_attr is not None and data[et].edge_attr.size(0) == data[et].edge_index.size(1) for et in data.edge_types)
     checks["selected_edge_attr_consumed_by_predictor"] = bool(selected_edge_attr_consumed)
     checks["selected_edge_endpoint_bounds"] = _edge_label_bounds_ok(data, edge_type, data[edge_type].edge_index)
-    checks["split_endpoint_bounds"] = all(_edge_label_bounds_ok(data, edge_type, edges) for edges in (train_pos, valid_pos, train_neg, valid_neg))
-    checks["nonempty_splits"] = all(int(edges.size(1)) > 0 for edges in (train_pos, valid_pos, train_neg, valid_neg))
+    checks["split_endpoint_bounds"] = all(_edge_label_bounds_ok(data, edge_type, edges) for edges in (train_pos, valid_pos, test_pos, train_neg, valid_neg, test_neg))
+    checks["nonempty_splits"] = all(int(edges.size(1)) > 0 for edges in (train_pos, valid_pos, test_pos, train_neg, valid_neg, test_neg))
+    checks["heldout_edges_removed_from_message_passing"] = _heldout_edges_removed_from_message_passing(message_passing_data, edge_type, reverse_edge_type, valid_pos, test_pos)
+    checks["message_passing_edge_count_matches_train_split"] = int(message_passing_data[edge_type].edge_index.size(1)) == int(train_pos.size(1))
     if reverse_edge_type is not None:
         forward = data[edge_type].edge_index
         reverse = data[reverse_edge_type].edge_index
