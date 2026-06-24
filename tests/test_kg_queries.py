@@ -195,10 +195,17 @@ def test_cli_diseases_for_gene_json(tmp_path: Path, capsys: pytest.CaptureFixtur
 
 def test_canonical_fuse_brca1_smoke_if_available() -> None:
     root = kg_queries.DEFAULT_KG_ROOT
-    if not (root / "nodes" / "gene.parquet").exists():
-        pytest.skip(f"canonical KG root not mounted: {root}")
+    gene_path = root / "nodes" / "gene.parquet"
+    try:
+        if not gene_path.exists():
+            pytest.skip(f"canonical KG root not mounted: {root}")
+    except OSError as exc:
+        pytest.skip(f"canonical KG root unavailable: {root} ({exc})")
 
-    result = kg_queries.diseases_for_gene(gene_name="BRCA1", kg_root=root, limit=5)
+    try:
+        result = kg_queries.diseases_for_gene(gene_name="BRCA1", kg_root=root, limit=5)
+    except OSError as exc:
+        pytest.skip(f"canonical KG root unavailable during query: {root} ({exc})")
 
     assert list(result.columns) == kg_queries.DISEASE_RESULT_COLUMNS
     assert not result.empty

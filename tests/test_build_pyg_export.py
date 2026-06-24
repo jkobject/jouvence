@@ -7,6 +7,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+import pytest
+
+pytest.importorskip("torch", reason="PyG export HeteroData/smoke tests require optional torch dependency")
+pytest.importorskip("torch_geometric", reason="PyG export HeteroData/smoke tests require optional torch-geometric dependency")
 
 from manage_db import kg_storage
 from manage_db.build_pyg_export import BuildConfig, build_pyg_export, main
