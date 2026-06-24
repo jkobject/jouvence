@@ -70,7 +70,22 @@ Numeric/categorical edge/evidence value features are not in `features/`; they li
 
 Builder module: `manage_db.build_real_embeddings`.
 
-Text-only smoke command used for this card:
+Prefer the GCS-backed local-cache path when the macOS FUSE mount is stale or unavailable. The builder copies only the required canonical objects from `gs://jouvencekb/kg/v2` into `artifacts/cache/<task-id>/...` with `gcloud storage cp`, then reads Parquet locally; this avoids brittle `Path.exists()` calls on `/Users/jkobject/mnt/gcs/...`.
+
+Tiny real S-BioBERT + edge smoke command that does not require FUSE:
+
+```bash
+uv run --with sentence-transformers python -m manage_db.build_real_embeddings \
+  --gcs-kg-root gs://jouvencekb/kg/v2 \
+  --local-cache-dir artifacts/cache/<task-id>_kg_smoke \
+  --output-dir artifacts/staged/<task-id>_real_embeddings_smoke \
+  --text-limit-per-table 1 \
+  --edge-limit-per-relation 1 \
+  --edge-relations molecule_targets_gene \
+  --clean
+```
+
+Text-only smoke command used for the original scaffold (also safe when pointed at a prepared local cache):
 
 ```bash
 uv run --group embeddings-text python -m manage_db.build_real_embeddings   --kg-root artifacts/staged/t_8892763b/feature_inventory   --output-dir artifacts/staged/t_8892763b/text_sbiobert_smoke   --text-limit-per-table 1   --skip-edge-embeddings   --batch-size 2   --clean

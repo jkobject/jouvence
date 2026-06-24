@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
+import manage_db.build_real_embeddings as builder
 import pandas as pd
 import pyarrow.parquet as pq
 
@@ -146,6 +149,51 @@ def test_real_embedding_builder_outputs_staged_vectors_and_manifest(tmp_path: Pa
 
     assert (output_dir / "manifest.json").exists()
     assert (output_dir / "real_embedding_summary.md").exists()
+
+
+def test_gcs_local_cache_smoke_avoids_fuse_path(tmp_path: Path, monkeypatch) -> None:
+    source_root = tmp_path / "source-kg"
+    cache_root = tmp_path / "cache-kg"
+    output_dir = tmp_path / "out-gcs-cache"
+    _write_fixture(source_root)
+    copied: list[tuple[str, str]] = []
+
+    def fake_subprocess_run(args, check=False, stdout=None, stderr=None):
+        assert args[:2] == ["gcloud", "storage"]
+        uri = args[-1] if args[2] == "ls" else args[-2]
+        rel = uri.removeprefix("gs://jouvencekb/kg/v2/")
+        source = source_root / rel
+        if args[2] == "ls":
+            return subprocess.CompletedProcess(args, 0 if source.exists() else 1)
+        assert args[2:5] == ["cp", "--quiet", uri]
+        destination = Path(args[-1])
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        copied.append((uri, str(destination)))
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(builder.subprocess, "run", fake_subprocess_run)
+
+    manifest = run(
+        kg_root=tmp_path / "stale-fuse-not-used",
+        output_dir=output_dir,
+        text_limit_per_table=1,
+        edge_relations=["molecule_targets_gene"],
+        edge_limit_per_relation=1,
+        clean=True,
+        test_deterministic_encoder=True,
+        gcs_kg_root="gs://jouvencekb/kg/v2",
+        local_cache_dir=cache_root,
+    )
+
+    assert manifest["kg_root"] == str(cache_root)
+    assert manifest["input_cache"]["source_gcs_root"] == "gs://jouvencekb/kg/v2"
+    assert "--gcs-kg-root gs://jouvencekb/kg/v2" in manifest["recompute_command"]
+    assert "--local-cache-dir" in manifest["recompute_command"]
+    assert "stale-fuse-not-used" not in manifest["recompute_command"]
+    assert any(uri.endswith("features/protein_textual_summary.parquet") for uri, _ in copied)
+    assert manifest["validation"]["passed"] is True
+    assert "does not depend on the macOS FUSE mount" in (output_dir / "real_embedding_summary.md").read_text()
 
 
 def test_text_only_scaffold_smoke_skips_edge_inputs(tmp_path: Path) -> None:
