@@ -810,3 +810,76 @@ def test_run_pyg_gnn_smoke_cli_writes_leak_free_metrics(tmp_path: Path, capsys) 
         assert result["graph_sizes"]["auxiliary_forward_relations"] == ["molecule_targets_gene"]
         assert result["config"]["seed"] == 7423
         assert result["metrics"]["train_loss_trace"]
+
+
+def _extend_molecule_target_edges_for_smoke(kg_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(kg_path))
+    kg_storage.write_nodes(
+        root,
+        "molecule",
+        _node_df(
+            ["CHEMBL1", "CHEMBL2", "CHEMBL3", "CHEMBL4"],
+            drugbank_id=["DB1", "DB2", "DB3", "DB4"],
+            pubchem_cid=["11", "22", "33", "44"],
+            cas_rn=["CAS1", "CAS2", "CAS3", "CAS4"],
+            inchikey=["I1", "I2", "I3", "I4"],
+            smiles=["C", "CC", "CCC", "CCCC"],
+        ),
+    )
+    kg_storage.write_edges(
+        root,
+        "molecule_targets_gene",
+        _edge_df(
+            "molecule_targets_gene",
+            "molecule",
+            "gene",
+            [
+                ("CHEMBL1", "ENSG000001"),
+                ("CHEMBL2", "ENSG000002"),
+                ("CHEMBL3", "ENSG000003"),
+                ("CHEMBL4", "ENSG000001"),
+            ],
+        ),
+    )
+
+
+def test_run_pyg_gnn_smoke_evaluates_multiple_primary_relations(tmp_path: Path) -> None:
+    kg_path = _build_tiny_kg(tmp_path)
+    _extend_disease_edges_for_smoke(kg_path)
+    _extend_molecule_target_edges_for_smoke(kg_path)
+    output_path = tmp_path / "pyg-multitarget-smoke"
+    build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=None,
+            max_edges_per_relation=10,
+            strict=True,
+            build_name="unit-multitarget-smoke",
+        )
+    )
+
+    result = run_smoke(
+        SmokeConfig(
+            export_root=output_path,
+            primary_relations=("disease_associated_gene", "molecule_targets_gene"),
+            epochs=1,
+            hidden_channels=4,
+            max_train_edges=2,
+            output_json=tmp_path / "multitarget_metrics.json",
+        )
+    )
+
+    assert result.status == "pass"
+    assert result.config["primary_relations"] == ["disease_associated_gene", "molecule_targets_gene"]
+    assert set(result.primary_results) == {"disease_associated_gene", "molecule_targets_gene"}
+    for relation, payload in result.primary_results.items():
+        assert payload["relation"] == relation
+        assert payload["validation"]["checks"]["heldout_edges_removed_from_message_passing"] is True
+        assert payload["validation"]["checks"]["message_passing_edge_count_matches_train_split"] is True
+        assert payload["validation"]["checks"]["selected_edge_attr_consumed_by_predictor"] is True
+        assert payload["metrics"]["train_loss_trace"]
+    assert set(result.metrics["primary_relation_metrics"]) == {"disease_associated_gene", "molecule_targets_gene"}
+    assert (tmp_path / "multitarget_metrics.json").exists()

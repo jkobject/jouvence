@@ -15,6 +15,8 @@ import argparse
 import json
 import pickle
 import random
+import resource
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -31,6 +33,7 @@ from torch_geometric.nn import HeteroConv, SAGEConv
 class SmokeConfig:
     export_root: Path
     relation: str | None = None
+    primary_relations: tuple[str, ...] = ()
     epochs: int = 3
     hidden_channels: int = 16
     seed: int = 13
@@ -55,6 +58,7 @@ class SmokeResult:
     metrics: dict[str, Any]
     validation: dict[str, Any]
     config: dict[str, Any]
+    primary_results: dict[str, Any]
 
 
 class HeteroSageLinkPredictor(nn.Module):
@@ -85,13 +89,47 @@ class HeteroSageLinkPredictor(nn.Module):
 
 
 def run_smoke(config: SmokeConfig) -> SmokeResult:
+    start = time.perf_counter()
     random.seed(config.seed)
     np.random.seed(config.seed)
     torch.manual_seed(config.seed)
 
     data = _load_heterodata(config.export_root, config.relation)
     _ensure_features(data)
-    edge_type = _select_edge_type(data, config.relation)
+    edge_types = _select_primary_edge_types(data, config)
+    relation_results: list[SmokeResult] = []
+    for offset, edge_type in enumerate(edge_types):
+        relation_config = SmokeConfig(
+            export_root=config.export_root,
+            relation=edge_type[1],
+            epochs=config.epochs,
+            hidden_channels=config.hidden_channels,
+            seed=config.seed + offset * 10_007,
+            max_train_edges=config.max_train_edges,
+            learning_rate=config.learning_rate,
+        )
+        relation_results.append(_run_single_relation_smoke(data, relation_config, edge_type))
+
+    result = relation_results[0]
+    result.primary_results = {
+        item.relation: _jsonable({k: v for k, v in asdict(item).items() if k != "primary_results"})
+        for item in relation_results
+    }
+    result.status = "pass" if all(item.status == "pass" for item in relation_results) else "fail"
+    result.config["primary_relations"] = [edge_type[1] for edge_type in edge_types]
+    if len(edge_types) > 1:
+        result.config["relation_role"] = "multi_primary_link_prediction_relations_with_non_selected_relations_as_auxiliary_message_passing_context"
+    result.metrics["primary_relation_metrics"] = {item.relation: dict(item.metrics) for item in relation_results}
+    result.metrics["runtime_seconds"] = round(time.perf_counter() - start, 6)
+    result.metrics["peak_rss_mb"] = _peak_rss_mb()
+    if config.output_json:
+        config.output_json.parent.mkdir(parents=True, exist_ok=True)
+        config.output_json.write_text(json.dumps(_jsonable(asdict(result)), indent=2, sort_keys=True) + "\n")
+    return result
+
+
+def _run_single_relation_smoke(data: HeteroData, config: SmokeConfig, edge_type: tuple[str, str, str]) -> SmokeResult:
+    start = time.perf_counter()
     reverse_edge_type = _find_reverse_edge_type(data, edge_type)
     train_pos, valid_pos, test_pos, train_idx, valid_idx, test_idx = _split_edges(data[edge_type].edge_index, config.max_train_edges, config.seed)
     train_neg = _negative_edges(data, edge_type, train_pos.size(1), config.seed + 1)
@@ -167,6 +205,8 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
             "valid_accuracy": float(valid_accuracy.detach().cpu()),
             "test_loss": float(test_loss.detach().cpu()),
             "test_accuracy": float(test_accuracy.detach().cpu()),
+            "runtime_seconds": round(time.perf_counter() - start, 6),
+            "peak_rss_mb": _peak_rss_mb(),
         },
         validation=validation,
         config={
@@ -177,10 +217,8 @@ def run_smoke(config: SmokeConfig) -> SmokeResult:
             "learning_rate": config.learning_rate,
             "relation_role": "primary_link_prediction_relation_with_other_relations_as_auxiliary_message_passing_context",
         },
+        primary_results={},
     )
-    if config.output_json:
-        config.output_json.parent.mkdir(parents=True, exist_ok=True)
-        config.output_json.write_text(json.dumps(_jsonable(asdict(result)), indent=2, sort_keys=True) + "\n")
     return result
 
 
@@ -253,6 +291,23 @@ def _select_edge_type(data: HeteroData, relation: str | None) -> tuple[str, str,
     if int(data[edge_type].edge_index.size(1)) < 3:
         raise ValueError(f"Need at least 3 positive edges for train/valid/test split, got {data[edge_type].edge_index.size(1)} for {edge_type}")
     return edge_type
+
+
+def _select_primary_edge_types(data: HeteroData, config: SmokeConfig) -> list[tuple[str, str, str]]:
+    requested = list(config.primary_relations or (() if config.relation is None else (config.relation,)))
+    if not requested:
+        return [_select_edge_type(data, None)]
+    edge_types: list[tuple[str, str, str]] = []
+    for relation in dict.fromkeys(requested):
+        edge_types.append(_select_edge_type(data, relation))
+    return edge_types
+
+
+def _peak_rss_mb() -> float:
+    value = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    if value > 10_000_000:  # macOS reports bytes.
+        return round(value / (1024 * 1024), 3)
+    return round(value / 1024, 3)  # Linux reports KiB.
 
 
 def _find_reverse_edge_type(data: HeteroData, edge_type: tuple[str, str, str]) -> tuple[str, str, str] | None:
@@ -478,6 +533,7 @@ def parse_args(argv: list[str] | None = None) -> SmokeConfig:
     parser = argparse.ArgumentParser(description="Run a bounded PyG GNN smoke/training job on an exported HeteroData graph")
     parser.add_argument("--export-root", required=True, type=Path)
     parser.add_argument("--relation", default=None)
+    parser.add_argument("--primary-relations", "--relations", nargs="+", default=[])
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--hidden-channels", type=int, default=16)
     parser.add_argument("--seed", type=int, default=13)
@@ -488,6 +544,7 @@ def parse_args(argv: list[str] | None = None) -> SmokeConfig:
     return SmokeConfig(
         export_root=ns.export_root,
         relation=ns.relation,
+        primary_relations=tuple(ns.primary_relations),
         epochs=ns.epochs,
         hidden_channels=ns.hidden_channels,
         seed=ns.seed,
