@@ -757,16 +757,16 @@ def build_artifacts(
     return manifest
 
 
-def default_output_dir(base: Path | str = ".omoc/staging") -> Path:
+def default_output_dir(base: Path | str = "artifacts/staged") -> Path:
     return Path(base) / f"hpa-cellular-components-{date.today().isoformat()}"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--hpa-zip", default=".omoc/gcs-cache/kg-v2/raw/hpa-25.1/proteinatlas.tsv.zip")
-    parser.add_argument("--protein-nodes", default=".omoc/gcs-cache/kg-v2/nodes/protein.parquet")
-    parser.add_argument("--go-obo", default=".omoc/gcs-cache/kg-v2/raw/go-current/go-basic.obo")
-    parser.add_argument("--uniprot-subcell", default=".omoc/gcs-cache/kg-v2/raw/uniprot-current/subcell.txt")
+    parser.add_argument("--hpa-zip", default="/Users/jkobject/mnt/gcs/jouvencekb-kg/v2/raw/hpa-25.1/proteinatlas.tsv.zip")
+    parser.add_argument("--protein-nodes", default="/Users/jkobject/mnt/gcs/jouvencekb-kg/v2/nodes/protein.parquet")
+    parser.add_argument("--go-obo", default="/Users/jkobject/mnt/gcs/jouvencekb-kg/v2/raw/go-current/go-basic.obo")
+    parser.add_argument("--uniprot-subcell", default="/Users/jkobject/mnt/gcs/jouvencekb-kg/v2/raw/uniprot-current/subcell.txt")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--hpa-release", default="HPA 25.1")
     parser.add_argument("--download-missing", action="store_true", help="Download public HPA/GO/UniProt mapping files when missing")

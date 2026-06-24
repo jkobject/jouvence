@@ -63,7 +63,9 @@ def test_variant_cleanup_relations_are_directional_and_active() -> None:
     assert RELATION_BY_NAME["mutation_in_gene"].direct is True
     assert RELATION_BY_NAME["mutation_associated_gene"].direct is False
     assert RELATION_BY_NAME["mutation_overlaps_enhancer"].direct is False
-    assert "also have disease, phenotype, drug-response" in RELATION_BY_NAME["mutation_overlaps_enhancer"].notes
+    enhancer_notes = RELATION_BY_NAME["mutation_overlaps_enhancer"].notes
+    assert "staged/context/feature" in enhancer_notes
+    assert "not a standalone causal edge" in enhancer_notes
     assert "all clinical-significance classes" in RELATION_BY_NAME["mutation_associated_phenotype"].notes
 
 

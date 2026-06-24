@@ -903,7 +903,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--input", default=INTACT_HUMAN_URL, help="MITAB27 positive input path/URL")
     parser.add_argument("--negative-input", default="", help="Optional MITAB27 negative input path/URL for side evidence")
     parser.add_argument("--node-root", default="", help="KG root containing nodes/protein.parquet for UniProt anti-join/mapping")
-    parser.add_argument("--output-dir", default=".omoc/staging/intact-protein-interactions-current")
+    parser.add_argument("--output-dir", default="artifacts/staged/intact-protein-interactions-current")
     parser.add_argument("--max-rows", type=int, default=None, help="Sample only first N positive MITAB rows")
     parser.add_argument("--negative-max-rows", type=int, default=None, help="Sample only first N negative rows")
     parser.add_argument("--feature", action="append", default=[], help="Feature kind=path_or_url; repeatable")

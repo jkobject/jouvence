@@ -58,7 +58,7 @@ metadata directory. A typical `metadata/provenance.json` looks like:
   "code_sha": "3004725...",
   "code_version": "v0.2.0-dev",
   "sources": {
-    "legacy_local": {
+    "archived_local": {
       "version": "v0.2.0-dev",
       "uri": "./data/kg",
       "sha256": "…",
@@ -73,4 +73,3 @@ metadata directory. A typical `metadata/provenance.json` looks like:
 
 `SUMMARY.md` provides a human-readable summary of node/edge counts and total
 storage size for quick inspections.
-

@@ -1,6 +1,6 @@
 # TxGNN: Zero-shot prediction of therapeutic use with geometric deep learning and human centered design
 
-This repository hosts the official implementation of TxGNN, a model for identifying therapeutic opportunities for diseases with limited treatment options and minimal molecular understanding that leverages recent advances in geometric deep learning and human-centered. 
+This repository hosts the official implementation of TxGNN, a model for identifying therapeutic opportunities for diseases with limited treatment options and minimal molecular understanding that leverages recent advances in geometric deep learning and human-centered.
 
 TxGNN is a graph neural network pre-trained on a comprehensive knowledge graph of 17,080 clinically-recognized diseases and 7,957 therapeutic candidates. The model can process various therapeutic tasks, such as indication and contraindication prediction, in a unified formulation. Once trained, we show that TxGNN can perform zero-shot inference on new diseases without additional parameters or fine-tuning on ground truth labels.
 
@@ -10,7 +10,7 @@ TxGNN is a graph neural network pre-trained on a comprehensive knowledge graph o
 
 ![TxGNN](fig/txgnn_fig1.png)
 
-### Installation 
+### Installation
 
 ```bash
 conda create --name txgnn_env python=3.8
@@ -20,10 +20,10 @@ conda install -c dglteam dgl-cuda{$CUDA_VERSION}==0.5.2 # checkout https://www.d
 pip install TxGNN
 ```
 
-Note that if you want to use disease-area split, you should also install PyG following [this instruction](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) since some legacy data processing code uses PyG utility functions.
+Note that if you want to use disease-area split, you should also install PyG following [this instruction](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) since some archived data processing code uses PyG utility functions.
 
 ### Core API Interface
-Using the API, you can (1) reproduce the results in our paper and (2) train TxGNN on your own drug repurposing dataset using a few lines of code, and also generate graph explanations. 
+Using the API, you can (1) reproduce the results in our paper and (2) train TxGNN on your own drug repurposing dataset using a few lines of code, and also generate graph explanations.
 
 ```python
 from txgnn import TxData, TxGNN, TxEval
@@ -31,7 +31,7 @@ from txgnn import TxData, TxGNN, TxEval
 # Download/load knowledge graph dataset
 TxData = TxData(data_folder_path = './data')
 TxData.prepare_split(split = 'complex_disease', seed = 42)
-TxGNN = TxGNN(data = TxData, 
+TxGNN = TxGNN(data = TxData,
               weight_bias_track = False,
               proj_name = 'TxGNN', # wandb project name
               exp_name = 'TxGNN', # wandb experiment name
@@ -64,16 +64,16 @@ We provide an example pre-trained model weight at [here](https://drive.google.co
 To do pre-training using link prediction for all edge types, you can type:
 
 ```python
-TxGNN.pretrain(n_epoch = 2, 
+TxGNN.pretrain(n_epoch = 2,
                learning_rate = 1e-3,
-               batch_size = 1024, 
+               batch_size = 1024,
                train_print_per_n = 20)
 ```
 
 Lastly, to do finetuning on drug-disease relation with metric learning, you can type:
 
 ```python
-TxGNN.finetune(n_epoch = 500, 
+TxGNN.finetune(n_epoch = 500,
                learning_rate = 5e-4,
                train_print_per_n = 5,
                valid_per_n = 20,
@@ -91,9 +91,9 @@ To evaluate the model on the entire test set using disease-centric evaluation, y
 ```python
 from txgnn import TxEval
 TxEval = TxEval(model = TxGNN)
-result = TxEval.eval_disease_centric(disease_idxs = 'test_set', 
-                                     show_plot = False, 
-                                     verbose = True, 
+result = TxEval.eval_disease_centric(disease_idxs = 'test_set',
+                                     show_plot = False,
+                                     verbose = True,
                                      save_result = True,
                                      return_raw = False,
                                      save_name = 'SAVE_PATH')
@@ -103,8 +103,8 @@ result = TxEval.eval_disease_centric(disease_idxs = 'test_set',
 If you want to look at specific disease, you can also do:
 
 ```python
-result = TxEval.eval_disease_centric(disease_idxs = [9907.0, 12787.0], 
-                                     relation = 'indication', 
+result = TxEval.eval_disease_centric(disease_idxs = [9907.0, 12787.0],
+                                     relation = 'indication',
                                      save_result = False)
 ```
 
@@ -142,9 +142,9 @@ There are numerous splits prepared in TxGNN. You can switch among them in the `T
 - Disease area split first obtains a set of diseases in a disease area using disease ontology and move all of their treatments to the test set and then further removes a fraction of local neighborhood around these diseases to simulate the lack of molecular mechanism characterization of these diseases. There are nine disease areas: `cell_proliferation`, `mental_health`, `cardiovascular`, `anemia`, `adrenal_gland`, `autoimmune`, `metabolic_disorder`, `diabetes`, `neurodigenerative`
 - `random` is namely random splits which it randomly shuffles across drug-disease pairs. In the end, most of diseases have seen some treatments in the training set.
 
-During deployment, when evaluate a specific disease, you may want to just mask this disease and use all of the other diseases. In this case, you can use `TxData.prepare_split(split = 'disease_eval', disease_eval_idx = 'XX')` where `disease_eval_idx` is the index of the disease of interest. 
+During deployment, when evaluate a specific disease, you may want to just mask this disease and use all of the other diseases. In this case, you can use `TxData.prepare_split(split = 'disease_eval', disease_eval_idx = 'XX')` where `disease_eval_idx` is the index of the disease of interest.
 
-Another setting is to train the entire network without any disease masking. You can do that via `split = 'full_graph'`. This will automatically use 95% of data for training and 5% for validation set calculation to do early stopping. No test set is used. 
+Another setting is to train the entire network without any disease masking. You can do that via `split = 'full_graph'`. This will automatically use 95% of data for training and 5% for validation set calculation to do early stopping. No test set is used.
 
 
 ### Cite Us

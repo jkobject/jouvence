@@ -293,7 +293,7 @@ def stage_chembl_molecule_targets_protein(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kg-path", type=Path, required=True, help="KG root containing nodes/protein.parquet and nodes/molecule.parquet")
-    parser.add_argument("--raw-dir", type=Path, default=Path(".omoc/raw/chembl/molecule_targets_protein"))
+    parser.add_argument("--raw-dir", type=Path, default=Path("artifacts/cache/raw/chembl/molecule_targets_protein"))
     parser.add_argument("--staging-root", type=Path, required=True)
     parser.add_argument("--release", default="ChEMBL API 2026-06-22")
     parser.add_argument("--max-records", type=int, default=None, help="Optional bounded smoke limit")

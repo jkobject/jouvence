@@ -1,216 +1,158 @@
 # TxGNN / Jouvence KG Schema Overview
 
-This file holds the detailed schema description that used to live in
-`CLAUDE.md`. Keep `CLAUDE.md` as boot context only; update this document when
-node types, relation lifecycle statuses, evidence layout, or graph export
-interfaces change.
+This document is the readable schema/status overview for the current Jouvence KG. It was refreshed by Kanban task `t_0b1f53d9` from `manage_db/kg_schema.py`, `manage_db/kg_evidence.py`, and canonical FUSE root `/Users/jkobject/mnt/gcs/jouvencekb-kg/v2`.
 
-### Node Schema & GCS Coverage
+For the full per-relation next-action table, see `docs/relation_coverage_current.md`.
 
-| Node type    | Primary ontology / ID namespace               | GCS? |       Rows | Comment                                                                                               |
-| ------------ | --------------------------------------------- | ---- | ---------: | ----------------------------------------------------------------------------------------------------- |
-| `paper`      | PubMed (`PMID:12345678`)                      | yes  |  2,958,199 | Europe PMC PMIDs; live `lnschema_txgnn.Paper` parity passes                                           |
-| `gene`       | Ensembl (`ENSG00000139618`)                   | yes  |    267,830 | OpenTargets 26.03 target IDs; expression/evidence + orthology stubs added                    |
-| `transcript` | Ensembl (`ENST00000380152`)                   | yes  |    507,365 | OpenTargets 26.03 target transcripts                                                                  |
-| `protein`    | Ensembl Protein (`ENSP00000369497`)           | yes  |    233,995 | OpenTargets 26.03 target translations; UniProt is an xref                                             |
-| `pathway`    | Reactome / GO (`R-HSA-5633007`, `GO:0008150`) | yes  |     48,575 | OpenTargets Reactome evidence stubs + GO terms                                               |
-| `molecule`   | ChEMBL (`CHEMBL941`)                          | yes  |     31,007 | OpenTargets `drug_molecule` xrefs/properties; pharmacogenomics stubs added                   |
-| `mutation`   | dbSNP (`rs7412`) / gnomAD-style variant IDs   | yes  |  2,589,509 | pharmacogenomics stubs + promoted protein-change/GWAS mutation union                                  |
-| `disease`    | EFO (`EFO:0000305`)                           | yes  |     41,859 | OpenTargets disease IDs; normalized CURIE IDs with duplicate underscore/colon rows collapsed |
-| `cell_type`  | CL (`CL:0000576`)                             | yes  |      3,513 | OpenTargets biosample CL IDs                                                                          |
-| `tissue`     | UBERON (`UBERON:0002107`)                     | yes  |     16,061 | UBERON-derived + OpenTargets biosample                                                                |
-| `phenotype`  | HP (`HP:0000118`)                             | yes  |     16,449 | HP-derived + OpenTargets HPO stubs                                                                    |
-| `cell_line`  | Cellosaurus (`CVCL_0023`)                     | yes  |      1,183 | OpenTargets DepMap/essentiality cell model IDs; source-backed remaining slice                         |
-| `organism`   | NCBI Taxonomy (`NCBITaxon:9606`)              | yes  |          1 | human organism node; LaminDB/bionty parity passes                                                     |
-| `dataset`    | DOI / UUID (`DOI:10.1038/s41586-023-06221-2`) | yes  |          1 | OpenTargets DepMap/essentiality dataset provenance node                                               |
-| `enhancer`   | ENCODE/OpenTargets interval ID                | yes  | 48,808,144 | OpenTargets enhancer interval IDs from enhancer-to-gene evidence                                      |
+## Current canonical snapshot
 
-Planned source-native node families from S1 policy (`docs/source_native_expansion_policy.md`):
+- Canonical KG root audited: `/Users/jkobject/mnt/gcs/jouvencekb-kg/v2`
+- Node files: `15 / 15`
+- Node rows: `55,523,691`
+- Declared active relations: `67`
+- Canonical edge files: `38 / 67`
+- Canonical edge rows: `97,480,846`
+- Evidence files: `16`
+- Canonical relations with evidence file: `16`
+- Declared relations not canonical yet: `29`
 
-- `protein_complex`: should be a node type for named source-native protein complexes; do not flatten complexes into generic pairwise PPIs or evidence-only fields when the source has a complex identity.
-- `ptm_site` / structured PTM event: site-level PTM evidence should become a structured site/event representation once the schema is finalized; vague PTM mentions remain evidence metadata.
-- `mature_mirna` / `mirna_precursor` candidate labels: create miR-primary nodes only when a mature/precursor miRNA entity is distinct from an existing ENST `transcript` node. True 1:1 miRBase/hsa-miR mappings should be aliases/xrefs on existing transcript nodes.
+## Node Schema & GCS Coverage
 
-### Edge Schema & GCS Coverage
+| Node type | Rows | Present? |
+| --- | ---: | --- |
+| `paper` | 2,958,199 | yes |
+| `gene` | 267,830 | yes |
+| `transcript` | 507,365 | yes |
+| `protein` | 233,995 | yes |
+| `pathway` | 48,575 | yes |
+| `molecule` | 31,007 | yes |
+| `mutation` | 2,589,509 | yes |
+| `disease` | 41,859 | yes |
+| `cell_type` | 3,513 | yes |
+| `tissue` | 16,061 | yes |
+| `phenotype` | 16,449 | yes |
+| `cell_line` | 1,183 | yes |
+| `organism` | 1 | yes |
+| `dataset` | 1 | yes |
+| `enhancer` | 48,808,144 | yes |
 
-All edges stored as Parquet with at minimum:
+Planned source-native node families remain non-active until schema extension: `protein_complex`, structured PTM/site/event nodes, and mature/precursor miRNA nodes where the entity is distinct from an existing ENST transcript node.
 
-```
+## Relation status summary
+
+| Bucket | Count | Meaning |
+| --- | ---: | --- |
+| `canonical+validated` | 37 | Derived from RELATIONS plus current FUSE/bucket inventory. |
+| `canonical promoted / review-accepted` | 1 | `mutation_affects_transcript` was promoted by `t_225ae18c` from the accepted all-part OpenTargets 26.03 candidate and accepted by independent review. |
+| `canonical with evidence file` | 16 | Derived from RELATIONS plus current FUSE/bucket inventory. |
+| `canonical without evidence file` | 22 | Derived from RELATIONS plus current FUSE/bucket inventory. |
+| `staged-only/deferred` | 19 | Derived from RELATIONS plus current FUSE/bucket inventory. |
+| `source-audit-only/deferred` | 2 | Derived from RELATIONS plus current FUSE/bucket inventory. |
+| `feature-context-not-edge` | 2 | Derived from RELATIONS plus current FUSE/bucket inventory. |
+| `schema-only/missing` | 6 | Derived from RELATIONS plus current FUSE/bucket inventory. |
+| `intentionally retired active relations` | 0 | None in active RELATIONS; stale/non-active concepts are listed below. |
+
+## Edge schema
+
+All canonical edge Parquet files use at minimum:
+
+```text
 x_id, x_type, y_id, y_type, relation, display_relation,
 source, credibility, [additional metadata columns...]
 ```
 
-**Kind legend:**
+Evidence/support records live in `evidence/{relation}.parquet`, keyed by relation and edge endpoints, with source-specific fields such as `evidence_type`, `source`, `source_dataset`, `source_record_id`, `paper_id`, `dataset_id`, `study_id`, `evidence_score`, effect/statistical fields, predicate/direction fields, and provenance.
 
-- `central_dogma` — molecular biology sequence/expression flow
-- `regulatory` — transcriptional / epigenetic control
-- `physical` — direct molecular binding or complex membership
-- `genetic` — genomic position or variant association
-- `pathway` — functional pathway membership
-- `pharmacological` — drug action on target or disease
-- `expression` — quantitative abundance in context
-- `disease_assoc` — statistical or causal disease link
-- `phenotype_assoc` — phenotypic consequence
-- `ontological` — IS-A / part-of hierarchy
-- `experimental` — derived from cell line / in-vitro assay
-- `epidemiological` — population-level co-occurrence
-- `literature` — NLP / co-mention in text
-- `metadata` — dataset provenance
+## Modeling decisions that matter for ingestion
 
-**Direct flag:**
+- Relation names must match the source-native assertion and endpoint type.
+- Gene-level sources stay in gene relations (`molecule_targets_gene`, `gene_interacts_gene`, `pathway_contains_gene`); split to protein/TF/transcript relations only with source-native endpoints/assertions.
+- Protein relations require direct protein/isoform evidence or direct protein measurement. Do not project RNA/gene rows into protein edges.
+- `tissue_expresses_protein` is direct HPA protein expression/staining and is canonical; `cell_type_expresses_protein` is still not canonical.
+- `protein_interacts_protein` is now canonical from source-native IntAct direct PPI; BioGRID physical/PTM/complex subsets remain future decomposition, not a blind merge.
+- ReMap `tf_binds_enhancer` is staged-only/deferred and should stay CRM/regulatory-region/support-specific; all-peak or motif-only ReMap is feature/context, not a canonical edge.
+- miRNA, lncRNA, RBP, Complex Portal, and PTM work need explicit endpoint/node/event policies before canonical promotion.
+- Edges are deduplicated graph assertions; evidence rows carry source predicates, scores, assays, papers, studies, context, and provenance.
+- Do not create placeholder Parquets just to satisfy schema coverage.
 
-- yes = direct biological interaction (physical, mechanistic, sequence-derived)
-- maybe = sometimes direct depending on source
-- no = associative / statistical / indirect
+## Current relation coverage table
 
-Schema-cleanup and evidence doctrine live in
-`docs/evidence_and_edge_schema_plan.md`. New imports should treat papers and
-source records primarily as evidence/support metadata for biological edges, not
-as the primary biological assertion.
+| Relation | X→Y | Kind | Direct | Status | Edge rows | Evidence rows | Staged edge/evidence rows | Next action | Notes |
+| --- | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- |
+| `gene_has_transcript` | `gene→transcript` | `central_dogma` | yes | `canonical+validated` | 507,365 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Transcription |
+| `transcript_encodes_protein` | `transcript→protein` | `central_dogma` | yes | `canonical+validated` | 233,995 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Translation |
+| `mutation_in_gene` | `mutation→gene` | `genetic` | yes | `staged-only/deferred` | - | - | 1,568,719/1,568,719 | Review bounded genomic-direct pilot; keep containment separate from L2G/GWAS association. | Physical/genomic containment only; do not use for L2G/GWAS association or OpenTargets L2G targetId smoke output — staged edges/evidence: 1,568,719/1,568,719 |
+| `mutation_associated_gene` | `mutation→gene` | `genetic` | no | `canonical+validated` | 535,093 | 535,093 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Statistical/functional locus-to-gene prediction (for example OpenTargets L2G/GWAS); canonical promoted GWAS/L2G relation with evidence support — evidence rows: 535,093 |
+| `mutation_affects_transcript` | `mutation→transcript` | `genetic` | yes | `canonical promoted` | 2,599,922 | 2,599,922 | -/- | Promotion `t_225ae18c` accepted by independent review; rerun endpoint/evidence audit when upstream source changes. | OpenTargets 26.03 VEP transcriptConsequences transcriptId rows after allowed transcript-local SO filtering and `isEnsemblCanonical == true`; canonical mutation/transcript endpoints required. Promotion report: `docs/mutation_affects_transcript_canonical_promotion_t_225ae18c.md`. |
+| `mutation_causes_protein_change` | `mutation→protein` | `genetic` | yes | `canonical+validated` | 177,735 | 177,735 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Amino acid change with ENSP protein endpoint; canonical OpenTargets protein-change edge and evidence files exist — evidence rows: 177,735 |
+| `mutation_overlaps_enhancer` | `mutation→enhancer` | `genetic` | no | `staged-only/deferred` | - | - | 1,664,278/1,664,278 | Keep bounded overlap staged/context/feature; reviewer `t_289a2e9b` rejected downstream-gated exact overlap as canonical edge material unless stronger regulatory evidence is selected. | Variant-enhancer interval overlap retained only as staged/context/feature material unless stronger allele-specific regulatory or enhancer-activity evidence is selected; downstream-gated overlap itself is contextual evidence, not a standalone causal edge. — staged edges/evidence: 1,664,278/1,664,278; current 25k smoke had 1,670,937 mechanically valid but non-canonical contextual edges. |
+| `mutation_associated_disease` | `mutation→disease` | `genetic` | no | `canonical+validated` | 4,656,171 | 4,656,171 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | GWAS / ClinVar / OpenTargets known-variant disease association; canonical edge exists, evidence backfill remains next tranche — evidence rows: 4,656,171 |
+| `mutation_associated_phenotype` | `mutation→phenotype` | `genetic` | no | `canonical+validated` | 164,406 | 169,005 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | OpenTargets EVA/ClinVar HP-only mutation→phenotype association; include all clinical-significance classes and preserve the exact assertion in edge/evidence metadata rather than restricting the relation to pathogenic/likely pathogenic. — evidence rows: 169,005 |
+| `gene_associated_phenotype` | `gene→phenotype` | `phenotype_assoc` | no | `canonical+validated` | 3,330 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Non-causal HPO gene-to-phenotype association; direction is gene→phenotype |
+| `mutation_affects_molecule_response` | `mutation→molecule` | `pharmacological` | no | `canonical+validated` | 4,866 | 18,595 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Pharmacogenomics — evidence rows: 18,595 |
+| `gene_ortholog_gene` | `gene→gene` | `genetic` | yes | `canonical+validated` | 161,675 | 161,675 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Cross-species orthology — evidence rows: 161,675 |
+| `enhancer_regulates_gene` | `enhancer→gene` | `regulatory` | no | `canonical+validated` | 48,808,144 | 48,810,390 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | ENCODE-rE2G composite enhancer-to-gene prediction; preserve biosample, assay feature scores, distance, study, and model score in edge/evidence metadata. — evidence rows: 48,810,390 |
+| `enhancer_regulates_transcript` | `enhancer→transcript` | `regulatory` | yes | `source-audit-only/deferred` | - | - | -/- | Source audit exists only; require ENST/TSS-native regulatory source, not enhancer→gene expansion. | transcript-specific/TSS-specific regulation; require a source that directly names ENST/TSS endpoints and is not inferred by expanding enhancer→gene to all transcripts |
+| `gene_coexpressed_gene` | `gene→gene` | `expression` | no | `feature-context-not-edge` | - | - | -/- | Keep as feature/context unless a concrete coexpression network edge policy is approved. | Co-expression network |
+| `tissue_expresses_gene` | `tissue→gene` | `expression` | yes | `canonical+validated` | 5,338,736 | - | -/- | Canonical expression edge, but evidence file is absent; decide whether expression should remain edge vs feature with provenance. | GTEx / HPA bulk RNA |
+| `tissue_expresses_protein` | `tissue→protein` | `expression` | yes | `canonical+validated` | 137,351 | 137,531 | -/- | Canonical direct HPA tissue protein expression; no RNA→protein projection. | Direct Human Protein Atlas tissue protein expression/staining with protein measurement metadata; do not populate from RNA projection. — evidence rows: 137,531; HPA direct protein staining/intensity only; no RNA projection |
+| `cell_type_expresses_gene` | `cell_type→gene` | `expression` | yes | `canonical+validated` | 1,561,873 | - | -/- | Canonical expression edge, but evidence file is absent; decide whether expression should remain edge vs feature with provenance. | scRNA-seq (CellxGene) |
+| `cell_type_expresses_protein` | `cell_type→protein` | `expression` | yes | `schema-only/missing` | - | - | -/- | Await direct HPA cell-type/staining/protein table decision; do not populate from RNA. | Direct cell-type protein abundance/staining source only; do not populate from RNA projection. — protein expression requires direct protein measurement, not mRNA projection |
+| `cell_line_expresses_gene` | `cell_line→gene` | `experimental` | yes | `canonical+validated` | 20,928,056 | - | -/- | Canonical expression edge, but evidence file is absent; decide whether expression should remain edge vs feature with provenance. | RNA-seq (CCLE…) |
+| `cell_line_expresses_protein` | `cell_line→protein` | `experimental` | yes | `staged-only/deferred` | - | - | 3,083/3,090 | Review staged cell-line proteomics pilot before promotion. | Direct cell-line proteomics source only; do not populate from mRNA projection. — staged edges/evidence: 3,083/3,090; protein expression requires direct protein measurement, not mRNA projection |
+| `cell_line_gene_essentiality` | `cell_line→gene` | `experimental` | no | `staged-only/deferred` | - | - | 1,433,992/1,433,992 | Review staged DepMap/Project Score essentiality pilot before promotion. | DepMap/Project Score/CRISPR gene essentiality or dependency measurement; preserve score/effect/study fields in evidence or feature tables and do not model as protein expression. — staged edges/evidence: 1,433,992/1,433,992 |
+| `gene_interacts_gene` | `gene→gene` | `physical` | no | `canonical+validated` | 7,424,037 | 14,336,594 | -/- | Canonical broad gene/gene-product relation remains valid with OpenTargets evidence subset and accepted TxGNN legacy no-fabricated-evidence exception; do not split into protein/TF/transcript from gene endpoints. | Keep broad for current OpenTargets interaction because canonical endpoints are gene-level; preserve source-specific evidence metadata and do not project text_span product IDs into protein/transcript/TF/enhancer relations. — evidence rows: 14,336,594 |
+| `tf_regulates_gene` | `gene→gene` | `regulatory` | yes | `schema-only/missing` | - | - | -/- | Pick a concrete source and endpoint/evidence policy before any build. | Transcription-factor gene product regulates target gene expression; require source-native TF/regulator semantics, not from canonical gene_interacts_gene, and preserve direction, sign/effect, assay, source database, score, and record IDs in evidence. |
+| `tf_binds_enhancer` | `gene→enhancer` | `regulatory` | yes | `staged-only/deferred` | - | - | 189,459,767/189,459,767 | Review ReMap CRM/regulatory-region staged bucketed output; do not promote all-peak ReMap or motif-only support as canonical TF→enhancer edges without the approved CRM/endpoint policy. | Transcription-factor gene product binds enhancer/regulatory interval; require source-native enhancer endpoints, not from canonical gene_interacts_gene, and preserve assay/cell context, coordinates, source database, score, and record IDs in evidence. — staged edges/evidence: 189,459,767/189,459,767; ReMap CRM/regulatory-region bucketed staging exists; all-peak/motif-only ReMap remains feature/context, not canonical edge |
+| `transcript_interacts_protein` | `transcript→protein` | `physical` | yes | `staged-only/deferred` | - | - | 0/0 | RBP/RNA CLIP pilot currently has zero accepted rows; next source audit should focus POSTAR/ENCORI/NPInter/RNAInter endpoint IDs and license/access. | RNA/transcript to protein binding or interaction with transcript/protein-native source-native endpoints, not from canonical gene_interacts_gene; preserve interaction assay, source database, score, and record IDs in evidence. — staged edges/evidence: 0/0; RBP/ENCORI pilot staged with 0 accepted rows; lncRNA/RBP sources need endpoint audit |
+| `transcript_interacts_gene` | `transcript→gene` | `regulatory` | no | `schema-only/missing` | - | - | -/- | No canonical/staged edge. Use only for source-native RNA/transcript→gene mechanism assertions; do not use ceRNA/expression correlation/disease association as edges. | Transcript/RNA to gene regulatory or interaction assertion when the source names transcript/RNA and gene endpoints; require source-native transcript/RNA assertion, not from canonical gene_interacts_gene, and preserve mechanism, direction, sign/effect, source database, and record IDs in evidence. |
+| `protein_interacts_protein` | `protein→protein` | `physical` | yes | `canonical+validated` | 3,550 | 12,288 | -/- | Canonical IntAct direct PPI is now present; keep BioGRID physical/PTM/complex as future source decomposition, not as a blind merge. | Direct protein/isoform interaction only, with source-native protein endpoints plus source database and evidence metadata; not from canonical gene_interacts_gene gene endpoints or text_span projection. — evidence rows: 12,288; canonical source-native IntAct PPI present; BioGRID physical/PTM/complex remains future decomposition |
+| `pathway_contains_gene` | `pathway→gene` | `pathway` | no | `canonical+validated` | 630,932 | 630,932 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Reactome / GO — evidence rows: 630,932 |
+| `pathway_contains_protein` | `pathway→protein` | `pathway` | no | `staged-only/deferred` | - | - | 15,436/18,068 | Review Reactome UniProt2Reactome staged pilot and decide all-level pathway semantics before promotion. | Protein-native pathway or complex membership source only, with protein endpoints plus source database and evidence metadata. — staged edges/evidence: 15,436/18,068; Reactome protein-native pilot staged; Complex Portal/protein_complex nodes not active yet |
+| `pathway_child_of_pathway` | `pathway→pathway` | `ontological` | yes | `canonical+validated` | 147,680 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Reactome hierarchy |
+| `molecule_in_pathway` | `molecule→pathway` | `pathway` | no | `canonical+validated` | 1,680 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Metabolic pathway |
+| `molecule_targets_gene` | `molecule→gene` | `pharmacological` | yes | `canonical+validated` | 41,239 | 41,239 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Drug/compound target relation for sources whose native target endpoint is a gene or OpenTargets Ensembl target ID; preserve source MoA/action metadata in evidence. — evidence rows: 41,239 |
+| `molecule_targets_protein` | `molecule→protein` | `pharmacological` | yes | `staged-only/deferred` | - | - | 2,119/2,132 | Review ChEMBL protein-native staged pilot; do not project existing molecule→gene rows. | Drug/compound target relation for sources that directly identify a protein or isoform endpoint; preserve source database and evidence metadata. — staged edges/evidence: 2,119/2,132; ChEMBL protein-native pilot staged; existing molecule_targets_gene remains gene-level |
+| `molecule_treats_disease` | `molecule→disease` | `pharmacological` | no | `canonical+validated` | 14,135 | - | -/481 | Canonical edge exists; staged OpenTargets clinical evidence subset should be reviewed/promoted; do not use positive indication evidence for contraindications. | Indication (clinical) — staged edges/evidence: -/481 |
+| `molecule_contraindicates_disease` | `molecule→disease` | `pharmacological` | no | `canonical+validated` | 30,675 | - | -/- | Find contraindication-specific source/evidence; do not reuse positive clinical indication rows. | Contraindication |
+| `molecule_synergizes_molecule` | `molecule→molecule` | `pharmacological` | no | `canonical+validated` | 2,672,628 | - | -/2,672,628 | Canonical edge exists; staged evidence backfill should be reviewed/promoted as evidence-only update. | Drug combination synergy or interaction-effect relation; not a physical molecular interaction. — staged edges/evidence: -/2,672,628 |
+| `molecule_parent_of_molecule` | `molecule→molecule` | `ontological` | yes | `canonical+validated` | 4,140 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Chemical/drug parent-child hierarchy relation. |
+| `cell_type_responds_to_molecule` | `cell_type→molecule` | `pharmacological` | no | `schema-only/missing` | - | - | -/- | Pick a concrete source and endpoint/evidence policy before any build. | Drug screen / perturbation |
+| `cell_line_responds_to_molecule` | `cell_line→molecule` | `experimental` | yes | `staged-only/deferred` | - | - | 11,040/11,713 | Review staged GDSC/PRISM viability pilot before promotion. | GDSC / PRISM viability — staged edges/evidence: 11,040/11,713 |
+| `molecule_associated_phenotype` | `molecule→phenotype` | `pharmacological` | no | `canonical+validated` | 64,784 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Non-causal molecule-to-phenotype side-effect/rescue association; direction is molecule→phenotype |
+| `disease_associated_gene` | `gene→disease` | `disease_assoc` | yes | `canonical+validated` | 83,339 | 2,928 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Gene→disease direction for causal/directed disease association; source/evidence rows preserve predicate, score, and provenance. — evidence rows: 2,928 |
+| `disease_associated_protein` | `protein→disease` | `disease_assoc` | yes | `staged-only/deferred` | - | - | 3,243/35,839 | Review protein-native disease-association staged pilot; do not infer protein disease edges from gene associations. | Protein→disease direction for protein-native causal/directed disease association; use only protein-specific evidence. — staged edges/evidence: 3,243/35,839 |
+| `disease_involves_pathway` | `pathway→disease` | `disease_assoc` | yes | `canonical+validated` | 2,296 | 2,296 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Pathway→disease direction for causal/directed pathway involvement; source/evidence rows preserve enrichment/provenance. — evidence rows: 2,296 |
+| `disease_manifests_in_tissue` | `disease→tissue` | `disease_assoc` | no | `schema-only/missing` | - | - | -/- | Pick a concrete source and endpoint/evidence policy before any build. | Pathology annotation |
+| `disease_subtype_of_disease` | `disease→disease` | `ontological` | yes | `canonical+validated` | 104,809 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | EFO / MONDO hierarchy |
+| `disease_comorbid_disease` | `disease→disease` | `epidemiological` | no | `feature-context-not-edge` | - | - | -/- | Keep as feature/context unless a concrete EHR/co-occurrence source and privacy/provenance policy is approved. | Co-occurrence in EHR |
+| `disease_has_phenotype` | `disease→phenotype` | `phenotype_assoc` | yes | `canonical+validated` | 241,797 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | HPO annotation |
+| `phenotype_observed_in_tissue` | `tissue→phenotype` | `phenotype_assoc` | yes | `schema-only/missing` | - | - | -/- | Pick a concrete source and endpoint/evidence policy before any build. | Tissue→phenotype direction for directed tissue manifestation context; source/evidence rows preserve phenotype observation provenance. |
+| `phenotype_subtype_of_phenotype` | `phenotype→phenotype` | `ontological` | yes | `canonical+validated` | 37,472 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | HPO hierarchy |
+| `tissue_subtype_of_tissue` | `tissue→tissue` | `ontological` | yes | `canonical+validated` | 28,064 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | UBERON parent-child hierarchy |
+| `cell_type_found_in_tissue` | `cell_type→tissue` | `ontological` | yes | `staged-only/deferred` | - | - | 958/958 | Review staged edge/evidence, run endpoint/evidence audits, then decide promotion; no canonical promotion in this audit card. | Cell Ontology / UBERON — staged edges/evidence: 958/958 |
+| `cell_type_involved_in_disease` | `cell_type→disease` | `disease_assoc` | no | `source-audit-only/deferred` | - | - | -/- | Source audit only; select/approve a source and endpoint policy before building. | scRNA disease enrichment |
+| `cell_type_subtype_of_cell_type` | `cell_type→cell_type` | `ontological` | yes | `staged-only/deferred` | - | - | 4,526/4,526 | Review staged edge/evidence, run endpoint/evidence audits, then decide promotion; no canonical promotion in this audit card. | Cell Ontology IS-A — staged edges/evidence: 4,526/4,526 |
+| `cell_line_models_disease` | `cell_line→disease` | `experimental` | no | `staged-only/deferred` | - | - | 983/1,218 | Review staged edge/evidence, run endpoint/evidence audits, then decide promotion; no canonical promotion in this audit card. | Curated annotation — staged edges/evidence: 983/1,218 |
+| `cell_line_derived_from_cell_type` | `cell_line→cell_type` | `experimental` | yes | `staged-only/deferred` | - | - | 65/65 | Review staged edge/evidence, run endpoint/evidence audits, then decide promotion; no canonical promotion in this audit card. | Cellosaurus — staged edges/evidence: 65/65 |
+| `cell_line_derived_from_tissue` | `cell_line→tissue` | `experimental` | yes | `canonical+validated` | 1,092 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Cellosaurus origin |
+| `cell_line_from_organism` | `cell_line→organism` | `metadata` | yes | `canonical+validated` | 1,183 | 1,183 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Donor species — evidence rows: 1,183 |
+| `organism_has_gene` | `organism→gene` | `genetic` | yes | `canonical+validated` | 109,325 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Ensembl species |
+| `organism_has_tissue` | `organism→tissue` | `ontological` | yes | `canonical+validated` | 16,061 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Anatomy ontology |
+| `paper_produced_dataset` | `paper→dataset` | `metadata` | yes | `staged-only/deferred` | - | - | 4/4 | Review staged edge/evidence, run endpoint/evidence audits, then decide promotion; no canonical promotion in this audit card. | Provenance — staged edges/evidence: 4/4 |
+| `paper_cites_paper` | `paper→paper` | `literature` | yes | `staged-only/deferred` | - | - | 16/16 | Review staged edge/evidence, run endpoint/evidence audits, then decide promotion; no canonical promotion in this audit card. | Citation graph — staged edges/evidence: 16/16 |
+| `dataset_contains_disease` | `dataset→disease` | `metadata` | yes | `staged-only/deferred` | - | - | 0/0 | Review staged edge/evidence, run endpoint/evidence audits, then decide promotion; no canonical promotion in this audit card. | Measured entity — staged edges/evidence: 0/0 |
+| `dataset_contains_molecule` | `dataset→molecule` | `metadata` | yes | `staged-only/deferred` | - | - | 1,000/1,000 | Review staged edge/evidence, run endpoint/evidence audits, then decide promotion; no canonical promotion in this audit card. | Measured entity — staged edges/evidence: 1,000/1,000 |
+| `dataset_contains_cell_type` | `dataset→cell_type` | `metadata` | yes | `staged-only/deferred` | - | - | 100/100 | Review staged edge/evidence, run endpoint/evidence audits, then decide promotion; no canonical promotion in this audit card. | Measured entity — staged edges/evidence: 100/100 |
+| `dataset_contains_cell_line` | `dataset→cell_line` | `metadata` | yes | `canonical+validated` | 1,183 | - | 1,183/1,183 | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Measured entity — staged edges/evidence: 1,183/1,183 |
+| `dataset_contains_tissue` | `dataset→tissue` | `metadata` | yes | `canonical+validated` | 27 | - | 27/27 | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Measured entity — staged edges/evidence: 27/27 |
 
-| Relation | Source | Target | Kind | Direct? | GCS? | Rows | Comment |
-| --- | --- | --- | --- | --- | --- | ---: | --- |
-| `gene_has_transcript` | `gene` | `transcript` | `central_dogma` | yes | yes | 507,365 | Transcription |
-| `transcript_encodes_protein` | `transcript` | `protein` | `central_dogma` | yes | yes | 233,995 | Translation |
-| `mutation_in_gene` | `mutation` | `gene` | `genetic` | yes | no | - | Physical/genomic containment only; do not use for L2G/GWAS association or OpenTargets L2G targetId smoke output |
-| `mutation_associated_gene` | `mutation` | `gene` | `genetic` | no | yes | 535,093 | Statistical/functional locus-to-gene prediction (for example OpenTargets L2G/GWAS); canonical promoted GWAS/L2G relation with evidence support |
-| `mutation_affects_transcript` | `mutation` | `transcript` | `genetic` | yes | no | - | Transcript-level consequence such as splicing/UTR/coding-transcript effect; active schema relation but not canonical until bounded source-specific evidence and endpoint policy are selected |
-| `mutation_causes_protein_change` | `mutation` | `protein` | `genetic` | yes | yes | 177,735 | Amino acid change with ENSP protein endpoint; canonical OpenTargets protein-change edge and evidence files exist |
-| `mutation_overlaps_enhancer` | `mutation` | `enhancer` | `genetic` | no | no | - | Retain only variants that also have disease, phenotype, drug-response, or equivalent downstream association evidence; overlap itself is contextual evidence, not a standalone causal edge. |
-| `mutation_associated_disease` | `mutation` | `disease` | `genetic` | no | yes | 4,656,171 | GWAS / ClinVar / OpenTargets known-variant disease association; canonical edge exists, evidence backfill remains next tranche |
-| `mutation_associated_phenotype` | `mutation` | `phenotype` | `genetic` | no | yes | 164,406 | OpenTargets EVA/ClinVar HP-only mutation→phenotype association across all clinical-significance classes; exact assertion class is preserved in evidence predicate metadata. |
-| `gene_associated_phenotype` | `gene` | `phenotype` | `phenotype_assoc` | no | yes | 3,330 | Non-causal HPO gene-to-phenotype association; direction is gene→phenotype |
-| `mutation_affects_molecule_response` | `mutation` | `molecule` | `pharmacological` | no | yes | 4,866 | Pharmacogenomics |
-| `gene_ortholog_gene` | `gene` | `gene` | `genetic` | yes | yes | 161,675 | Cross-species orthology |
-| `enhancer_regulates_gene` | `enhancer` | `gene` | `regulatory` | no | yes | 48,808,144 | ENCODE-rE2G composite enhancer-to-gene prediction; preserve biosample, assay feature scores, distance, study, and model score in edge/evidence metadata. |
-| `enhancer_regulates_transcript` | `enhancer` | `transcript` | `regulatory` | yes | no | - | transcript-specific/TSS-specific regulation; require a source that directly names ENST/TSS endpoints and is not inferred by expanding enhancer→gene to all transcripts |
-| `gene_coexpressed_gene` | `gene` | `gene` | `expression` | no | no | - | Co-expression network |
-| `tissue_expresses_gene` | `tissue` | `gene` | `expression` | no | yes | 5,338,736 | GTEx / HPA bulk RNA |
-| `tissue_expresses_protein` | `tissue` | `protein` | `expression` | no | yes | 137,351 | Direct Human Protein Atlas 25.1 tissue protein expression/intensity with UniProt→ENSP endpoint mapping and evidence metadata; not populated from RNA projection. |
-| `cell_type_expresses_gene` | `cell_type` | `gene` | `expression` | no | yes | 1,561,873 | scRNA-seq (CellxGene) |
-| `cell_type_expresses_protein` | `cell_type` | `protein` | `expression` | no | no | - | Direct cell-type protein abundance/staining source only; do not populate from RNA projection. |
-| `cell_line_expresses_gene` | `cell_line` | `gene` | `experimental` | no | yes | 20,928,056 | RNA-seq (CCLE…) |
-| `cell_line_expresses_protein` | `cell_line` | `protein` | `experimental` | no | no | - | Direct cell-line proteomics source only; do not populate from mRNA projection. |
-| `cell_line_gene_essentiality` | `cell_line` | `gene` | `experimental` | no | no | - | DepMap/Project Score/CRISPR gene essentiality or dependency measurement; preserve score/effect/study fields in evidence or feature tables and do not model as protein expression. |
-| `gene_interacts_gene` | `gene` | `gene` | `physical` | no | yes | 7,424,037 | Broad gene/gene-product interaction assertion with source-specific evidence metadata; split source-native TF/protein/transcript subsets into the relations below when endpoints/assertions justify it. |
-| `tf_regulates_gene` | `gene` | `gene` | `regulatory` | yes | no | - | Schema-valid but do not populate for now; future use requires a stricter human-approved TF regulation source policy. |
-| `tf_binds_enhancer` | `gene` | `enhancer` | `regulatory` | yes | no | - | TF gene product binds enhancer/regulatory interval; ReMap/ChIP-like observed binding can combine with motif support, with evidence type distinguishing observed vs motif-predicted. |
-| `transcript_interacts_protein` | `transcript` | `protein` | `physical` | yes | no | - | RNA/transcript–protein interaction with transcript/protein-native endpoints; preserve assay, source database, score, and record IDs in evidence. |
-| `transcript_interacts_gene` | `transcript` | `gene` | `regulatory` | no | no | - | Transcript/RNA to gene regulatory or interaction assertion; preserve mechanism, direction, sign/effect, source database, and record IDs in evidence. |
-| `protein_interacts_protein` | `protein` | `protein` | `physical` | yes | no | - | Direct protein/isoform interaction only, with protein-native endpoints and evidence metadata. |
-| `protein_part_of_complex` | `protein` | `protein_complex` | `physical` | yes | no | - | Planned relation for source-native complex membership once `protein_complex` nodes are added; preserve complex source ID, stoichiometry/expansion method, and membership evidence. |
-| `pathway_contains_gene` | `pathway` | `gene` | `pathway` | no | yes | 630,932 | Reactome / GO; staged evidence backfill covers 630,932/630,932 edges with OpenTargets `go`, TxGNN `txgnn_legacy_go`, and TxGNN `txgnn_legacy_reactome` support rows. |
-| `pathway_contains_protein` | `pathway` | `protein` | `pathway` | no | no | staged: 15,436 | Protein-native pathway or complex membership source only, with protein endpoints. Reactome `UniProt2Reactome_All_Levels` staged pilot has 15,436 edges / 18,068 evidence rows, endpoint anti-joins clean; keep staged-only pending review of all-level Reactome semantics. See `docs/reactome_pathway_contains_protein_staged_pilot.md`. |
-| `pathway_child_of_pathway` | `pathway` | `pathway` | `ontological` | yes | yes | 147,680 | Reactome hierarchy |
-| `molecule_in_pathway` | `molecule` | `pathway` | `pathway` | no | yes | 1,680 | Metabolic pathway |
-| `molecule_targets_gene` | `molecule` | `gene` | `pharmacological` | no | yes | 41,239 | Drug/compound target relation for sources whose native target endpoint is a gene or OpenTargets Ensembl target ID; preserve source MoA/action metadata in evidence. |
-| `molecule_targets_protein` | `molecule` | `protein` | `pharmacological` | no | no | - | Drug/compound target relation for sources that directly identify a protein or isoform endpoint. |
-| `molecule_treats_disease` | `molecule` | `disease` | `pharmacological` | no | yes | 14,135 | Indication (clinical) |
-| `molecule_contraindicates_disease` | `molecule` | `disease` | `pharmacological` | no | yes | 30,675 | Contraindication |
-| `molecule_synergizes_molecule` | `molecule` | `molecule` | `pharmacological` | no | yes | 2,672,628 | Drug combination synergy or interaction-effect relation; not a physical molecular interaction. |
-| `molecule_parent_of_molecule` | `molecule` | `molecule` | `ontological` | yes | yes | 4,140 | Chemical/drug parent-child hierarchy relation. |
-| `cell_type_responds_to_molecule` | `cell_type` | `molecule` | `pharmacological` | no | no | - | Drug screen / perturbation |
-| `cell_line_responds_to_molecule` | `cell_line` | `molecule` | `experimental` | yes | no | - | GDSC / PRISM viability |
-| `molecule_associated_phenotype` | `molecule` | `phenotype` | `pharmacological` | yes | yes | 64,784 | Non-causal molecule-to-phenotype side-effect/rescue association; direction is molecule→phenotype |
-| `disease_associated_gene` | `gene` | `disease` | `disease_assoc` | yes | yes | 83,339 | Gene→disease direction for causal/directed disease association; evidence preserves source predicate/score/provenance. |
-| `disease_associated_protein` | `protein` | `disease` | `disease_assoc` | yes | no | - | Protein→disease direction for protein-native causal/directed disease association. |
-| `disease_involves_pathway` | `pathway` | `disease` | `disease_assoc` | yes | yes | 2,296 | Pathway→disease direction for causal/directed pathway involvement; evidence preserves enrichment/provenance. |
-| `disease_manifests_in_tissue` | `disease` | `tissue` | `disease_assoc` | no | no | - | Pathology annotation |
-| `disease_subtype_of_disease` | `disease` | `disease` | `ontological` | yes | yes | 104,809 | EFO / MONDO hierarchy |
-| `disease_comorbid_disease` | `disease` | `disease` | `epidemiological` | no | no | - | Co-occurrence in EHR |
-| `disease_has_phenotype` | `disease` | `phenotype` | `phenotype_assoc` | yes | yes | 241,797 | HPO annotation |
-| `phenotype_observed_in_tissue` | `tissue` | `phenotype` | `phenotype_assoc` | yes | no | - | Tissue→phenotype direction for directed tissue manifestation context. |
-| `phenotype_subtype_of_phenotype` | `phenotype` | `phenotype` | `ontological` | yes | yes | 37,472 | HPO hierarchy |
-| `tissue_subtype_of_tissue` | `tissue` | `tissue` | `ontological` | yes | yes | 28,064 | UBERON parent-child hierarchy |
-| `cell_type_found_in_tissue` | `cell_type` | `tissue` | `ontological` | yes | no | - | Cell Ontology / UBERON |
-| `cell_type_involved_in_disease` | `cell_type` | `disease` | `disease_assoc` | yes | no | - | scRNA disease enrichment |
-| `cell_type_subtype_of_cell_type` | `cell_type` | `cell_type` | `ontological` | yes | no | - | Cell Ontology IS-A |
-| `cell_line_models_disease` | `cell_line` | `disease` | `experimental` | no | no | - | Curated annotation |
-| `cell_line_derived_from_cell_type` | `cell_line` | `cell_type` | `experimental` | yes | no | - | Cellosaurus |
-| `cell_line_derived_from_tissue` | `cell_line` | `tissue` | `experimental` | yes | yes | 1,092 | Cellosaurus origin |
-| `cell_line_from_organism` | `cell_line` | `organism` | `metadata` | no | yes | 1,183 | Donor species |
-| `organism_has_gene` | `organism` | `gene` | `genetic` | no | yes | 109,325 | Ensembl species |
-| `organism_has_tissue` | `organism` | `tissue` | `ontological` | no | yes | 16,061 | Anatomy ontology |
-| `paper_produced_dataset` | `paper` | `dataset` | `metadata` | yes | no | - | Provenance |
-| `paper_cites_paper` | `paper` | `paper` | `literature` | yes | no | - | Citation graph |
-| `dataset_contains_disease` | `dataset` | `disease` | `metadata` | no | no | - | Measured entity |
-| `dataset_contains_molecule` | `dataset` | `molecule` | `metadata` | no | no | - | Measured entity |
-| `dataset_contains_cell_type` | `dataset` | `cell_type` | `metadata` | no | no | - | Measured entity |
-| `dataset_contains_cell_line` | `dataset` | `cell_line` | `metadata` | no | yes | 1,183 | Measured entity |
-| `dataset_contains_tissue` | `dataset` | `tissue` | `metadata` | no | yes | 27 | Measured entity |
+## Storage layer
 
-## Schema cleanup / modeling decisions
+- LaminDB: node registry, ontology resolution, artifact versioning
+- Parquet/GCS/FUSE: canonical node, edge, feature, and evidence tables
+- bionty/pertdb: ontology and perturbation/molecule management where applicable
 
-- Relation names describe the biological assertion and endpoint type in the active KG.
-- Gene-level sources stay in gene-level relations (`molecule_targets_gene`, `gene_interacts_gene`, `pathway_contains_gene`); split to protein/TF/transcript-specific relations only when the source is native to those endpoints/assertions. Directed disease associations use source/cause → disease direction (`disease_associated_gene` is gene→disease).
-- Protein-level relations are used only for direct protein/isoform evidence (`molecule_targets_protein`, `protein_interacts_protein`, `pathway_contains_protein`, `disease_associated_protein`, `tissue_expresses_protein`).
-- Protein complexes are planned as nodes, not just evidence fields. PTMs with site-level support should use `ptm_site` / structured event modeling; vague PTM support remains evidence metadata.
-- Existing ENST transcript nodes remain the transcript layer. Do not choose a main transcript for genes; preserve many transcript isoforms and isoform→protein mappings.
-- miRBase/hsa-miR IDs should be aliases/xrefs on existing ENST transcript nodes when there is a true 1:1 mapping; create miR-primary nodes only for distinct mature/precursor miRNA entities.
-- Non-causal exceptions such as ABC/rE2G predictions, motifs, coexpression/correlation, and disease-association-only modules are allowed when useful, but evidence must mark them as predictive, correlative, association, candidate, or context-specific rather than causal/mechanistic.
-- Molecule–molecule drug-effect rows use `molecule_synergizes_molecule`; chemical hierarchy rows use `molecule_parent_of_molecule`. `interacts` is reserved for physical molecular interactions.
-- Phenotype relations use entity→phenotype direction (`gene_associated_phenotype`, `molecule_associated_phenotype`).
-- Evidence rows carry source-specific predicates, scores, study IDs, paper IDs, assay details, and provenance; edge rows stay deduplicated graph assertions.
+## Graph export
 
-### Credibility Score
-
-| Score | Meaning                                                            |
-| ----- | ------------------------------------------------------------------ |
-| `3`   | Established fact (curated DB, no ambiguity)                        |
-| `2`   | Multiple independent evidence (papers from distinct author groups) |
-| `1`   | Single evidence (one paper, possibly same authors)                 |
-
-### Evidence Layer
-
-Evidence/source records are support metadata for edge assertions, not primarily
-standalone biological edges. Storage shape is `evidence/{relation}.parquet`,
-keyed by `(relation, x_id, y_id)` / `edge_key`, with support fields such as
-`evidence_type`, `source`, `source_dataset`, `source_record_id`, `paper_id`,
-`dataset_id`, `study_id`, `evidence_score`, effect-size/statistical fields,
-direction/predicate fields, and extraction provenance.
-
-`paper` remains a node type for bibliographic provenance, features, and optional
-literature graph tasks. Biological/pharmacological/disease-association imports
-should prefer evidence records that support existing edge relations. A paper is
-usually metadata/support for an edge or node claim; it should not become a
-biological edge unless the task is explicitly a literature-index graph.
-
-Canonical evidence files currently exist at:
-
-- `evidence/cell_line_from_organism.parquet` — `1,183` human cell-line metadata support records.
-- `evidence/disease_associated_gene.parquet` — gene→disease support records for the evidence-backed subset; the full edge file includes historical associations without complete evidence support.
-- `evidence/disease_involves_pathway.parquet` — `2,296` pathway→disease Reactome support records.
-- `evidence/gene_ortholog_gene.parquet` — `161,675` OpenTargets target.homologues support records.
-- `evidence/molecule_targets_gene.parquet` — `41,239` molecule→gene target support records preserving OpenTargets MoA action metadata and source predicates.
-- `evidence/mutation_affects_molecule_response.parquet` — `18,595` pharmacogenomics support records.
-- `evidence/mutation_associated_disease.parquet` — `4,656,171` OpenTargets disease-facing variant support records across `eva`, `gwas_credible_sets`, `uniprot_variants`, and `eva_somatic`.
-- `evidence/mutation_associated_gene.parquet` — `535,093` OpenTargets L2G support records preserving `studyLocusId` row-level support.
-- `evidence/mutation_associated_phenotype.parquet` — `169,005` EVA/ClinVar-style support records for `164,406` HP-only mutation→phenotype association edges across all clinical-significance classes.
-- `evidence/mutation_causes_protein_change.parquet` — `177,735` OpenTargets variant/protein-change support records.
-
-Latest coverage audit after schema cleanup:
-`.omoc/reports/schema-direction-update-coverage-20260619.json`.
-
-### Storage Layer
-
-- **LaminDB**: node registry, ontology resolution, artifact versioning
-- **Parquet**: one file (or directory) per edge type; node feature tables
-- **bionty**: ontology resolution for Gene, Disease, Pathway, CellType, etc.
-- **pertdb**: management of perturbations, and molecules
-
-### Graph Export
-
-Target: **PyTorch Geometric `HeteroData`** (preferred over DGL for new work —
-more actively maintained, better heterogeneous graph API, richer ecosystem). DGL
-`DGLHeteroGraph` kept as fallback for backward compatibility with existing TxGNN
-training code.
-
-```python
-# Desired API
-from txgnn import KGLoader
-kg = KGLoader(data_dir='./data')
-hetero_data = kg.to_pyg()   # PyG HeteroData
-hetero_dgl  = kg.to_dgl()   # DGL HeteroGraph fallback
-```
-
----
+Preferred target for new work is PyTorch Geometric `HeteroData`; DGL export remains fallback/backward-compatibility for older TxGNN training code.

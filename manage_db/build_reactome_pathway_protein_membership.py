@@ -97,7 +97,7 @@ def _release_from_headers(headers: Mapping[str, str]) -> str:
 
 def cache_reactome_mapping(
     url: str = SOURCE_URL,
-    raw_cache_dir: str | Path = ".omoc/raw/reactome/uniprot2reactome_all_levels",
+    raw_cache_dir: str | Path = "artifacts/cache/raw/reactome/uniprot2reactome_all_levels",
 ) -> tuple[Path, dict[str, Any]]:
     """Download/cache the current Reactome UniProt→pathway export."""
 
@@ -380,7 +380,7 @@ def build_staged_reactome_pathway_proteins(
     protein_nodes_path: str | Path | None = None,
     pathway_nodes_path: str | Path | None = None,
     output_dir: str | Path | None = None,
-    raw_cache_dir: str | Path = ".omoc/raw/reactome/uniprot2reactome_all_levels",
+    raw_cache_dir: str | Path = "artifacts/cache/raw/reactome/uniprot2reactome_all_levels",
     source_url: str = SOURCE_URL,
 ) -> dict[str, Any]:
     if input_path is None:
@@ -389,7 +389,7 @@ def build_staged_reactome_pathway_proteins(
         input_file = Path(input_path)
         manifest = {"source": SOURCE, "source_dataset": SOURCE_DATASET, "url": source_url, "cached_path": str(input_file), "release": input_file.parent.name or "manual"}
     release = str(manifest.get("release") or "")
-    out_dir = Path(output_dir) if output_dir else Path(".omoc/staging") / f"reactome-pathway-contains-protein-{date.today().isoformat()}"
+    out_dir = Path(output_dir) if output_dir else Path("artifacts/staged") / f"reactome-pathway-contains-protein-{date.today().isoformat()}"
     mapping = read_uniprot2reactome(input_file)
     uniprot_to_protein, ambiguous_uniprot, protein_mapping_stats = build_uniprot_to_protein_map(node_root=node_root, protein_nodes_path=protein_nodes_path)
     pathway_ids, pathway_stats = load_pathway_ids(node_root=node_root, pathway_nodes_path=pathway_nodes_path)
@@ -429,11 +429,11 @@ def build_staged_reactome_pathway_proteins(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", default=None, help="Optional cached UniProt2Reactome_All_Levels.txt; downloads current release if omitted")
-    parser.add_argument("--raw-cache-dir", default=".omoc/raw/reactome/uniprot2reactome_all_levels", help="Repo-local raw cache for release-pinned Reactome mapping")
+    parser.add_argument("--raw-cache-dir", default="artifacts/cache/raw/reactome/uniprot2reactome_all_levels", help="Repo-local raw cache for release-pinned Reactome mapping")
     parser.add_argument("--node-root", default="", help="KG root containing nodes/protein.parquet and nodes/pathway.parquet, e.g. gs://jouvencekb/kg/v2")
     parser.add_argument("--protein-nodes", default=None, help="Optional local protein.parquet for tests/offline builds")
     parser.add_argument("--pathway-nodes", default=None, help="Optional local pathway.parquet for tests/offline builds")
-    parser.add_argument("--output-dir", default=None, help="Defaults to .omoc/staging/reactome-pathway-contains-protein-YYYY-MM-DD")
+    parser.add_argument("--output-dir", default=None, help="Defaults to artifacts/staged/reactome-pathway-contains-protein-YYYY-MM-DD")
     parser.add_argument("--source-url", default=SOURCE_URL)
     args = parser.parse_args(argv)
     report = build_staged_reactome_pathway_proteins(

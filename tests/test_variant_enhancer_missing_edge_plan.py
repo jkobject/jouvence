@@ -9,10 +9,9 @@ PLAN_DOC = Path(__file__).resolve().parents[1] / "docs" / "variant_transcript_en
 FOCUSED_RELATIONS = {
     "mutation_in_gene": (NodeType.MUTATION, NodeType.GENE, True),
     "mutation_affects_transcript": (NodeType.MUTATION, NodeType.TRANSCRIPT, True),
-    "mutation_overlaps_enhancer": (NodeType.MUTATION, NodeType.ENHANCER, True),
-    "mutation_causes_phenotype": (NodeType.MUTATION, NodeType.PHENOTYPE, False),
+    "mutation_overlaps_enhancer": (NodeType.MUTATION, NodeType.ENHANCER, False),
+    "mutation_associated_phenotype": (NodeType.MUTATION, NodeType.PHENOTYPE, False),
     "enhancer_regulates_transcript": (NodeType.ENHANCER, NodeType.TRANSCRIPT, True),
-    "enhancer_associated_disease": (NodeType.ENHANCER, NodeType.DISEASE, False),
 }
 
 
@@ -28,11 +27,10 @@ def test_variant_transcript_enhancer_schema_semantics_are_locked() -> None:
     assert "Physical/genomic containment only" in RELATION_BY_NAME["mutation_in_gene"].notes
     assert "do not use for L2G/GWAS association" in RELATION_BY_NAME["mutation_in_gene"].notes
     assert "Transcript-level consequence" in RELATION_BY_NAME["mutation_affects_transcript"].notes
-    assert "variant interval overlap" in RELATION_BY_NAME["mutation_overlaps_enhancer"].notes
-    assert "mutation→phenotype" in RELATION_BY_NAME["mutation_causes_phenotype"].notes
+    assert "also have disease, phenotype, drug-response" in RELATION_BY_NAME["mutation_overlaps_enhancer"].notes
+    assert "all clinical-significance classes" in RELATION_BY_NAME["mutation_associated_phenotype"].notes
     assert "transcript-specific" in RELATION_BY_NAME["enhancer_regulates_transcript"].notes
     assert "not inferred by expanding enhancer→gene to all transcripts" in RELATION_BY_NAME["enhancer_regulates_transcript"].notes
-    assert "GWAS/credible-set variant overlap" in RELATION_BY_NAME["enhancer_associated_disease"].notes
 
 
 def test_variant_transcript_enhancer_plan_documents_safe_sources_and_blockers() -> None:
@@ -44,6 +42,7 @@ def test_variant_transcript_enhancer_plan_documents_safe_sources_and_blockers() 
         "Build locally, validate locally, then let the parent perform any",
         "OpenTargets `variant/transcriptConsequences`",
         "OpenTargets EVA/ClinVar-style known-variant evidence with `HP:` endpoints",
+        "all clinical-significance classes",
         "DuckDB interval join against canonical `nodes/enhancer.parquet`",
         "No current OpenTargets E2G transcript endpoint",
         "Do not infer `enhancer_regulates_transcript` from `enhancer_regulates_gene`",
@@ -54,13 +53,13 @@ def test_variant_transcript_enhancer_plan_documents_safe_sources_and_blockers() 
         assert phrase in text
 
 
-def test_mutation_causes_phenotype_promotion_is_recorded() -> None:
+def test_mutation_associated_phenotype_promotion_is_recorded() -> None:
     text = PLAN_DOC.read_text()
     promoted_line = next(
         line for line in text.splitlines() if line.startswith("Promoted first candidate:")
     )
-    assert "`mutation_causes_phenotype`" in promoted_line
-    assert "pathogenic/likely pathogenic" in promoted_line
+    assert "`mutation_associated_phenotype`" in promoted_line
+    assert "all clinical-significance classes" in promoted_line
     assert "HP:" in promoted_line
     assert "25,545" in text
     assert "26,980" in text

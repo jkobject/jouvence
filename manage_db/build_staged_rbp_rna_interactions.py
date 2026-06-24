@@ -399,7 +399,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--request", action="append", default=[], help="Comma-separated ENCORI request, e.g. geneType=lncRNA,target=MALAT1,clipExpNum=1")
     parser.add_argument("--max-rows-per-request", type=int, default=50)
     parser.add_argument("--node-root", default="/mnt/gcs/jouvencekb/kg/v2")
-    parser.add_argument("--output-dir", default=".omoc/staging/rbp-rna-clip-encori-pilot")
+    parser.add_argument("--output-dir", default="artifacts/staged/rbp-rna-clip-encori-pilot")
     return parser.parse_args(argv)
 
 

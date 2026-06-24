@@ -408,7 +408,7 @@ RELATIONS: list[Relation] = [
         NodeType.ENHANCER,
         RelationKind.GENETIC,
         False,
-        "Variant-enhancer interval overlap retained only for variants that also have disease, phenotype, drug-response, or other downstream association evidence; overlap itself is contextual evidence, not a standalone causal edge.",
+        "Variant-enhancer interval overlap retained only as staged/context/feature material unless stronger allele-specific regulatory or enhancer-activity evidence is selected; downstream-gated overlap itself is contextual evidence, not a standalone causal edge.",
     ),
     Relation(
         "mutation_associated_disease",

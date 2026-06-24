@@ -1,0 +1,354 @@
+from __future__ import annotations
+
+import json
+import pickle
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pyarrow.parquet as pq
+
+from manage_db import kg_storage
+from manage_db.build_pyg_export import BuildConfig, build_pyg_export, main
+from manage_db.run_pyg_gnn_smoke import SmokeConfig, run_smoke
+
+
+def _node_df(ids: list[str], **extra: list[str]) -> pd.DataFrame:
+    data = {"id": ids}
+    data.update(extra)
+    return pd.DataFrame(data).convert_dtypes(dtype_backend="pyarrow")
+
+
+def _edge_df(
+    relation: str,
+    x_type: str,
+    y_type: str,
+    pairs: list[tuple[str, str]],
+) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "x_id": [x for x, _ in pairs],
+            "x_type": [x_type] * len(pairs),
+            "y_id": [y for _, y in pairs],
+            "y_type": [y_type] * len(pairs),
+            "relation": [relation] * len(pairs),
+            "display_relation": [relation.replace("_", " ")] * len(pairs),
+            "source": ["unit-test"] * len(pairs),
+            "credibility": [1] * len(pairs),
+        }
+    ).convert_dtypes(dtype_backend="pyarrow")
+
+
+def _write_feature(root: kg_storage.KGRoot) -> None:
+    root._ensure_dir("features")
+    df = pd.DataFrame(
+        {
+            "node_id": ["ENSG000001", "ENSG000002"],
+            "node_type": ["gene", "gene"],
+            "feature_key": ["gene_textual_summary", "gene_textual_summary"],
+            "summary": ["gene one summary", "gene two summary"],
+        }
+    ).convert_dtypes(dtype_backend="pyarrow")
+    with root.fs.open(root._join("features", "gene_textual_summary.parquet"), "wb") as fh:
+        df.to_parquet(fh, index=False)
+
+
+def _build_tiny_kg(tmp_path: Path) -> Path:
+    kg_path = tmp_path / "kg"
+    root = kg_storage.open_kg_root(str(kg_path))
+    kg_storage.write_nodes(
+        root,
+        "gene",
+        _node_df(
+            ["ENSG000001", "ENSG000002", "ENSG000003"],
+            ncbi_gene_id=["1", "2", "3"],
+            hgnc_id=["HGNC:1", "HGNC:2", "HGNC:3"],
+            uniprot_id=["P1", "P2", "P3"],
+            gene_name=["G1", "G2", "G3"],
+        ),
+    )
+    kg_storage.write_nodes(
+        root,
+        "disease",
+        _node_df(
+            ["EFO:0000001", "EFO:0000002"],
+            mondo_id=["MONDO:1", "MONDO:2"],
+            omim_id=["OMIM:1", "OMIM:2"],
+            doid_id=["DOID:1", "DOID:2"],
+            icd10_code=["A", "B"],
+            mesh_id=["M1", "M2"],
+            hp_id=["HP:1", "HP:2"],
+        ),
+    )
+    kg_storage.write_nodes(
+        root,
+        "molecule",
+        _node_df(
+            ["CHEMBL1", "CHEMBL2"],
+            drugbank_id=["DB1", "DB2"],
+            pubchem_cid=["11", "22"],
+            cas_rn=["CAS1", "CAS2"],
+            inchikey=["I1", "I2"],
+            smiles=["C", "CC"],
+        ),
+    )
+    kg_storage.write_edges(
+        root,
+        "disease_associated_gene",
+        _edge_df(
+            "disease_associated_gene",
+            "gene",
+            "disease",
+            [("ENSG000001", "EFO:0000001"), ("ENSG000002", "EFO:0000002")],
+        ),
+    )
+    kg_storage.write_edges(
+        root,
+        "molecule_targets_gene",
+        _edge_df(
+            "molecule_targets_gene",
+            "molecule",
+            "gene",
+            [("CHEMBL1", "ENSG000001"), ("CHEMBL2", "ENSG000003")],
+        ),
+    )
+    _write_feature(root)
+    return kg_path
+
+
+def test_build_pyg_export_writes_bounded_artifacts(tmp_path: Path) -> None:
+    kg_path = _build_tiny_kg(tmp_path)
+    output_path = tmp_path / "pyg"
+
+    result = build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=2,
+            max_edges_per_relation=10,
+            feature_tables=("gene_textual_summary",),
+            strict=False,
+            build_name="unit-test",
+        )
+    )
+
+    assert result.node_counts == {"gene": 2, "disease": 2, "molecule": 2}
+    assert result.edge_counts["disease_associated_gene"] == 2
+    assert result.edge_counts["molecule_targets_gene"] == 1  # capped gene map drops ENSG000003 in non-strict mode
+
+    gene_map = pq.read_table(output_path / "node_maps" / "gene.id_to_index.parquet").to_pandas()
+    assert gene_map.to_dict(orient="records") == [
+        {"id": "ENSG000001", "node_type": "gene", "node_index": 0},
+        {"id": "ENSG000002", "node_type": "gene", "node_index": 1},
+    ]
+
+    edge_index = np.load(output_path / "edges" / "gene__disease_associated_gene__disease" / "edge_index.npy")
+    assert edge_index.shape == (2, 2)
+    assert edge_index.tolist() == [[0, 1], [0, 1]]
+
+    relation_map = pq.read_table(output_path / "schema" / "relation_to_edge_type.parquet").to_pandas()
+    assert set(relation_map["relation"]) == {"disease_associated_gene", "molecule_targets_gene"}
+    assert tuple(relation_map.loc[relation_map["relation"] == "molecule_targets_gene", ["x_type", "y_type"]].iloc[0]) == ("molecule", "gene")
+
+    feature_manifest = json.loads(
+        (output_path / "node_features" / "gene" / "gene_textual_summary.feature_manifest.json").read_text()
+    )
+    assert feature_manifest["mapped_rows"] == 2
+    assert feature_manifest["tensor_policy"].startswith("raw text")
+
+    validation = json.loads((output_path / "validation_report.json").read_text())
+    assert validation["status"] == "fail"  # non-strict records dropped endpoint as validation issue
+    assert validation["checks"]["reproducibility_hashes_present"] is True
+    assert any(issue["check"] == "y_endpoint_in_node_map" for issue in validation["issues"])
+
+    manifest = json.loads((output_path / "manifest.json").read_text())
+    assert manifest["artifact_format"] == "jouvencekb-kg-pyg-v1"
+    assert manifest["tensor_formats"]["edge_index.npy"].startswith("always written")
+    assert (output_path / "heterodata" / "full_graph.metadata.json").exists()
+    assert (output_path / "heterodata" / "full_graph.pt").exists()
+
+    with (output_path / "heterodata" / "full_graph.pt").open("rb") as fh:
+        heterodata = pickle.load(fh)
+    assert heterodata["gene"].x.shape == (2, 256)
+    assert heterodata["disease"].x.shape == (2, 256)
+    assert not np.allclose(heterodata["gene"].x.numpy(), np.ones((2, 256)))
+    assert not np.allclose(heterodata["disease"].x.numpy(), np.ones((2, 256)))
+    assert heterodata["gene", "disease_associated_gene", "disease"].edge_index.tolist() == [[0, 1], [0, 1]]
+    assert heterodata["disease", "rev_disease_associated_gene", "gene"].edge_index.tolist() == [[0, 1], [0, 1]]
+
+
+def test_run_pyg_gnn_smoke_trains_on_exported_heterodata(tmp_path: Path) -> None:
+    kg_path = _build_tiny_kg(tmp_path)
+    output_path = tmp_path / "pyg-smoke"
+    build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=None,
+            max_edges_per_relation=10,
+            strict=True,
+            build_name="unit-smoke",
+        )
+    )
+
+    result = run_smoke(
+        SmokeConfig(
+            export_root=output_path,
+            relation="disease_associated_gene",
+            epochs=2,
+            hidden_channels=4,
+            max_train_edges=2,
+            output_json=tmp_path / "smoke_metrics.json",
+        )
+    )
+
+    assert result.status == "pass"
+    assert result.validation["checks"]["feature_tensors_present"] is True
+    assert result.validation["checks"]["edge_tensors_present"] is True
+    assert result.validation["checks"]["reverse_edges_are_transpose"] is True
+    assert result.split_counts == {
+        "train_positive_edges": 1,
+        "train_negative_edges": 1,
+        "valid_positive_edges": 1,
+        "valid_negative_edges": 1,
+    }
+    assert result.metrics["epochs"] == 2.0
+    assert (tmp_path / "smoke_metrics.json").exists()
+
+
+def test_build_pyg_export_cli(tmp_path: Path, capsys) -> None:
+    kg_path = _build_tiny_kg(tmp_path)
+    output_path = tmp_path / "pyg-cli"
+
+    rc = main(
+        [
+            "--kg-root",
+            str(kg_path),
+            "--output-root",
+            str(output_path),
+            "--node-types",
+            "gene",
+            "disease",
+            "--relations",
+            "disease_associated_gene",
+            "--max-nodes-per-type",
+            "10",
+            "--max-edges-per-relation",
+            "10",
+            "--build-name",
+            "cli-test",
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["edge_counts"] == {"disease_associated_gene": 2}
+    assert (output_path / "README.md").exists()
+
+
+def _write_unit_embeddings(root: kg_storage.KGRoot) -> Path:
+    features = Path(root.uri) / "features"
+    node_dir = features / "embeddings" / "text" / "gene" / "unit-model" / "policy_v1"
+    node_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "node_id": ["ENSG000001", "ENSG000002"],
+            "node_type": ["gene", "gene"],
+            "embedding_dim": [4, 4],
+            "embedding_dtype": ["float32", "float32"],
+            "embedding_format": ["list_float32", "list_float32"],
+            "embedding": [[0.10, 0.20, 0.30, 0.40], [0.50, 0.60, 0.70, 0.80]],
+        }
+    ).to_parquet(node_dir / "part-000.parquet", index=False)
+
+    edge_dir = features / "edge_embeddings" / "by_relation" / "disease_associated_gene" / "unit-encoder" / "edge_policy_v1"
+    edge_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "edge_key": [
+                "disease_associated_gene|ENSG000001|EFO:0000001",
+                "disease_associated_gene|ENSG000002|EFO:0000002",
+            ],
+            "x_id": ["ENSG000001", "ENSG000002"],
+            "x_type": ["gene", "gene"],
+            "y_id": ["EFO:0000001", "EFO:0000002"],
+            "y_type": ["disease", "disease"],
+            "relation": ["disease_associated_gene", "disease_associated_gene"],
+            "embedding_dim": [3, 3],
+            "embedding_dtype": ["float32", "float32"],
+            "embedding_format": ["list_float32", "list_float32"],
+            "embedding": [[1.0, 0.0, 0.5], [0.0, 1.0, 0.25]],
+        }
+    ).to_parquet(edge_dir / "part-000.parquet", index=False)
+
+    fallback_config = {
+        "node_fallback": {"module": "torch.nn.Embedding", "dim": 4},
+        "edge_fallback": {"module": "torch.nn.Embedding", "dim": 3},
+        "policy": "model-side learned fallback only",
+    }
+    config_path = features / "embeddings" / "reports" / "learned_fallback_config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(fallback_config, indent=2) + "\n")
+    return features
+
+
+def test_pyg_export_wires_real_embeddings_and_learned_fallbacks(tmp_path: Path) -> None:
+    kg_path = _build_tiny_kg(tmp_path)
+    root = kg_storage.open_kg_root(str(kg_path))
+    embedding_root = _write_unit_embeddings(root)
+    output_path = tmp_path / "pyg-embeddings"
+
+    build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=None,
+            max_edges_per_relation=10,
+            strict=True,
+            build_name="unit-embeddings",
+            embedding_features_root=str(embedding_root),
+            learned_fallback_config_path=str(embedding_root / "embeddings" / "reports" / "learned_fallback_config.json"),
+        )
+    )
+
+    with (output_path / "heterodata" / "full_graph.pt").open("rb") as fh:
+        heterodata = pickle.load(fh)
+
+    assert heterodata["gene"].x.shape == (3, 4)
+    assert np.allclose(heterodata["gene"].x[:2].numpy(), [[0.10, 0.20, 0.30, 0.40], [0.50, 0.60, 0.70, 0.80]])
+    assert heterodata["gene"].x[2].shape == (4,)
+    assert not np.allclose(heterodata["gene"].x[2].numpy(), np.ones(4))
+    assert heterodata["disease"].x.shape == (2, 4)
+    assert not np.allclose(heterodata["disease"].x.numpy(), np.ones((2, 4)))
+
+    edge_type = ("gene", "disease_associated_gene", "disease")
+    assert heterodata[edge_type].edge_attr.shape == (2, 3)
+    assert heterodata[edge_type].edge_attr.tolist() == [[1.0, 0.0, 0.5], [0.0, 1.0, 0.25]]
+    fallback_edge_type = ("molecule", "molecule_targets_gene", "gene")
+    assert heterodata[fallback_edge_type].edge_attr.shape == (2, 3)
+    assert not np.allclose(heterodata[fallback_edge_type].edge_attr.numpy(), np.ones((2, 3)))
+
+    metadata = json.loads((output_path / "heterodata" / "full_graph.metadata.json").read_text())
+    assert metadata["node_embedding_policy"]["gene"]["real_rows"] == 2
+    assert metadata["node_embedding_policy"]["disease"]["fallback_rows"] == 2
+    assert metadata["edge_embedding_policy"][str(edge_type)]["real_rows"] == 2
+    assert metadata["edge_embedding_policy"][str(fallback_edge_type)]["fallback_rows"] == 2
+
+    smoke = run_smoke(
+        SmokeConfig(
+            export_root=output_path,
+            relation="disease_associated_gene",
+            epochs=1,
+            hidden_channels=4,
+            max_train_edges=1,
+        )
+    )
+    assert smoke.status == "pass"
+    assert smoke.validation["checks"]["edge_attr_tensors_present"] is True
+    assert smoke.validation["checks"]["selected_edge_attr_consumed_by_predictor"] is True

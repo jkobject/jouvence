@@ -1,0 +1,727 @@
+{
+  "artifacts": [
+    {
+      "key": "kg/v2/nodes/cell_line.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "b59867b3382b0420ecb728203ae9f10dae7eef4dedaf975e162a6c893524681c",
+      "name": "cell_line",
+      "rows": 1183,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/cell_line.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/cell_type.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "fcfdad4f664d04aed6de8ed61c917acd97b30bc81247734171d4ae8db271967f",
+      "name": "cell_type",
+      "rows": 3513,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/cell_type.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/dataset.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "67afaa9d4907563005af8444b83647e0afc91f8045bd8f2fce6ad0b331fa96be",
+      "name": "dataset",
+      "rows": 1,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/dataset.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/disease.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "eabfe05c1008c21c62b99edcf24d3ed5b59d00b9c83ca7009a3afdfc1c892937",
+      "name": "disease",
+      "rows": 41859,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/disease.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/enhancer.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "5c7bfce055d4df825dbe7a724dca0b1b0835e36e2b54c0aafdb9f8cd7c2a7c18",
+      "name": "enhancer",
+      "rows": 48808144,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/enhancer.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/gene.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "37d6ded815a6036009c9a9975b06c0d889ce8212714814d19e2700f76a01a26a",
+      "name": "gene",
+      "rows": 267830,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/gene.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/molecule.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "0a822d5552faf1e8c327756a7b5f1919e90d80542af27fa77597f418e0b7fdfa",
+      "name": "molecule",
+      "rows": 31007,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/molecule.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/mutation.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "abb8a66b74503356609ba5a6fccdc5c7ec0bafe59526d1bdf69d58bec7fe9cb1",
+      "name": "mutation",
+      "rows": 2589509,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/mutation.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/organism.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "7653041697e9a79b211899f0da11b397a34ca003b0e4b2c1cacca8fac797e1ee",
+      "name": "organism",
+      "rows": 1,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/organism.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/paper.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "85663476742ba718c45590d5ccf14a197ac85952c88c2a7c9eb9a88a8edfde6f",
+      "name": "paper",
+      "rows": 2958199,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/paper.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/pathway.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "2150ea3d4289bd40b69393c23ef38383122f1e0ec894013e6df4e10c137421de",
+      "name": "pathway",
+      "rows": 48575,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/pathway.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/phenotype.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "bb5f6d09fa2281988567dfcb2f1965ca23f868be4b7f8aeca4b7ce7c23be3212",
+      "name": "phenotype",
+      "rows": 16449,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/phenotype.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/protein.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "24a057f3339932dced2a6ba626fe1a39c8b6f9d64eaa2f2dcf70789d0be43358",
+      "name": "protein",
+      "rows": 233995,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/protein.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/tissue.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "e3dba2c46d186660c735debb3b0446f29d69ab746e1dda7f1aa75812b57d40d6",
+      "name": "tissue",
+      "rows": 16061,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/tissue.parquet"
+    },
+    {
+      "key": "kg/v2/nodes/transcript.parquet",
+      "layer": "nodes",
+      "metadata_fingerprint": "9480f1be1a79943049dbe16b9ac2e3c39c1c77296bc5941785ea76c22f51a52a",
+      "name": "transcript",
+      "rows": 507365,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/nodes/transcript.parquet"
+    },
+    {
+      "key": "kg/v2/edges/cell_line_derived_from_tissue.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "d12e1ee58047c4ca998b3626a62d63e1bf19537a266cf35d13acab4b65d6d86c",
+      "name": "cell_line_derived_from_tissue",
+      "rows": 1092,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/cell_line_derived_from_tissue.parquet"
+    },
+    {
+      "key": "kg/v2/edges/cell_line_expresses_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "77702c3440329e3813e61bea7de8e811a7993fbbc39e96125cbe4e652e8b1531",
+      "name": "cell_line_expresses_gene",
+      "rows": 20928056,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/cell_line_expresses_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/cell_line_from_organism.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "b270171eac7c79c3cc9872cae41fdb619a39d72625f67a44c606b3a3732935f0",
+      "name": "cell_line_from_organism",
+      "rows": 1183,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/cell_line_from_organism.parquet"
+    },
+    {
+      "key": "kg/v2/edges/cell_type_expresses_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "93511aba8478ba790a88e95a45dfe80957294c410b852f2e4e911de5562c2c96",
+      "name": "cell_type_expresses_gene",
+      "rows": 1561873,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/cell_type_expresses_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/dataset_contains_cell_line.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "ac01494ee95018b33a1d663ac1da2cef978aa46e51706a75a5265216dd30fe1a",
+      "name": "dataset_contains_cell_line",
+      "rows": 1183,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/dataset_contains_cell_line.parquet"
+    },
+    {
+      "key": "kg/v2/edges/dataset_contains_tissue.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "a5a3a6d5b32d7807277c34a625047f32c600c02a8c5a794d2ee5092487695e9b",
+      "name": "dataset_contains_tissue",
+      "rows": 27,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/dataset_contains_tissue.parquet"
+    },
+    {
+      "key": "kg/v2/edges/disease_associated_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "dbc7357119275c26d9282b36213a017ed75faa8d4835ce48b5de1853bf8071b9",
+      "name": "disease_associated_gene",
+      "rows": 83339,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/disease_associated_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/disease_has_phenotype.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "1e06e61ba81bac0d8b3ec765cf60278e87f043fc39b22a36567add08f4343a6e",
+      "name": "disease_has_phenotype",
+      "rows": 241797,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/disease_has_phenotype.parquet"
+    },
+    {
+      "key": "kg/v2/edges/disease_involves_pathway.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "7df6d34713750a7fea12fafe079538a0846c53b8ad435f13c1e3a85627c47914",
+      "name": "disease_involves_pathway",
+      "rows": 2296,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/disease_involves_pathway.parquet"
+    },
+    {
+      "key": "kg/v2/edges/disease_subtype_of_disease.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "99524f6f6f2f6092c4f0fcb7c42d0b8831fef4a2506786f2d746a8d8f918e0db",
+      "name": "disease_subtype_of_disease",
+      "rows": 104809,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/disease_subtype_of_disease.parquet"
+    },
+    {
+      "key": "kg/v2/edges/enhancer_regulates_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "9863a8dd05acb99482d052a123c7126cd1936fc5f105bbc8bbaaf71ea4cb8aa3",
+      "name": "enhancer_regulates_gene",
+      "rows": 48808144,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/enhancer_regulates_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/gene_associated_phenotype.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "5e532eb9b9c4db707f168b503d064775835a56026fc69fb80d84490d0bd9a1e0",
+      "name": "gene_associated_phenotype",
+      "rows": 3330,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/gene_associated_phenotype.parquet"
+    },
+    {
+      "key": "kg/v2/edges/gene_has_transcript.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "6641690ccaa0a805157647c4acd2d13f0b837fdd09e3be34b12d6fb9f0d65c36",
+      "name": "gene_has_transcript",
+      "rows": 507365,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/gene_has_transcript.parquet"
+    },
+    {
+      "key": "kg/v2/edges/gene_interacts_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "4f789464f0b3c0c77addc52e9cd67da605135846fd8ed6a6c4931e76c69b1ef2",
+      "name": "gene_interacts_gene",
+      "rows": 7424037,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/gene_interacts_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/gene_ortholog_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "bf84dc780a32ac31b22ebc2aa40f37288b8c45deb8961d5590b5edd49fef6123",
+      "name": "gene_ortholog_gene",
+      "rows": 161675,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/gene_ortholog_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/molecule_associated_phenotype.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "413982b1a8e1273e304276bc7ccd879f0d1a7a4cdb2f5610c21c7e3a7dcf3fde",
+      "name": "molecule_associated_phenotype",
+      "rows": 64784,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/molecule_associated_phenotype.parquet"
+    },
+    {
+      "key": "kg/v2/edges/molecule_contraindicates_disease.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "72f7924e8e587756ba9560cc3e79e23e0b55d9e6f229b8606d14d8432874a988",
+      "name": "molecule_contraindicates_disease",
+      "rows": 30675,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/molecule_contraindicates_disease.parquet"
+    },
+    {
+      "key": "kg/v2/edges/molecule_in_pathway.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "15bd8ca01c6ca1318d37e050fd0b76319cd7886b795e18981de7966b3d6fa142",
+      "name": "molecule_in_pathway",
+      "rows": 1680,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/molecule_in_pathway.parquet"
+    },
+    {
+      "key": "kg/v2/edges/molecule_parent_of_molecule.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "ea29cbcf98553d1d32bb90c4922a833975c14dbce0e6213fcac853caa4d22b2e",
+      "name": "molecule_parent_of_molecule",
+      "rows": 4140,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/molecule_parent_of_molecule.parquet"
+    },
+    {
+      "key": "kg/v2/edges/molecule_synergizes_molecule.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "d369b892075cda1613aeef6c766b314a7621ae5c62dc6f0bf6300e718d345eb5",
+      "name": "molecule_synergizes_molecule",
+      "rows": 2672628,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/molecule_synergizes_molecule.parquet"
+    },
+    {
+      "key": "kg/v2/edges/molecule_targets_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "c2bf21620816bb908856f15cef12b0a1c0d55ab0c1d53d5a5eabdfd72a566c90",
+      "name": "molecule_targets_gene",
+      "rows": 41239,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/molecule_targets_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/molecule_treats_disease.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "47294a28f73c852b86231fcb8598808f390a33973afb803df789d03ad72f063e",
+      "name": "molecule_treats_disease",
+      "rows": 14135,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/molecule_treats_disease.parquet"
+    },
+    {
+      "key": "kg/v2/edges/mutation_affects_molecule_response.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "fc4949b71963da5ab1aafb2b0cbf6a6b9d6fec30bfa218d72a476a4236aee14b",
+      "name": "mutation_affects_molecule_response",
+      "rows": 4866,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/mutation_affects_molecule_response.parquet"
+    },
+    {
+      "key": "kg/v2/edges/mutation_associated_disease.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "da07dddf8e2ff218b6be8de4406323d38a52280b46c30c603c7b8140a0315891",
+      "name": "mutation_associated_disease",
+      "rows": 4656171,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/mutation_associated_disease.parquet"
+    },
+    {
+      "key": "kg/v2/edges/mutation_associated_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "019bb7c89e1aea0969ff94430924f6e19699ddeffd797b0def8d7022daf1972b",
+      "name": "mutation_associated_gene",
+      "rows": 535093,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/mutation_associated_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/mutation_associated_phenotype.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "755232ddcf68b1078b6646a60dfb7ed411ce41f3fff0237f0b67d0b97eb272de",
+      "name": "mutation_associated_phenotype",
+      "rows": 164406,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/mutation_associated_phenotype.parquet"
+    },
+    {
+      "key": "kg/v2/edges/mutation_causes_protein_change.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "a7d79d893d53cb4265c61f87be7a30eb4cadf3a13b21625cf5d8ad07b9a98ff0",
+      "name": "mutation_causes_protein_change",
+      "rows": 177735,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/mutation_causes_protein_change.parquet"
+    },
+    {
+      "key": "kg/v2/edges/organism_has_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "bea07c97a12398acf56ed551d5f320b280a2e3275ac7dde1f33a3cac24444580",
+      "name": "organism_has_gene",
+      "rows": 109325,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/organism_has_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/organism_has_tissue.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "37567eb5ae5f5476926447a8187f5a6320f8b907b01204e96d1468da20c253c0",
+      "name": "organism_has_tissue",
+      "rows": 16061,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/organism_has_tissue.parquet"
+    },
+    {
+      "key": "kg/v2/edges/pathway_child_of_pathway.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "8e8f262fe9de8d5b4ba6259b6a5e3794bbd0172f86d4297917714237f44be7fe",
+      "name": "pathway_child_of_pathway",
+      "rows": 147680,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/pathway_child_of_pathway.parquet"
+    },
+    {
+      "key": "kg/v2/edges/pathway_contains_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "4407a578788a0e5fa3907cdedea3c486312f84c06dc92605fc865c570882c562",
+      "name": "pathway_contains_gene",
+      "rows": 630932,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/pathway_contains_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/phenotype_subtype_of_phenotype.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "656a775cf62de22f6e1ee81539d45d19236e1e0298c277c6d7b3a5f748439dfb",
+      "name": "phenotype_subtype_of_phenotype",
+      "rows": 37472,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/phenotype_subtype_of_phenotype.parquet"
+    },
+    {
+      "key": "kg/v2/edges/protein_interacts_protein.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "b4c09c962d05e5d4b9c6675f391f2f79d2c9a6756df4d5255c2e9a77d6a5b87d",
+      "name": "protein_interacts_protein",
+      "rows": 3550,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/protein_interacts_protein.parquet"
+    },
+    {
+      "key": "kg/v2/edges/tissue_expresses_gene.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "3a6994190d6971e771420dec57bb33e071624030b496822bb95fffe79d3f051b",
+      "name": "tissue_expresses_gene",
+      "rows": 5338736,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/tissue_expresses_gene.parquet"
+    },
+    {
+      "key": "kg/v2/edges/tissue_expresses_protein.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "cc0dcbb095b94a43199d56a7a2bb2462437280a1e05d726d5557766044c63332",
+      "name": "tissue_expresses_protein",
+      "rows": 137351,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/tissue_expresses_protein.parquet"
+    },
+    {
+      "key": "kg/v2/edges/tissue_subtype_of_tissue.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "905b7b8b9e8d7842d198077dc43b48bff625659ad60861d52b74d8f46ef97b19",
+      "name": "tissue_subtype_of_tissue",
+      "rows": 28064,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/tissue_subtype_of_tissue.parquet"
+    },
+    {
+      "key": "kg/v2/edges/transcript_encodes_protein.parquet",
+      "layer": "edges",
+      "metadata_fingerprint": "c3c7e858cc7f2b7c0835495202db37c0d6cc0a6850c4046721b28eeebad14eae",
+      "name": "transcript_encodes_protein",
+      "rows": 233995,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/edges/transcript_encodes_protein.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/cell_line_from_organism.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "cec60cec9192182a3a30c1468e37aa538dcccb784ada56bb955f16934c6a366e",
+      "name": "cell_line_from_organism",
+      "rows": 1183,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/cell_line_from_organism.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/disease_associated_gene.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "7ad545d96d3fe63abe8b066ee7cf99f648954358294a44c03faeb3a4dab7375f",
+      "name": "disease_associated_gene",
+      "rows": 2928,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/disease_associated_gene.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/disease_involves_pathway.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "2619ee9d460c6b1b5176d1767189f728bf63db931e27b98749431bc947e13e44",
+      "name": "disease_involves_pathway",
+      "rows": 2296,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/disease_involves_pathway.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/enhancer_regulates_gene.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "ff1f648d7f2efd8bcd7b2036720de1b5fc8920c48e4a8ae391f11e5695ccd2b8",
+      "name": "enhancer_regulates_gene",
+      "rows": 48810390,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/enhancer_regulates_gene.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/gene_interacts_gene.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "f1d07ff16948f5ff1ca410337bb0d9890cc7983bb56869a5f114ad0589a88083",
+      "name": "gene_interacts_gene",
+      "rows": 14336594,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/gene_interacts_gene.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/gene_ortholog_gene.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "17905973c046d08343758261a114b3136a84a281888e39afaccbd37d4b810ab8",
+      "name": "gene_ortholog_gene",
+      "rows": 161675,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/gene_ortholog_gene.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/molecule_targets_gene.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "998ec6f1bb6b0c638915e48ec43895414f0926e8b83a61fdb65358c11a83d1de",
+      "name": "molecule_targets_gene",
+      "rows": 41239,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/molecule_targets_gene.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/mutation_affects_molecule_response.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "24c2b3c5c144aa5d6fe5ccc826527eb52b043f99e8658a31169c10ff8f17de73",
+      "name": "mutation_affects_molecule_response",
+      "rows": 18595,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/mutation_affects_molecule_response.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/mutation_associated_disease.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "ced976d60163c7849fe8fb1c5031e5bb5172cee194e3797610d7dbfefcb819cb",
+      "name": "mutation_associated_disease",
+      "rows": 4656171,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/mutation_associated_disease.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/mutation_associated_gene.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "847876ba0e54ae9fc8111148b7b386d9af499bc8cea1d5f784d0705b6f304432",
+      "name": "mutation_associated_gene",
+      "rows": 535093,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/mutation_associated_gene.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/mutation_associated_phenotype.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "ce3d341f6c8aa2f421571b459a3da6021e3f3d9a68b342245fc26e4d6c6d4708",
+      "name": "mutation_associated_phenotype",
+      "rows": 169005,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/mutation_associated_phenotype.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/mutation_causes_protein_change.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "4b07705905a9e12a3e96296828486585884053dc1a65b47cf086df0837e37285",
+      "name": "mutation_causes_protein_change",
+      "rows": 177735,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/mutation_causes_protein_change.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/pathway_contains_gene.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "d1e19923f7b3432ab82b7296258a300f95a67229660e3f363b74037d8e9a5680",
+      "name": "pathway_contains_gene",
+      "rows": 630932,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/pathway_contains_gene.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/protein_interacts_protein.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "d8101344d10c016bb050a50ca6857663c8fe0e4207f5ae39c9db0b537be29290",
+      "name": "protein_interacts_protein",
+      "rows": 12288,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/protein_interacts_protein.parquet"
+    },
+    {
+      "key": "kg/v2/evidence/tissue_expresses_protein.parquet",
+      "layer": "evidence",
+      "metadata_fingerprint": "c8ad29ae17eec915d239756e305bfcc6affb7d02f191f00a0dfafc3ce61b6843",
+      "name": "tissue_expresses_protein",
+      "rows": 137531,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/evidence/tissue_expresses_protein.parquet"
+    },
+    {
+      "key": "kg/v2/features/cell_line_textual_summary.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "44b7140b08edbeeeed33ff51c45ca50d80ea6aaa84938f8db4b0ebb4524a4b5a",
+      "name": "cell_line_textual_summary",
+      "rows": 1140,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/cell_line_textual_summary.parquet"
+    },
+    {
+      "key": "kg/v2/features/cell_type_textual_summary.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "b65252cdb0e114633813a37a18ef18d3abc513ff9836ef6183d43051de0939bd",
+      "name": "cell_type_textual_summary",
+      "rows": 3135,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/cell_type_textual_summary.parquet"
+    },
+    {
+      "key": "kg/v2/features/disease_textual_summary.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "1a4f875ed3d574a8ed5d648c9c3b422eb658d39093aee0f0ae2478096c687e2b",
+      "name": "disease_textual_summary",
+      "rows": 26395,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/disease_textual_summary.parquet"
+    },
+    {
+      "key": "kg/v2/features/gene_textual_summary.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "d0b0bb056c8bd3f77f94d5dd9c4881b467ee7f0c4fd26181c53c7206e9accfe7",
+      "name": "gene_textual_summary",
+      "rows": 212029,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/gene_textual_summary.parquet"
+    },
+    {
+      "key": "kg/v2/features/molecule_fingerprint.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "0cec4ada30201d63812f95098acb6b089106bd5635d09191bd4cb16160ad31b0",
+      "name": "molecule_fingerprint",
+      "rows": 18614,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/molecule_fingerprint.parquet"
+    },
+    {
+      "key": "kg/v2/features/molecule_textual_summary.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "0fa6597c2c09c61dd121877bf340bffaead137917e2d6d5c69a9848c0fc93907",
+      "name": "molecule_textual_summary",
+      "rows": 22230,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/molecule_textual_summary.parquet"
+    },
+    {
+      "key": "kg/v2/features/pathway_textual_summary.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "fda7bbdce6c15cf0cec6a6776715c8676625e9c601c79961aad7501a9f861000",
+      "name": "pathway_textual_summary",
+      "rows": 37492,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/pathway_textual_summary.parquet"
+    },
+    {
+      "key": "kg/v2/features/phenotype_textual_summary.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "1eea9acfa7cf530c9a9ae9ea5fcb4cfd707c5282c19551dd00c2070e7ed915dc",
+      "name": "phenotype_textual_summary",
+      "rows": 13810,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/phenotype_textual_summary.parquet"
+    },
+    {
+      "key": "kg/v2/features/protein_sequence.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "b96261a015c68ceaa44a3ac9b633d09f95d99ec457f86d8b7a64dcb8f8888a4d",
+      "name": "protein_sequence",
+      "rows": 112051,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/protein_sequence.parquet"
+    },
+    {
+      "key": "kg/v2/features/protein_textual_summary.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "3e1ae6eff4fad75a6f76f7d23fa0185a5492a757a41d68ef20968bb34b7ff10d",
+      "name": "protein_textual_summary",
+      "rows": 162163,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/protein_textual_summary.parquet"
+    },
+    {
+      "key": "kg/v2/features/tissue_textual_summary.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "f45b15a6758e13b25b4d669f8c0057b10e22081f1b73a10e491c5a5481a47a21",
+      "name": "tissue_textual_summary",
+      "rows": 11942,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/tissue_textual_summary.parquet"
+    },
+    {
+      "key": "kg/v2/features/transcript_sequence.parquet",
+      "layer": "features",
+      "metadata_fingerprint": "c0b996dfd1d3c7b45d2a74efe1dcb6c705f8aba65e44acf89fc12bfc8c258e84",
+      "name": "transcript_sequence",
+      "rows": 187268,
+      "status": "would_create",
+      "uri": "gs://jouvencekb/kg/v2/features/transcript_sequence.parquet"
+    }
+  ],
+  "collection": "jouvence-kg/v2",
+  "dry_run": true,
+  "errors": [],
+  "lamin_instance": "jkobject/jouvencekb",
+  "summary": {
+    "created": 0,
+    "error": 0,
+    "noop": 0,
+    "updated": 0,
+    "would_create": 79,
+    "would_update": 0
+  }
+}

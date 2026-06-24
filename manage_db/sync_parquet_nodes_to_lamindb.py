@@ -753,6 +753,7 @@ def sync_parquet_nodes_to_lamindb(
     selected = node_types or sorted(available & SUPPORTED_NODE_TYPES)
 
     registry_models = None
+    registry_lookup_unavailable_detail: str | None = None
     if write:
         _connect_lamin(lamin_instance)
         registry_models = _registry_models()
@@ -764,6 +765,7 @@ def sync_parquet_nodes_to_lamindb(
             _connect_lamin(lamin_instance)
             registry_models = _registry_models()
         except Exception as exc:
+            registry_lookup_unavailable_detail = str(exc)
             print(
                 f"dry-run: LaminDB registry lookup unavailable ({exc}); reporting all valid rows as would_create",
                 file=sys.stderr,
@@ -835,6 +837,12 @@ def sync_parquet_nodes_to_lamindb(
 
         summary.registry = registry_name
         summary.key_field = key_field
+        if registry_models is None and registry_lookup_unavailable_detail and registry_name:
+            if "wasn't configured" in registry_lookup_unavailable_detail and registry_name.startswith("lnschema_txgnn."):
+                summary.status = "schema_module_not_configured"
+            else:
+                summary.status = "registry_lookup_unavailable"
+            summary.status_detail = registry_lookup_unavailable_detail
         summaries.append(summary)
 
     return summaries

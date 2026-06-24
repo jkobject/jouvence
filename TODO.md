@@ -1,153 +1,159 @@
-# TxGNN / Jouvence KG TODO
+# TxGNN / Jouvence KG TODO — current human mirror
 
-## Current baseline
+Kanban board `txgnn` remains the dispatch/source-of-truth. This file is a compact human overview; detailed phase mirrors live in `todo.d/`.
 
-Canonical KG root: `/mnt/gcs/jouvencekb/kg/v2`
+## Operating rule
 
-- node files: `15 / 15`
-- edge files: `36 / 67`
-- nodes: `55,523,691`
-- edges: `94,877,374`
-- coverage report: `.omoc/reports/hermes-clean-schema-coverage-20260618.json`
+Do **not** use `.omoc` for new work. It is a legacy scratch/cache location from older runs. New outputs should go to:
 
-No remaining `-> ...` user comments were found in `manage_db/kg_schema.py`; the cleanup decisions from the schema discussion are represented below as active tasks.
+- `artifacts/staged/<task-id>/` for local staged artifacts;
+- `artifacts/cache/<task-id>/` for bounded local cache if unavoidable;
+- `docs/` for human-readable reports;
+- `gs://jouvencekb/kg/staging/...` for remote staged artifacts;
+- canonical writes only under `gs://jouvencekb/kg/v2/...` after validation + review.
 
-## User-requested next task set — 2026-06-20
+Verified KG access:
 
-### Block 1 — split source-native gene-level compendia and evidence
+- GCS canonical root: `gs://jouvencekb/kg/v2`
+- macOS FUSE root: `/Users/jkobject/mnt/gcs/jouvencekb-kg/v2`
 
-Execution plan and promotion criteria: `docs/block1_relation_source_split_plan.md`.
+## Status vocabulary
 
-First local GCS-cache inspection is recorded in that plan; no FUSE mount was available, so files were copied via `gcloud storage cp` into `.omoc/gcs-cache/kg-v2/`.
+Avoid bare “done” except as a Kanban state. Use:
 
-- [x] Add active schema relations for the first split targets:
-  - `tf_binds_enhancer`
-  - `transcript_interacts_protein`
-  - `transcript_interacts_gene`
-- [ ] `gene_interacts_gene`: inspect evidence/source databases and split source-native subsets where justified:
-  - keep broad gene/gene-product interaction assertions in `gene_interacts_gene` with detailed evidence;
-  - create/populate `protein_interacts_protein` only for protein/isoform-native endpoints;
-  - create/populate `tf_regulates_gene` for TF→gene regulatory assertions;
-  - create/populate `tf_binds_enhancer` for TF/enhancer binding assertions;
-  - create/populate `transcript_interacts_protein` for RNA/transcript–protein binding;
-  - create/populate `transcript_interacts_gene` for transcript/RNA–gene regulatory assertions.
-- [ ] `pathway_contains_gene`: inspect compendium/source datasets and split only source-native protein-level membership into `pathway_contains_protein`; preserve source database, membership type, evidence/predicate, score, release, and record IDs in evidence.
-- [ ] `molecule_targets_gene`: inspect compendium/source datasets and split only source-native protein/isoform target assertions into `molecule_targets_protein`; preserve MoA/action type, target class, mechanism, source database, score, and record IDs in evidence.
-- [ ] For every ingested relationship: if the source is a compendium, enumerate the subdatabases; load subdatabase-native detail separately when OpenTargets/TxData flattened it away; list as much row-level source detail as possible in `evidence/{relation}.parquet`.
-- [ ] Do not subset source rows before ingestion except when the relation would be biologically meaningless or for the explicitly bounded mutation↔enhancer case; otherwise keep broad edges and preserve different sources/features in evidence.
+- `design done`
+- `pilot accepted`
+- `staged-only`
+- `review-required`
+- `validated`
+- `canonical promoted`
+- `production/full done`
 
-### Later — new node and edge families
+## Current phase mirrors
 
-- [ ] Add node type: organelle / compartment, initially from HPA subcellular location.
-- [ ] Add node type: protein complex; identify source(s).
-- [ ] Add node type: miRNA; identify source(s).
-- [ ] Add node type: lncRNA; identify source(s).
-- [ ] Add `organelle_or_compartment -> cell_type` when a source supports the context.
-- [ ] Add `organelle_or_compartment -> organelle_or_compartment` from HPA subcellular hierarchy: https://www.proteinatlas.org/humanproteome/subcellular
-- [ ] Add `protein -> organelle_or_compartment` from HPA subcellular/organelle: https://www.proteinatlas.org/humanproteome/subcellular/organelle
-- [ ] Add `protein -> ptm -> disease/phenotype` from neXtProt and UniProtKB.
-- [ ] Add `lncRNA -> protein/disease/phenotype`.
-- [ ] Add `miRNA -> protein/disease/phenotype`.
-- [ ] Add `protein -> protein_complex`.
-- [ ] Add `protein_complex -> protein_complex/disease/phenotype`.
-- [ ] Add `gene_paralogs_gene`.
+Use `docs/current_state_20260623.md` plus the phase files below as the current-state anchor.
 
-### Later — textual summaries/features
+- `todo.d/01_lamindb.md`
+- `todo.d/02_pyg_gnn.md`
+- `todo.d/03_embeddings.md`
+- `todo.d/04_relations.md`
+- `todo.d/05_remap.md`
+- `todo.d/06_process.md`
 
-Staged feature-table pilot and source audit: `docs/textual_summary_features.md`.
-Uploaded staging root: `gs://jouvencekb/kg/staging/textual-summary-features-20260622-t_3834a45b/`.
+## Current KG coverage source of truth
 
-- [x] Reject GeneCards scraping unless terms are explicitly acceptable; use source-audited alternatives instead.
-- [x] Stage gene textual summaries from OpenTargets target node descriptions with upstream-source attribution caveat.
-- [ ] Expand protein textual summaries from UniProt beyond the staged 100-accession pilot.
-- [x] Stage disease textual summaries from OpenTargets/EFO/MONDO-derived node descriptions.
-- [x] Stage tissue textual summaries from UBERON definitions.
-- [x] Stage molecule textual summaries from ChEMBL/OpenTargets drug metadata; DrugBank text scraping remains rejected/deferred without separate license.
-- [ ] Add Reactome pathway textual summaries when a Reactome description dump/API source is selected; GO pathway/process definitions are staged.
+Use these, not old `.omoc` reports:
 
-### Later — database gap analysis
+- `docs/kg_schema_overview.md`
+- `docs/relation_coverage_current.md`
+- `notebooks/kg_schema_overview.ipynb`
+- `docs/relation_backlog_prioritized.md`
 
-Answer for each database: do we already have it, is it part of an ingested compendium, and does it contain useful information not present in the current ingestion/OpenTargets?
+Accepted snapshot:
 
-- [ ] CIViC
-- [ ] Monarch
-- [ ] ClinPGx
-- [ ] OMIM
-- [ ] HumanCyc
-- [ ] BioGRID
-- [ ] IID
-- [ ] InnateDB
-- [ ] IntAct
-- [ ] MINT
-- [ ] DGV and other structural-variation databases for mutation nodes/edges
+- active declared relations: `67`
+- canonical active edge relations: `37`
+- canonical relations with evidence: `15`
+- canonical relations without evidence: `22`
+- declared relations not canonical yet: `30`
+- staged-only/deferred: `20`
+- source-audit-only/deferred: `2`
+- feature-context-not-edge: `2`
+- schema-only/missing: `6`
+- canonical edge rows: `94,880,924`
+- node rows: `55,523,691`
 
-## Immediate tasks
+## Active priorities
 
-### 1. Full validation after cleanup ✅
+### 1. LaminDB / `lnschema_txgnn`
 
-- Completed with DuckDB on `/mnt/gcs/jouvencekb/kg/v2`.
-- Report: `.omoc/reports/hermes-full-validate-clean-schema-20260618.txt`.
-- Result: `36` edge files, `94,877,374` edges, `55,523,691` nodes, `total_dangling_edges=0`.
+`lnschema_txgnn` is locally activated and artifact registry sync is implemented/reviewed, but full exact-ID schema/query coverage is not finished.
 
-### 2. Evidence for `enhancer_regulates_gene` ✅
+- `t_c51d9a5b` — activation/config revision producer: `review-required`; local self-managed config now includes `lnschema_txgnn`.
+- `t_edb59ab8` — validate activation/exact-ID registry.
+- `t_59139647` — review activation/exact-ID registry.
+- `t_3d4fa114` — audit/design full node/edge/evidence/feature schema/query API coverage after activation.
 
-- Backfilled `/mnt/gcs/jouvencekb/kg/v2/evidence/enhancer_regulates_gene.parquet`.
-- Rows: `48,810,390`; distinct supported edges: `48,808,144`.
-- Source: OpenTargets ENCODE-rE2G raw `enhancer_to_gene` rows.
-- Preserved biosample ID/name, study/file ID, DNase/Hi-C resource score JSON, distance-to-TSS, quality controls, PMID/source release.
-- Build log: `.omoc/reports/hermes-build-enhancer-evidence-20260618.log`.
-- Audit: `.omoc/reports/hermes-audit-enhancer-evidence-20260618.txt` → `edges_without_evidence=0`, `evidence_without_edge=0`.
+Done means `lnschema_txgnn` is configured and usable for `jkobject/jouvencekb`, exact-ID node/edge/evidence/feature sync probes pass, and validator/reviewer accept. Local activation alone is not production/full done.
 
-### 3. OpenTargets molecular interaction evidence ✅
+### 2. PyG / GNN
 
-- Downloaded OpenTargets 26.03 `interaction` Parquet shards to `/mnt/gcs/jouvencekb/kg/scratch/opentargets-26.03/interaction`.
-- Promoted OpenTargets-supported `gene_interacts_gene` edges after filtering both endpoints against `nodes/gene.parquet`.
-- Updated `/mnt/gcs/jouvencekb/kg/v2/edges/gene_interacts_gene.parquet`: `7,424,037` deduplicated edges.
-- Wrote `/mnt/gcs/jouvencekb/kg/v2/evidence/gene_interacts_gene.parquet`: `14,336,594` source evidence rows from IntAct/Reactome/SIGNOR/STRING.
-- Build/audit log: `.omoc/reports/hermes-build-gene-interaction-ot-20260618.log`.
-- Validation during build: `missing_x=0`, `missing_y=0`, `edges_without_evidence=0`, `evidence_without_edge=0` for OpenTargets-supported keys.
+Existing PyG work is a bounded export pilot, not completion.
 
-### 4. Direct HPA protein expression ✅ tissue-level / ⏳ cell-type-level
+- `t_015bd9a4` — full KG / representative KG PyG export plus runnable GNN smoke/training.
+- `t_1d1eb3a1` — validate actual HeteroData/GNN runtime.
+- `t_468db80e` — review full PyG/GNN acceptance.
 
-- Downloaded HPA 25.1 `proteinatlas.tsv.zip` to `/mnt/gcs/jouvencekb/kg/scratch/hpa-25.1/`.
-- Built `/mnt/gcs/jouvencekb/kg/v2/edges/tissue_expresses_protein.parquet`: `137,351` tissue→protein edges.
-- Built `/mnt/gcs/jouvencekb/kg/v2/evidence/tissue_expresses_protein.parquet`: `137,531` HPA evidence rows.
-- Used UniProt→ENSP mapping from `nodes/protein.parquet`; no RNA/gene projection.
-- Used exact tissue-name matching plus four explicit HPA aggregate aliases: heart muscle, skeletal muscle, salivary gland, skin.
-- Build log: `.omoc/reports/hermes-build-hpa-protein-expression-20260618.log`.
-- Validation: `.omoc/reports/hermes-full-validate-after-hpa-20260618.txt` → `37` edge files, `94,877,374` edges, `total_dangling_edges=0`.
-- Remaining: decide whether HPA aggregate `Protein cell type specific Intensity` is sufficient for `cell_type_expresses_protein`, or whether we require a finer direct HPA cell-type/staining table.
+Done means an actual PyG/HeteroData object exists and a GNN run executes on it.
 
-### 5. Drug clinical/safety evidence
+### 3. Embeddings
 
-- Add positive indication/trial-stage evidence for `molecule_treats_disease`.
-- Find a contraindication-specific source for `molecule_contraindicates_disease`; do not reuse positive indication rows as contraindication evidence.
+Existing embedding work is policy + surrogate pilot, not production embeddings.
 
-### 6. Molecule pair evidence
+Corrections to encode:
 
-- Backfill `molecule_synergizes_molecule` evidence with source descriptions, labels, and scores.
-- Keep chemical hierarchy in `molecule_parent_of_molecule`.
+- full UniProt `protein_textual_summary.parquet` is validated/promoted and should be used as text signal;
+- edge values/evidence should be encoded through an MLP/value encoder;
+- edge input should concatenate/aggregate all edges/evidence between the same node pair where relevant;
+- nodes/edges without source info get learned embeddings;
+- HashingVectorizer is schema-only pilot, not production.
 
-### 7. Remaining source-backed relations
+Cards:
 
-Only build these when a concrete source and endpoint policy are selected:
+- `t_6b3c1294` — update embedding policy with corrections.
+- `t_f8bae791` — create real node/edge embeddings.
+- `t_34836f1c` — validate real embeddings.
+- `t_384b9594` — review real embeddings.
 
-- `mutation_in_gene` — staged pilot exists at `docs/proposals/mutation_genomic_direct_edges_staged_pilot.md`; review bounding policy before canonical promotion.
-- `mutation_affects_transcript` — staged pilot exists at `docs/proposals/mutation_genomic_direct_edges_staged_pilot.md`; review consequence/transcript filtering before canonical promotion.
-- `mutation_overlaps_enhancer` — staged pilot exists at `docs/proposals/mutation_genomic_direct_edges_staged_pilot.md`; keep downstream-association gate before any canonical promotion.
-- `enhancer_regulates_transcript`
-- `cell_line_gene_essentiality`
-- `cell_line_responds_to_molecule`
-- `disease_manifests_in_tissue`
-- `phenotype_observed_in_tissue`
+### 4. ReMap
 
-## Promotion gates
+All-peak ReMap is stopped/deferred. Do not auto-resume.
 
-Before any new canonical edge file is promoted:
+Accepted staged-only pilot:
 
-1. Build in scratch/staging.
-2. Validate endpoint anti-joins for x/y node IDs.
-3. Write evidence rows when source provenance exists.
-4. Audit evidence support with `manage_db.audit_edge_evidence`.
-5. Update coverage report and docs.
-6. Run targeted tests plus relation-specific validation.
+- `t_3b8a2c4d` — CRM support/QA first10k chr1 pilot.
+- Prefix: `gs://jouvencekb/kg/staging/source-native-expansion/remap-crm-tf-binds-enhancer-support-chr1-first10k-20260623-t_3b8a2c4d/`
+
+Next:
+
+- `t_b599d3bb` — build accepted CRM support/QA artifact at larger/full feasible scope with detailed report.
+- `t_3a7a8c9c` — validate CRM artifact.
+- `t_9b96ea36` — review CRM artifact/report.
+
+CRM is support/QA only; not canonical `observed_binding`.
+
+### 5. Mutation genomic direct relations
+
+`mutation_affects_transcript` is canonical promoted/review-accepted from the all-part OpenTargets 26.03 candidate. `mutation_in_gene` remains staged/deferred. `mutation_overlaps_enhancer` remains staged/context/feature-only unless stronger allele-specific regulatory/enhancer-activity evidence is selected by a new policy.
+
+Relations:
+
+- `mutation_affects_transcript` — `canonical promoted` / reviewed.
+- `mutation_in_gene` — staged/deferred, not canonical.
+- `mutation_overlaps_enhancer` — staged/context/feature-only, not canonical observed regulatory evidence.
+
+Cards:
+
+- `t_60b3e504` — policy done.
+- `t_79f8684d` — 25k staged tranche accepted for QA only.
+- `t_f32f1f5b` / `t_225ae18c` — all-part `mutation_affects_transcript` candidate accepted and canonical promoted.
+- `mutation_in_gene` / `mutation_overlaps_enhancer` — deferred until explicit source/evidence policy and review acceptance.
+- `t_4b1227b3` — do not use as blanket promotion; only relation-specific promotion after explicit acceptance.
+
+### 6. Relation waves
+
+Use `docs/relation_backlog_prioritized.md` and `todo.d/04_relations.md`. A relation is not complete until canonical promoted+reviewed or explicitly accepted as staged/deferred.
+
+### 7. Process hygiene
+
+- `t_caacd3d1` — keep `todo.d/` synced, enforce honest status labels, fix review routing/watchdog behavior, and prevent `.omoc` recreation.
+
+## Git / reviewability blocker
+
+`work/txgnn` is not currently an independent git checkout. `git -C /Users/jkobject/.openclaw/workspace/work/txgnn status` falls back to the parent workspace repo and fails because invalid nested `.git` directories exist under sibling workspace projects.
+
+Decision from `t_4cab4a2f`: use the existing GitHub repo `https://github.com/jkobject/TxGNN` and perform future reviewable work in `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/` (or a canonical clone), not by `git init` in the artifact workspace. See `docs/git_reviewability_migration_t_4cab4a2f.md` for the invalid `.git` quarantine plan, migration commands, and review gates. Do not claim PR-ready diffs from `work/txgnn` until that migration is executed and reviewed.
+
+## Historical note
+
+Older docs/reports may mention `.omoc` and old local caches. Treat those as historical evidence only, not current instructions. If an old worker actively targets the legacy path, let it finish, then preserve useful outputs under `artifacts/`, `docs/`, or GCS staging and retire the legacy path when no active command references it.

@@ -14,8 +14,6 @@ Reason: real download, ingest, and KG validation passed, but export to `gs://jou
   - `data/opentargets/disease`: 200 Parquet files
 - Generated KG files:
   - `data/kg/nodes/paper.parquet`: 2,958,199 rows
-  - `data/kg/edges/paper_mentions_gene.parquet`: 7,177,163 rows
-  - `data/kg/edges/paper_mentions_disease.parquet`: 6,492,130 rows
   - `data/kg/nodes/gene.parquet`: 30,227 rows
   - `data/kg/nodes/disease.parquet`: 28,327 rows
   - `data/kg/edges/disease_subtype_of_disease.parquet`: 40,421 rows

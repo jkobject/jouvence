@@ -99,6 +99,11 @@ def test_source_policy_audit_rejects_incompatible_scraping_sources() -> None:
     assert audit.loc["DrugBank", "decision"] == "reject_scraping"
     assert audit.loc["UniProtKB", "decision"] == "allow_with_attribution"
     assert audit.loc["Reactome", "license"] == "CC BY 4.0"
+    assert audit.loc["Cellosaurus", "decision"] == "allow_with_attribution"
+    assert audit.loc["Cellosaurus", "license"] == (
+        "Creative Commons Attribution 4.0 International (CC BY 4.0); "
+        "https://creativecommons.org/licenses/by/4.0/; attribution/link/change-notice required"
+    )
 
 
 def test_allowed_textual_summary_tables_document_node_contracts() -> None:
@@ -110,3 +115,6 @@ def test_allowed_textual_summary_tables_document_node_contracts() -> None:
     assert tables["tissue_textual_summary"] == "tissue"
     assert tables["molecule_textual_summary"] == "molecule"
     assert tables["pathway_textual_summary"] == "pathway"
+    assert tables["cell_type_textual_summary"] == "cell_type"
+    assert tables["phenotype_textual_summary"] == "phenotype"
+    assert tables["cell_line_textual_summary"] == "cell_line"
