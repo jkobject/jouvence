@@ -2,10 +2,13 @@
 
 Production-safety defaults:
 - dry-run unless ``--write`` is passed;
-- bounded by explicit per-relation edge/evidence limits by default;
+- reads canonical KG Parquets and never writes KG Parquet outputs;
+- supports explicit per-relation windows, chunking, resume, and idempotence
+  passes for bounded live syncs;
 - uses deterministic exact-ID keys from :mod:`manage_db.kg_edge_pilot`;
 - writes through the live ``lnschema_txgnn.KGEdge`` and
-  ``lnschema_txgnn.KGEdgeEvidence`` ORM models, never through local pilot SQLite.
+  ``lnschema_txgnn.KGEdgeEvidence`` ORM models with schema-safe Django bulk
+  upserts, never through local pilot SQLite.
 
 This module is intentionally separate from ``kg_edge_pilot`` so reviewers can
 see whether a run touched the live LaminDB instance or only the local review
@@ -15,8 +18,9 @@ fixture.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -30,11 +34,61 @@ DEFAULT_KG_ROOT = kg_edge_pilot.DEFAULT_KG_ROOT
 DEFAULT_RELATIONS = kg_edge_pilot.DEFAULT_RELATIONS
 DEFAULT_EDGE_LIMIT = 25
 DEFAULT_EVIDENCE_LIMIT = 25
+DEFAULT_CHUNK_SIZE = 5_000
+DEFAULT_BATCH_SIZE = 1_000
+
+EDGE_UPDATE_FIELDS = [
+    "x_id",
+    "x_type",
+    "y_id",
+    "y_type",
+    "relation",
+    "display_relation",
+    "source",
+    "credibility",
+    "metadata",
+]
+EVIDENCE_UPDATE_FIELDS = [
+    "edge_key",
+    "relation",
+    "x_id",
+    "x_type",
+    "y_id",
+    "y_type",
+    "evidence_type",
+    "source",
+    "source_dataset",
+    "source_record_id",
+    "paper_id",
+    "dataset_id",
+    "study_id",
+    "evidence_score",
+    "predicate",
+    "direction",
+    "metadata",
+]
+
+
+@dataclass(frozen=True)
+class RelationWindow:
+    """Source window selected for one relation."""
+
+    relation: str
+    edge_offset: int = 0
+    edge_limit: int = DEFAULT_EDGE_LIMIT
+    evidence_offset: int = 0
+    evidence_limit: int = DEFAULT_EVIDENCE_LIMIT
+    chunk_size: int = DEFAULT_CHUNK_SIZE
 
 
 @dataclass
-class LiveEdgeSyncSummary:
+class LiveEdgeSyncChunk:
     relation: str
+    chunk_index: int
+    edge_offset: int
+    edge_limit: int
+    evidence_offset: int
+    evidence_limit: int
     edge_rows_available: int
     edge_rows_selected: int
     evidence_rows_available: int
@@ -46,6 +100,34 @@ class LiveEdgeSyncSummary:
     edge_upserts: int = 0
     evidence_upserts: int = 0
     status: str = "dry_run"
+
+
+@dataclass
+class LiveEdgeSyncSummary:
+    relation: str
+    edge_offset: int = 0
+    edge_limit: int = DEFAULT_EDGE_LIMIT
+    evidence_offset: int = 0
+    evidence_limit: int = DEFAULT_EVIDENCE_LIMIT
+    chunk_size: int = DEFAULT_CHUNK_SIZE
+    resume_chunk: int = 0
+    max_chunks: int | None = None
+    idempotence_passes: int = 1
+    edge_rows_available: int = 0
+    edge_rows_selected: int = 0
+    evidence_rows_available: int = 0
+    evidence_rows_selected: int = 0
+    edge_existing_before: int | None = None
+    evidence_existing_before: int | None = None
+    edge_count_after: int | None = None
+    evidence_count_after: int | None = None
+    edge_upserts: int = 0
+    evidence_upserts: int = 0
+    selected_live_edges_found: int | None = None
+    selected_live_evidence_found: int | None = None
+    source_live_mismatch_count: int | None = None
+    chunks: list[LiveEdgeSyncChunk] = field(default_factory=list)
+    status: str = "dry_run"
     status_detail: str | None = None
 
 
@@ -53,6 +135,14 @@ def _registry_models() -> tuple[Any, Any]:
     import lnschema_txgnn as txs
 
     return txs.KGEdge, txs.KGEdgeEvidence
+
+
+def _transaction_atomic():
+    try:
+        from django.db import transaction
+    except Exception:  # pragma: no cover - only used without Django installed
+        return contextlib.nullcontext()
+    return transaction.atomic()
 
 
 def _clean_value(value: object) -> object:
@@ -69,7 +159,9 @@ def _metadata_dict(value: object) -> dict[str, Any] | None:
     if value is None:
         return None
     if isinstance(value, dict):
-        return value
+        value.pop("edge_key", None)
+        value.pop("evidence_key", None)
+        return value or None
     text = str(value)
     if not text:
         return None
@@ -96,7 +188,11 @@ def _evidence_defaults(row: Mapping[str, Any]) -> dict[str, Any]:
     return _row_dict(row, base_columns=kg_edge_pilot.EVIDENCE_BASE_COLUMNS)
 
 
-def _read_limited_parquet(kg_root: str | Path, subdir: str, name: str, limit: int) -> tuple[pd.DataFrame, int]:
+def _read_limited_parquet(kg_root: str | Path, subdir: str, name: str, limit: int, offset: int = 0) -> tuple[pd.DataFrame, int]:
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+    if limit < 0:
+        raise ValueError("limit must be >= 0; use 0 for all rows from offset")
     root = kg_storage.open_kg_root(str(kg_root))
     path = root._join(subdir, f"{name}.parquet")
     if not root.fs.exists(path):
@@ -104,14 +200,14 @@ def _read_limited_parquet(kg_root: str | Path, subdir: str, name: str, limit: in
     with root.fs.open(path, "rb") as handle:
         parquet_file = pq.ParquetFile(handle)
         table = parquet_file.read()
-        selected = table.slice(0, int(limit)) if limit else table
+        selected = table.slice(int(offset), None if int(limit) == 0 else int(limit))
         return selected.to_pandas(), parquet_file.metadata.num_rows
 
 
-def build_edge_frame(kg_root: str | Path, relation: str, *, limit: int) -> tuple[pd.DataFrame, int]:
-    frame, total = _read_limited_parquet(kg_root, "edges", relation, limit)
+def build_edge_frame(kg_root: str | Path, relation: str, *, limit: int, offset: int = 0) -> tuple[pd.DataFrame, int]:
+    frame, total = _read_limited_parquet(kg_root, "edges", relation, limit, offset)
     if frame.empty:
-        return pd.DataFrame(columns=[*kg_edge_pilot.EDGE_BASE_COLUMNS, "edge_key", "metadata_json"]), total
+        return pd.DataFrame(columns=["edge_key", *kg_edge_pilot.EDGE_BASE_COLUMNS, "metadata_json"]), total
     missing = [col for col in ["x_id", "x_type", "y_id", "y_type", "relation"] if col not in frame.columns]
     if missing:
         raise ValueError(f"edges/{relation}.parquet missing required edge columns: {missing}")
@@ -133,8 +229,8 @@ def build_edge_frame(kg_root: str | Path, relation: str, *, limit: int) -> tuple
     return frame[["edge_key", *kg_edge_pilot.EDGE_BASE_COLUMNS, "metadata_json"]], total
 
 
-def build_evidence_frame(kg_root: str | Path, relation: str, *, limit: int) -> tuple[pd.DataFrame, int]:
-    frame, total = _read_limited_parquet(kg_root, "evidence", relation, limit)
+def build_evidence_frame(kg_root: str | Path, relation: str, *, limit: int, offset: int = 0) -> tuple[pd.DataFrame, int]:
+    frame, total = _read_limited_parquet(kg_root, "evidence", relation, limit, offset)
     if frame.empty:
         return pd.DataFrame(columns=["evidence_key", *kg_edge_pilot.EVIDENCE_BASE_COLUMNS, "metadata_json"]), total
     frame = frame.copy()
@@ -151,26 +247,52 @@ def build_evidence_frame(kg_root: str | Path, relation: str, *, limit: int) -> t
         )
         for _, row in frame.iterrows()
     ]
-    frame["evidence_key"] = [kg_edge_pilot.evidence_key_for(row, ordinal=i) for i, (_, row) in enumerate(frame.iterrows())]
+    # Evidence keys must be stable across resumed windows. Include the absolute
+    # source-row ordinal rather than the index inside the sliced frame.
+    frame["evidence_key"] = [kg_edge_pilot.evidence_key_for(row, ordinal=offset + i) for i, (_, row) in enumerate(frame.iterrows())]
     frame["metadata_json"] = [kg_edge_pilot._metadata_json(row, kg_edge_pilot.EVIDENCE_BASE_COLUMNS) for _, row in frame.iterrows()]
     return frame[["evidence_key", *kg_edge_pilot.EVIDENCE_BASE_COLUMNS, "metadata_json"]], total
 
 
-def _upsert_rows(model: Any, key_field: str, rows: Sequence[Mapping[str, Any]], defaults_fn) -> int:
-    count = 0
+def _clean_records(frame: pd.DataFrame, defaults_fn, key_field: str) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+    rows = frame.where(pd.notna(frame), None).to_dict(orient="records")
+    records: list[dict[str, Any]] = []
     for row in rows:
         key = _clean_value(row.get(key_field))
         if key is None:
             continue
-        defaults = defaults_fn(row)
-        _db_retry(
-            f"upsert {model.__module__}.{model.__name__} {key}",
-            lambda model=model, key_field=key_field, key=key, defaults=defaults: model.objects.update_or_create(
-                **{key_field: key}, defaults=defaults
-            ),
-        )
-        count += 1
-    return count
+        record = defaults_fn(row)
+        record[key_field] = key
+        records.append(record)
+    return records
+
+
+def _bulk_upsert_rows(
+    model: Any,
+    key_field: str,
+    rows: Sequence[Mapping[str, Any]],
+    defaults_fn,
+    *,
+    update_fields: Sequence[str],
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> int:
+    records = _clean_records(pd.DataFrame(rows), defaults_fn, key_field)
+    if not records:
+        return 0
+    objects = [model(**record) for record in records]
+    _db_retry(
+        f"bulk upsert {model.__module__}.{model.__name__} {len(objects)} rows",
+        lambda: model.objects.bulk_create(
+            objects,
+            batch_size=batch_size,
+            update_conflicts=True,
+            update_fields=list(update_fields),
+            unique_fields=[key_field],
+        ),
+    )
+    return len(objects)
 
 
 def _relation_count(model: Any, relation: str) -> int:
@@ -181,44 +303,262 @@ def _relation_count(model: Any, relation: str) -> int:
     return int(value or 0)
 
 
+def _count_existing_keys(model: Any, key_field: str, keys: Sequence[str], *, batch_size: int = DEFAULT_BATCH_SIZE) -> int:
+    total = 0
+    for start in range(0, len(keys), batch_size):
+        batch = list(keys[start : start + batch_size])
+        if not batch:
+            continue
+        total += int(_db_retry(f"count existing {model.__name__} keys", lambda batch=batch: model.objects.filter(**{f"{key_field}__in": batch}).count()) or 0)
+    return total
+
+
+def _fetch_by_keys(model: Any, key_field: str, keys: Sequence[str], values: Sequence[str], *, batch_size: int = DEFAULT_BATCH_SIZE) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for start in range(0, len(keys), batch_size):
+        batch = list(keys[start : start + batch_size])
+        if batch:
+            rows.extend(list(_db_retry(f"fetch {model.__name__} keys", lambda batch=batch: model.objects.filter(**{f"{key_field}__in": batch}).values(*values)) or []))
+    return rows
+
+
+def _chunk_windows(offset: int, limit: int, chunk_size: int) -> list[tuple[int, int]]:
+    if limit < 0:
+        raise ValueError("limit must be >= 0; use 0 for all rows")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be > 0")
+    if limit == 0:
+        return [(offset, 0)]
+    chunks: list[tuple[int, int]] = []
+    pos = offset
+    remaining = limit
+    while remaining > 0:
+        size = min(chunk_size, remaining)
+        chunks.append((pos, size))
+        pos += size
+        remaining -= size
+    return chunks
+
+
+def _aligned_chunk_windows(window: RelationWindow) -> list[tuple[int, int, int, int]]:
+    edge_chunks = _chunk_windows(window.edge_offset, window.edge_limit, window.chunk_size) if window.edge_limit or window.edge_limit == 0 else []
+    evidence_chunks = _chunk_windows(window.evidence_offset, window.evidence_limit, window.chunk_size) if window.evidence_limit or window.evidence_limit == 0 else []
+    if window.edge_limit == 0 and window.evidence_limit == 0:
+        return [(window.edge_offset, 0, window.evidence_offset, 0)]
+    max_len = max(len(edge_chunks), len(evidence_chunks), 1)
+    aligned = []
+    for idx in range(max_len):
+        edge_offset, edge_limit = edge_chunks[idx] if idx < len(edge_chunks) else (window.edge_offset + window.edge_limit, -1)
+        evidence_offset, evidence_limit = evidence_chunks[idx] if idx < len(evidence_chunks) else (window.evidence_offset + window.evidence_limit, -1)
+        aligned.append((edge_offset, edge_limit, evidence_offset, evidence_limit))
+    return aligned
+
+
+def _source_live_mismatches(source: Mapping[str, Mapping[str, Any]], live_rows: Sequence[Mapping[str, Any]], key_field: str, fields: Sequence[str]) -> int:
+    mismatches = 0
+    for live in live_rows:
+        src = source.get(str(live.get(key_field)))
+        if src is None:
+            mismatches += 1
+            continue
+        for field_name in fields:
+            src_val = _clean_value(src.get(field_name))
+            live_val = _clean_value(live.get(field_name))
+            if live_val != src_val:
+                mismatches += 1
+    return mismatches
+
+
+def compare_selected_live_to_source(kg_root: str | Path, window: RelationWindow) -> dict[str, int]:
+    """Compare selected source-window rows to currently live LaminDB rows."""
+
+    KGEdge, KGEdgeEvidence = _registry_models()
+    edge_frame, edge_total = build_edge_frame(kg_root, window.relation, limit=window.edge_limit, offset=window.edge_offset)
+    evidence_frame, evidence_total = build_evidence_frame(kg_root, window.relation, limit=window.evidence_limit, offset=window.evidence_offset)
+    source_edges = {str(row["edge_key"]): row for row in edge_frame.to_dict(orient="records")}
+    source_evidence = {str(row["evidence_key"]): row for row in evidence_frame.to_dict(orient="records")}
+    live_edges = _fetch_by_keys(
+        KGEdge,
+        "edge_key",
+        list(source_edges),
+        ["edge_key", "x_id", "x_type", "y_id", "y_type", "relation", "source", "credibility"],
+    )
+    live_evidence = _fetch_by_keys(
+        KGEdgeEvidence,
+        "evidence_key",
+        list(source_evidence),
+        ["evidence_key", "edge_key", "x_id", "x_type", "y_id", "y_type", "relation", "source", "source_dataset", "source_record_id", "evidence_score", "predicate", "direction"],
+    )
+    return {
+        "source_edge_rows_total": int(edge_total),
+        "source_edge_rows_selected": len(source_edges),
+        "source_evidence_rows_total": int(evidence_total),
+        "source_evidence_rows_selected": len(source_evidence),
+        "selected_live_edges_found": len(live_edges),
+        "selected_live_evidence_found": len(live_evidence),
+        "missing_selected_live_edges": len(source_edges) - len(live_edges),
+        "missing_selected_live_evidence": len(source_evidence) - len(live_evidence),
+        "edge_mismatch_count": _source_live_mismatches(source_edges, live_edges, "edge_key", ["x_id", "x_type", "y_id", "y_type", "relation", "source", "credibility"]),
+        "evidence_mismatch_count": _source_live_mismatches(source_evidence, live_evidence, "evidence_key", ["edge_key", "x_id", "x_type", "y_id", "y_type", "relation", "source", "source_dataset", "source_record_id", "evidence_score", "predicate", "direction"]),
+    }
+
+
+def _sync_relation_pass(
+    *,
+    kg_root: str | Path,
+    window: RelationWindow,
+    write: bool,
+    resume_chunk: int,
+    max_chunks: int | None,
+    batch_size: int,
+) -> LiveEdgeSyncSummary:
+    if resume_chunk < 0:
+        raise ValueError("resume_chunk must be >= 0")
+    KGEdge, KGEdgeEvidence = _registry_models() if write else (None, None)
+    edge_frame_all, edge_total = build_edge_frame(kg_root, window.relation, limit=window.edge_limit, offset=window.edge_offset)
+    evidence_frame_all, evidence_total = build_evidence_frame(kg_root, window.relation, limit=window.evidence_limit, offset=window.evidence_offset)
+    summary = LiveEdgeSyncSummary(
+        relation=window.relation,
+        edge_offset=window.edge_offset,
+        edge_limit=window.edge_limit,
+        evidence_offset=window.evidence_offset,
+        evidence_limit=window.evidence_limit,
+        chunk_size=window.chunk_size,
+        resume_chunk=resume_chunk,
+        max_chunks=max_chunks,
+        edge_rows_available=int(edge_total),
+        edge_rows_selected=len(edge_frame_all),
+        evidence_rows_available=int(evidence_total),
+        evidence_rows_selected=len(evidence_frame_all),
+    )
+    if not write:
+        return summary
+
+    summary.edge_existing_before = _relation_count(KGEdge, window.relation)
+    summary.evidence_existing_before = _relation_count(KGEdgeEvidence, window.relation)
+    aligned = _aligned_chunk_windows(window)[resume_chunk:]
+    if max_chunks is not None:
+        aligned = aligned[:max_chunks]
+    for local_index, (edge_offset, edge_limit, evidence_offset, evidence_limit) in enumerate(aligned, start=resume_chunk):
+        if edge_limit < 0:
+            edge_frame, edge_rows_available = pd.DataFrame(columns=["edge_key", *kg_edge_pilot.EDGE_BASE_COLUMNS, "metadata_json"]), summary.edge_rows_available
+        else:
+            edge_frame, edge_rows_available = build_edge_frame(kg_root, window.relation, limit=edge_limit, offset=edge_offset)
+        if evidence_limit < 0:
+            evidence_frame, evidence_rows_available = pd.DataFrame(columns=["evidence_key", *kg_edge_pilot.EVIDENCE_BASE_COLUMNS, "metadata_json"]), summary.evidence_rows_available
+        else:
+            evidence_frame, evidence_rows_available = build_evidence_frame(kg_root, window.relation, limit=evidence_limit, offset=evidence_offset)
+        edge_rows = edge_frame.where(pd.notna(edge_frame), None).to_dict(orient="records")
+        evidence_rows = evidence_frame.where(pd.notna(evidence_frame), None).to_dict(orient="records")
+        with _transaction_atomic():
+            before_edges = _relation_count(KGEdge, window.relation)
+            before_evidence = _relation_count(KGEdgeEvidence, window.relation)
+            edge_upserts = _bulk_upsert_rows(
+                KGEdge,
+                "edge_key",
+                edge_rows,
+                _edge_defaults,
+                update_fields=EDGE_UPDATE_FIELDS,
+                batch_size=batch_size,
+            )
+            evidence_upserts = _bulk_upsert_rows(
+                KGEdgeEvidence,
+                "evidence_key",
+                evidence_rows,
+                _evidence_defaults,
+                update_fields=EVIDENCE_UPDATE_FIELDS,
+                batch_size=batch_size,
+            )
+            after_edges = _relation_count(KGEdge, window.relation)
+            after_evidence = _relation_count(KGEdgeEvidence, window.relation)
+        summary.edge_upserts += edge_upserts
+        summary.evidence_upserts += evidence_upserts
+        summary.chunks.append(
+            LiveEdgeSyncChunk(
+                relation=window.relation,
+                chunk_index=local_index,
+                edge_offset=edge_offset,
+                edge_limit=edge_limit,
+                evidence_offset=evidence_offset,
+                evidence_limit=evidence_limit,
+                edge_rows_available=int(edge_rows_available),
+                edge_rows_selected=len(edge_rows),
+                evidence_rows_available=int(evidence_rows_available),
+                evidence_rows_selected=len(evidence_rows),
+                edge_existing_before=before_edges,
+                evidence_existing_before=before_evidence,
+                edge_count_after=after_edges,
+                evidence_count_after=after_evidence,
+                edge_upserts=edge_upserts,
+                evidence_upserts=evidence_upserts,
+                status="bounded live sync bulk chunk accepted",
+            )
+        )
+    summary.edge_count_after = _relation_count(KGEdge, window.relation)
+    summary.evidence_count_after = _relation_count(KGEdgeEvidence, window.relation)
+    summary.status = "bounded live sync bulk accepted"
+    return summary
+
+
 def sync_relation_to_lamindb(
     *,
     kg_root: str | Path,
     relation: str,
     edge_limit: int = DEFAULT_EDGE_LIMIT,
     evidence_limit: int = DEFAULT_EVIDENCE_LIMIT,
+    edge_offset: int = 0,
+    evidence_offset: int = 0,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    resume_chunk: int = 0,
+    max_chunks: int | None = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
     write: bool = False,
+    idempotence_passes: int = 1,
+    verify_selected_live: bool = False,
 ) -> LiveEdgeSyncSummary:
     """Sync one relation from canonical KG Parquets to live LaminDB models.
 
     ``write=False`` is a dry-run that reads the source Parquets and reports the
-    selected row counts. ``write=True`` performs idempotent ORM upserts keyed by
-    ``edge_key``/``evidence_key``.
+    selected row counts. ``write=True`` performs per-chunk idempotent Django
+    bulk upserts keyed by ``edge_key``/``evidence_key``.
     """
 
-    edge_frame, edge_total = build_edge_frame(kg_root, relation, limit=edge_limit)
-    evidence_frame, evidence_total = build_evidence_frame(kg_root, relation, limit=evidence_limit)
-    summary = LiveEdgeSyncSummary(
+    if idempotence_passes < 1:
+        raise ValueError("idempotence_passes must be >= 1")
+    window = RelationWindow(
         relation=relation,
-        edge_rows_available=edge_total,
-        edge_rows_selected=len(edge_frame),
-        evidence_rows_available=evidence_total,
-        evidence_rows_selected=len(evidence_frame),
+        edge_offset=edge_offset,
+        edge_limit=edge_limit,
+        evidence_offset=evidence_offset,
+        evidence_limit=evidence_limit,
+        chunk_size=chunk_size,
     )
-    if not write:
-        return summary
-
-    KGEdge, KGEdgeEvidence = _registry_models()
-    summary.edge_existing_before = _relation_count(KGEdge, relation)
-    summary.evidence_existing_before = _relation_count(KGEdgeEvidence, relation)
-
-    edge_rows = edge_frame.where(pd.notna(edge_frame), None).to_dict(orient="records")
-    evidence_rows = evidence_frame.where(pd.notna(evidence_frame), None).to_dict(orient="records")
-    summary.edge_upserts = _upsert_rows(KGEdge, "edge_key", edge_rows, _edge_defaults)
-    summary.evidence_upserts = _upsert_rows(KGEdgeEvidence, "evidence_key", evidence_rows, _evidence_defaults)
-    summary.edge_count_after = _relation_count(KGEdge, relation)
-    summary.evidence_count_after = _relation_count(KGEdgeEvidence, relation)
-    summary.status = "bounded live sync accepted"
+    summary = _sync_relation_pass(
+        kg_root=kg_root,
+        window=window,
+        write=write,
+        resume_chunk=resume_chunk,
+        max_chunks=max_chunks,
+        batch_size=batch_size,
+    )
+    summary.idempotence_passes = idempotence_passes
+    for _ in range(1, idempotence_passes):
+        summary = _sync_relation_pass(
+            kg_root=kg_root,
+            window=window,
+            write=write,
+            resume_chunk=resume_chunk,
+            max_chunks=max_chunks,
+            batch_size=batch_size,
+        )
+        summary.idempotence_passes = idempotence_passes
+    if verify_selected_live:
+        comparison = compare_selected_live_to_source(kg_root, window)
+        summary.selected_live_edges_found = comparison["selected_live_edges_found"]
+        summary.selected_live_evidence_found = comparison["selected_live_evidence_found"]
+        summary.source_live_mismatch_count = comparison["edge_mismatch_count"] + comparison["evidence_mismatch_count"]
+        if comparison["missing_selected_live_edges"] or comparison["missing_selected_live_evidence"] or summary.source_live_mismatch_count:
+            summary.status_detail = json.dumps(comparison, sort_keys=True)
     return summary
 
 
@@ -228,8 +568,16 @@ def sync_parquet_edges_to_lamindb(
     relations: Sequence[str] = DEFAULT_RELATIONS,
     edge_limit: int = DEFAULT_EDGE_LIMIT,
     evidence_limit: int = DEFAULT_EVIDENCE_LIMIT,
+    edge_offset: int = 0,
+    evidence_offset: int = 0,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    resume_chunk: int = 0,
+    max_chunks: int | None = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
     lamin_instance: str | None = "jkobject/jouvencekb",
     write: bool = False,
+    idempotence_passes: int = 1,
+    verify_selected_live: bool = False,
 ) -> list[LiveEdgeSyncSummary]:
     _connect_lamin(lamin_instance)
     _configure_sqlite_timeout()
@@ -241,7 +589,15 @@ def sync_parquet_edges_to_lamindb(
                 relation=relation,
                 edge_limit=edge_limit,
                 evidence_limit=evidence_limit,
+                edge_offset=edge_offset,
+                evidence_offset=evidence_offset,
+                chunk_size=chunk_size,
+                resume_chunk=resume_chunk,
+                max_chunks=max_chunks,
+                batch_size=batch_size,
                 write=write,
+                idempotence_passes=idempotence_passes,
+                verify_selected_live=verify_selected_live,
             )
         )
     return summaries
@@ -255,8 +611,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Bounded live lnschema_txgnn KGEdge/KGEdgeEvidence sync")
     parser.add_argument("kg_root", nargs="?", default=str(DEFAULT_KG_ROOT), help="Canonical KG root; read-only")
     parser.add_argument("--relation", action="append", dest="relations", help="Relation to sync; may be repeated")
-    parser.add_argument("--edge-limit", type=int, default=DEFAULT_EDGE_LIMIT, help="Maximum edge rows per relation; use 0 for all rows")
-    parser.add_argument("--evidence-limit", type=int, default=DEFAULT_EVIDENCE_LIMIT, help="Maximum evidence rows per relation; use 0 for all rows")
+    parser.add_argument("--edge-offset", type=int, default=0, help="First edge source row to select")
+    parser.add_argument("--edge-limit", type=int, default=DEFAULT_EDGE_LIMIT, help="Maximum edge rows per relation; use 0 for all rows from offset")
+    parser.add_argument("--evidence-offset", type=int, default=0, help="First evidence source row to select")
+    parser.add_argument("--evidence-limit", type=int, default=DEFAULT_EVIDENCE_LIMIT, help="Maximum evidence rows per relation; use 0 for all rows from offset")
+    parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE, help="Maximum source rows per transaction chunk")
+    parser.add_argument("--resume-chunk", type=int, default=0, help="Skip chunks before this 0-based chunk index")
+    parser.add_argument("--max-chunks", type=int, default=None, help="Optional maximum number of chunks to process after resume")
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help="Django bulk_create batch_size")
+    parser.add_argument("--idempotence-passes", type=int, default=1, help="Repeat the selected write window N times; useful to verify no duplicate keys")
+    parser.add_argument("--verify-selected-live", action="store_true", help="After the run, compare selected live rows to source rows by exact keys")
     parser.add_argument("--lamin-instance", default="jkobject/jouvencekb", help="LaminDB instance slug")
     parser.add_argument("--write", action="store_true", help="Perform live ORM upserts; default is dry-run")
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a table")
@@ -270,8 +634,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         relations=args.relations or list(DEFAULT_RELATIONS),
         edge_limit=args.edge_limit,
         evidence_limit=args.evidence_limit,
+        edge_offset=args.edge_offset,
+        evidence_offset=args.evidence_offset,
+        chunk_size=args.chunk_size,
+        resume_chunk=args.resume_chunk,
+        max_chunks=args.max_chunks,
+        batch_size=args.batch_size,
         lamin_instance=args.lamin_instance,
         write=args.write,
+        idempotence_passes=args.idempotence_passes,
+        verify_selected_live=args.verify_selected_live,
     )
     if args.json:
         print(summaries_to_json(summaries))
