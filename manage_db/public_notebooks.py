@@ -43,7 +43,6 @@ def _storage_options(uri: str, billing_project: str | None) -> dict[str, Any]:
             "no project-specific default is embedded in TxGNN."
         )
     return {
-        "project": project,
         "requester_pays": project,
         "token": "google_default",
     }
