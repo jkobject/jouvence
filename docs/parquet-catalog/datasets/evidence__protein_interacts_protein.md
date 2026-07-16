@@ -18,8 +18,10 @@ Source-level support records for the canonical `protein_interacts_protein` asser
 
 ## Keys and graph contract
 
-- Primary/unique key: `source_record_id`
-- Foreign keys/linkage: `(relation,x_id,y_id) -> matching edge assertion`
+- Source-contract key fields: `none declared`
+- Candidate/join key fields: `source_record_id`
+- Uniqueness validation: **uniqueness unvalidated by footer-only catalog collection**
+- Foreign keys/linkage: `(relation, x_id, y_id) -> matching edge assertion; edge_key -> matching edge assertion`
 - x_type: `protein`
 - y_type: `protein`
 - kind: `physical`
@@ -106,7 +108,10 @@ Requester-pays prerequisite (once public IAM permits it):
 
 ```bash
 export BILLING_PROJECT='<your-gcp-billing-project>'
-gcloud storage cp --billing-project="$BILLING_PROJECT" 'gs://jouvencekb/kg/v2/evidence/protein_interacts_protein.parquet' ./
+LOCAL_DIR='./parquet-catalog-data/evidence__protein_interacts_protein'
+rm -rf -- "$LOCAL_DIR"
+mkdir -p "$LOCAL_DIR"
+gcloud storage cp --billing-project="$BILLING_PROJECT" 'gs://jouvencekb/kg/v2/evidence/protein_interacts_protein.parquet' "$LOCAL_DIR/"
 ```
 
 PyArrow (GCS credentials/application-default credentials must carry the billing project):
@@ -117,7 +122,7 @@ import gcsfs
 import pyarrow.dataset as ds
 billing_project = os.environ['BILLING_PROJECT']
 fs = gcsfs.GCSFileSystem(project=billing_project, requester_pays=billing_project)
-paths = fs.glob('jouvencekb/kg/v2/evidence/protein_interacts_protein.parquet')
+paths = sorted(fs.glob('jouvencekb/kg/v2/evidence/protein_interacts_protein.parquet'))
 dataset = ds.dataset(paths, filesystem=fs, format='parquet')
 print(dataset.head(5, columns=['edge_key']))
 ```
@@ -126,7 +131,7 @@ DuckDB:
 
 ```sql
 -- Run after the requester-pays `gcloud storage cp` command above.
-SELECT edge_key FROM read_parquet('./*.parquet') LIMIT 5;
+SELECT "edge_key" FROM read_parquet('./parquet-catalog-data/evidence__protein_interacts_protein/protein_interacts_protein.parquet') ORDER BY "edge_key" NULLS LAST LIMIT 5;
 ```
 
 ## LaminDB / PyG linkage

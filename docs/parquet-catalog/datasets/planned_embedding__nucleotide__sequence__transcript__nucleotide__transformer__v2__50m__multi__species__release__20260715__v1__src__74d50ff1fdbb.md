@@ -18,7 +18,9 @@ Planned source-backed `transcript_cdna_nucleotide_sequence` embeddings for `tran
 
 ## Keys and graph contract
 
-- Primary/unique key: `embedding_key`
+- Source-contract key fields: `embedding_key (planned release contract)`
+- Candidate/join key fields: `none declared`
+- Uniqueness validation: **unavailable and unvalidated until publication**
 - Foreign keys/linkage: `node_id -> nodes/<node_type>.id; source_feature_key -> source feature table`
 - node_type: `transcript`
 
@@ -59,7 +61,7 @@ Planned source-backed `transcript_cdna_nucleotide_sequence` embeddings for `tran
 
 ## Layout and checksums
 
-The logical dataset is represented by `1` physical Parquet object(s). Physical shards are packaging, not separate datasets.
+The release contract plans `1` physical Parquet object(s), but none are published or accessible.
 
 - catalog_manifest: [../inventory.json](../inventory.json)
 - planned_checksums: `gs://jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/checksums.sha256`
@@ -67,33 +69,15 @@ The logical dataset is represented by `1` physical Parquet object(s). Physical s
 - planned_schema: `gs://jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/schema.json`
 - release_inventory: [../embedding-release-inventory.json](../embedding-release-inventory.json)
 
-## Read examples
+## Post-publication access template (non-executable)
 
-Requester-pays prerequisite (once public IAM permits it):
+Current access is unavailable: this planned dataset has no published objects. The template below is intentionally non-executable and must be replaced with released object names after publication.
 
-```bash
-export BILLING_PROJECT='<your-gcp-billing-project>'
-gcloud storage cp --billing-project="$BILLING_PROJECT" 'gs://jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/part-*.parquet' ./
-```
-
-PyArrow (GCS credentials/application-default credentials must carry the billing project):
-
-```python
-import os
-import gcsfs
-import pyarrow.dataset as ds
-billing_project = os.environ['BILLING_PROJECT']
-fs = gcsfs.GCSFileSystem(project=billing_project, requester_pays=billing_project)
-paths = fs.glob('jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/part-*.parquet')
-dataset = ds.dataset(paths, filesystem=fs, format='parquet')
-print(dataset.head(5, columns=['embedding_key']))
-```
-
-DuckDB:
-
-```sql
--- Run after the requester-pays `gcloud storage cp` command above.
-SELECT embedding_key FROM read_parquet('./*.parquet') LIMIT 5;
+```text
+NON-EXECUTABLE POST-PUBLICATION TEMPLATE
+REMOTE_OBJECT = <published object under gs://jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/part-*.parquet>
+LOCAL_OBJECT = ./parquet-catalog-data/planned_embedding__nucleotide__sequence__transcript__nucleotide__transformer__v2__50m__multi__species__release__20260715__v1__src__74d50ff1fdbb/<published-shard>.parquet
+QUERY = <select a documented column from LOCAL_OBJECT after publication>
 ```
 
 ## LaminDB / PyG linkage
