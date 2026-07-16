@@ -18,7 +18,9 @@ Canonical public `mutation_overlaps_enhancer_support_summary_non_context_gated_t
 
 ## Keys and graph contract
 
-- Primary/unique key: `not declared in source schema`
+- Source-contract key fields: `none declared`
+- Candidate/join key fields: `none declared`
+- Uniqueness validation: **uniqueness unvalidated by footer-only catalog collection**
 - Foreign keys/linkage: `none declared`
 
 ## Columns
@@ -60,7 +62,10 @@ Requester-pays prerequisite (once public IAM permits it):
 
 ```bash
 export BILLING_PROJECT='<your-gcp-billing-project>'
-gcloud storage cp --billing-project="$BILLING_PROJECT" 'gs://jouvencekb/kg/v2/metadata/mutation_overlaps_enhancer_support_summary_non_context_gated_t_73c67c1b.parquet' ./
+LOCAL_DIR='./parquet-catalog-data/metadata__mutation_overlaps_enhancer_support_summary_non_context_gated_t_73c67c1b'
+rm -rf -- "$LOCAL_DIR"
+mkdir -p "$LOCAL_DIR"
+gcloud storage cp --billing-project="$BILLING_PROJECT" 'gs://jouvencekb/kg/v2/metadata/mutation_overlaps_enhancer_support_summary_non_context_gated_t_73c67c1b.parquet' "$LOCAL_DIR/"
 ```
 
 PyArrow (GCS credentials/application-default credentials must carry the billing project):
@@ -71,7 +76,7 @@ import gcsfs
 import pyarrow.dataset as ds
 billing_project = os.environ['BILLING_PROJECT']
 fs = gcsfs.GCSFileSystem(project=billing_project, requester_pays=billing_project)
-paths = fs.glob('jouvencekb/kg/v2/metadata/mutation_overlaps_enhancer_support_summary_non_context_gated_t_73c67c1b.parquet')
+paths = sorted(fs.glob('jouvencekb/kg/v2/metadata/mutation_overlaps_enhancer_support_summary_non_context_gated_t_73c67c1b.parquet'))
 dataset = ds.dataset(paths, filesystem=fs, format='parquet')
 print(dataset.head(5, columns=['mutation_id']))
 ```
@@ -80,7 +85,7 @@ DuckDB:
 
 ```sql
 -- Run after the requester-pays `gcloud storage cp` command above.
-SELECT mutation_id FROM read_parquet('./*.parquet') LIMIT 5;
+SELECT "mutation_id" FROM read_parquet('./parquet-catalog-data/metadata__mutation_overlaps_enhancer_support_summary_non_context_gated_t_73c67c1b/mutation_overlaps_enhancer_support_summary_non_context_gated_t_73c67c1b.parquet') ORDER BY "mutation_id" NULLS LAST LIMIT 5;
 ```
 
 ## LaminDB / PyG linkage

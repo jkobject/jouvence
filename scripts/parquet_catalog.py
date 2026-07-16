@@ -17,7 +17,6 @@ import datetime as dt
 import hashlib
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -155,15 +154,41 @@ def _generic_semantics(layer: str, name: str, uri: str) -> dict[str, Any]:
 
 def _keys(layer: str, fields: list[dict[str, Any]], name: str) -> dict[str, Any]:
     columns = {f["name"] for f in fields}
+    unvalidated = "uniqueness unvalidated by footer-only catalog collection"
     if layer == "nodes" and "id" in columns:
-        return {"primary": ["id"], "foreign": []}
+        return {
+            "source_contract": ["id"],
+            "candidate_join": [],
+            "linkage": [],
+            "uniqueness": unvalidated,
+        }
     if layer == "edges":
-        return {"primary": [c for c in ("relation", "x_id", "y_id") if c in columns], "foreign": ["x_id -> nodes/<x_type>.id", "y_id -> nodes/<y_type>.id"]}
+        return {
+            "source_contract": [c for c in ("relation", "x_id", "y_id") if c in columns],
+            "candidate_join": [],
+            "linkage": ["x_id -> nodes/<x_type>.id", "y_id -> nodes/<y_type>.id"],
+            "uniqueness": unvalidated,
+        }
     if layer == "evidence":
-        primary = ["source_record_id"] if "source_record_id" in columns else []
-        return {"primary": primary, "foreign": ["(relation,x_id,y_id) -> matching edge assertion"]}
+        edge_links = []
+        if {"relation", "x_id", "y_id"} <= columns:
+            edge_links.append("(relation, x_id, y_id) -> matching edge assertion")
+        if "edge_key" in columns:
+            edge_links.append("edge_key -> matching edge assertion")
+        candidates = ["source_record_id"] if "source_record_id" in columns else []
+        return {
+            "source_contract": [],
+            "candidate_join": candidates,
+            "linkage": edge_links,
+            "uniqueness": unvalidated,
+        }
     candidates = [c for c in ("feature_key", "embedding_key", "node_id", "nct_id", "edge_key", "support_entity_id") if c in columns]
-    return {"primary": candidates[:1], "foreign": [c for c in ("node_id", "edge_key", "nct_id", "enhancer_id", "tf_gene_id") if c in columns]}
+    return {
+        "source_contract": [],
+        "candidate_join": candidates,
+        "linkage": [c for c in ("node_id", "edge_key", "nct_id", "enhancer_id", "tf_gene_id") if c in columns],
+        "uniqueness": unvalidated,
+    }
 
 
 def _status(layer: str, uri: str) -> str:
@@ -338,7 +363,12 @@ def _planned_embeddings(path: Path) -> list[dict[str, Any]]:
                 "schema_hash": schema_hash(leaf_fields),
                 "schema_hash_version": SCHEMA_HASH_VERSION,
                 "fields": leaf_fields,
-                "keys": {"primary": ["embedding_key"], "foreign": ["node_id -> nodes/<node_type>.id", "source_feature_key -> source feature table"]},
+                "keys": {
+                    "source_contract": ["embedding_key (planned release contract)"],
+                    "candidate_join": [],
+                    "linkage": ["node_id -> nodes/<node_type>.id", "source_feature_key -> source feature table"],
+                    "uniqueness": "unavailable and unvalidated until publication",
+                },
                 "semantics": {"node_type": node_type, "meaning": f"Planned source-backed `{logical['modality']}` embeddings for `{node_type}` nodes using `{logical['model']}`.", "non_meaning": "Not published and not a learned fallback for nodes without source features; status is blocked until the release contract blockers are resolved.", "leakage": "Split by canonical node/edge task before fitting or evaluating; source text/clinical payloads may encode target evidence."},
                 "source_release_license_provenance": {"source": "Source feature URI(s) are bound in the accepted release inventory", "release": logical["embedding_version"], "license": "Blocked: effective public model/output license is unresolved", "provenance": "../embedding-release-inventory.json"},
                 "links": {"catalog_manifest": "../inventory.json", "release_inventory": "../embedding-release-inventory.json", "planned_schema": leaf["schema_uri"], "planned_checksums": leaf["checksums_uri"], "planned_readme": leaf["readme_uri"]},
@@ -365,7 +395,16 @@ def _page(dataset: dict[str, Any]) -> str:
     access_uri = uri.replace("summary_chr{1..22,X,Y}.parquet", "summary_chr*.parquet")
     gcsfs_pattern = access_uri.removeprefix("gs://")
     sample_column = fields[0]["name"] if fields else "*"
+    sql_sample_column = '"' + sample_column.replace('"', '""') + '"'
+    local_dir = f"./parquet-catalog-data/{dataset['id']}"
+    if len(dataset["objects"]) == 1:
+        local_pattern = f"{local_dir}/{Path(dataset['objects'][0]['uri']).name}"
+    elif "summary_chr" in access_uri:
+        local_pattern = f"{local_dir}/summary_chr*.parquet"
+    else:
+        local_pattern = f"{local_dir}/part-*.parquet"
     date = dataset.get("as_of") or "not recorded"
+    keys = dataset["keys"]
     lines = [
         GENERATED_MARKER,
         f"# `{dataset['id']}`",
@@ -387,8 +426,10 @@ def _page(dataset: dict[str, Any]) -> str:
         "",
         "## Keys and graph contract",
         "",
-        f"- Primary/unique key: `{', '.join(dataset['keys']['primary']) or 'not declared in source schema'}`",
-        f"- Foreign keys/linkage: `{'; '.join(dataset['keys']['foreign']) or 'none declared'}`",
+        f"- Source-contract key fields: `{', '.join(keys['source_contract']) or 'none declared'}`",
+        f"- Candidate/join key fields: `{', '.join(keys['candidate_join']) or 'none declared'}`",
+        f"- Uniqueness validation: **{keys['uniqueness']}**",
+        f"- Foreign keys/linkage: `{'; '.join(keys['linkage']) or 'none declared'}`",
     ]
     for key in ("node_type", "x_type", "y_type", "kind", "direct"):
         if key in sem:
@@ -409,7 +450,11 @@ def _page(dataset: dict[str, Any]) -> str:
         "",
         "## Layout and checksums",
         "",
-        f"The logical dataset is represented by `{len(dataset['objects']) or dataset.get('planned_data_objects', 0)}` physical Parquet object(s). Physical shards are packaging, not separate datasets.",
+        (
+            f"The logical dataset is represented by `{len(dataset['objects'])}` physical Parquet object(s). Physical shards are packaging, not separate datasets."
+            if dataset["objects"]
+            else f"The release contract plans `{dataset.get('planned_data_objects', 0)}` physical Parquet object(s), but none are published or accessible."
+        ),
         "",
     ])
     if dataset["objects"]:
@@ -418,36 +463,56 @@ def _page(dataset: dict[str, Any]) -> str:
             lines.append(f"| `{obj['uri']}` | {obj['rows']:,} | {obj['bytes']:,} | `{obj.get('generation') or 'n/a'}` | `{obj.get('crc32c_base64') or 'n/a'}` | `{obj.get('md5_base64') or 'n/a'}` |")
     for label, target in dataset.get("links", {}).items():
         lines.append(f"- {label}: `{target}`" if target.startswith("gs://") else f"- {label}: [{target}]({target})")
+    if dataset["objects"]:
+        lines.extend([
+            "",
+            "## Read examples",
+            "",
+            "Requester-pays prerequisite (once public IAM permits it):",
+            "",
+            "```bash",
+            "export BILLING_PROJECT='<your-gcp-billing-project>'",
+            f"LOCAL_DIR='{local_dir}'",
+            "rm -rf -- \"$LOCAL_DIR\"",
+            "mkdir -p \"$LOCAL_DIR\"",
+            f"gcloud storage cp --billing-project=\"$BILLING_PROJECT\" '{access_uri}' \"$LOCAL_DIR/\"",
+            "```",
+            "",
+            "PyArrow (GCS credentials/application-default credentials must carry the billing project):",
+            "",
+            "```python",
+            "import os",
+            "import gcsfs",
+            "import pyarrow.dataset as ds",
+            "billing_project = os.environ['BILLING_PROJECT']",
+            "fs = gcsfs.GCSFileSystem(project=billing_project, requester_pays=billing_project)",
+            f"paths = sorted(fs.glob('{gcsfs_pattern}'))",
+            "dataset = ds.dataset(paths, filesystem=fs, format='parquet')",
+            f"print(dataset.head(5, columns=['{sample_column}']))",
+            "```",
+            "",
+            "DuckDB:",
+            "",
+            "```sql",
+            "-- Run after the requester-pays `gcloud storage cp` command above.",
+            f"SELECT {sql_sample_column} FROM read_parquet('{local_pattern}') ORDER BY {sql_sample_column} NULLS LAST LIMIT 5;",
+            "```",
+        ])
+    else:
+        lines.extend([
+            "",
+            "## Post-publication access template (non-executable)",
+            "",
+            "Current access is unavailable: this planned dataset has no published objects. The template below is intentionally non-executable and must be replaced with released object names after publication.",
+            "",
+            "```text",
+            "NON-EXECUTABLE POST-PUBLICATION TEMPLATE",
+            f"REMOTE_OBJECT = <published object under {uri}>",
+            f"LOCAL_OBJECT = {local_dir}/<published-shard>.parquet",
+            "QUERY = <select a documented column from LOCAL_OBJECT after publication>",
+            "```",
+        ])
     lines.extend([
-        "",
-        "## Read examples",
-        "",
-        "Requester-pays prerequisite (once public IAM permits it):",
-        "",
-        "```bash",
-        "export BILLING_PROJECT='<your-gcp-billing-project>'",
-        f"gcloud storage cp --billing-project=\"$BILLING_PROJECT\" '{access_uri}' ./",
-        "```",
-        "",
-        "PyArrow (GCS credentials/application-default credentials must carry the billing project):",
-        "",
-        "```python",
-        "import os",
-        "import gcsfs",
-        "import pyarrow.dataset as ds",
-        "billing_project = os.environ['BILLING_PROJECT']",
-        "fs = gcsfs.GCSFileSystem(project=billing_project, requester_pays=billing_project)",
-        f"paths = fs.glob('{gcsfs_pattern}')",
-        "dataset = ds.dataset(paths, filesystem=fs, format='parquet')",
-        f"print(dataset.head(5, columns=['{sample_column}']))",
-        "```",
-        "",
-        "DuckDB:",
-        "",
-        "```sql",
-        "-- Run after the requester-pays `gcloud storage cp` command above.",
-        f"SELECT {sample_column} FROM read_parquet('./*.parquet') LIMIT 5;",
-        "```",
         "",
         "## LaminDB / PyG linkage",
         "",
@@ -482,18 +547,11 @@ def _default_leakage(dataset: dict[str, Any]) -> str:
     return "Feature coverage is partial and source-dependent. Fit preprocessing only on the training partition and mask features that directly encode the evaluation target."
 
 
-def generate() -> dict[str, int]:
-    inventory = _read_inventory()
-    pages_dir = CATALOG_DIR / "datasets"
-    pages_dir.mkdir(parents=True, exist_ok=True)
-    expected = set()
+def _render_catalog(inventory: dict[str, Any]) -> tuple[dict[str, str], str]:
+    pages: dict[str, str] = {}
     for dataset in inventory["datasets"]:
         filename = dataset["id"] + ".md"
-        expected.add(filename)
-        (pages_dir / filename).write_text(_page(dataset))
-    for path in pages_dir.glob("*.md"):
-        if path.name not in expected:
-            path.unlink()
+        pages[filename] = _page(dataset)
     by_layer: dict[str, list[dict[str, Any]]] = {}
     for dataset in inventory["datasets"]:
         by_layer.setdefault(dataset["layer"], []).append(dataset)
@@ -521,8 +579,21 @@ def generate() -> dict[str, int]:
         for item in items:
             lines.append(f"| [`{item['id']}`](datasets/{item['id']}.md) | {item['rows']:,} | {item['status']} | `{item['uri']}` |")
         lines.append("")
-    (CATALOG_DIR / "index.md").write_text("\n".join(lines))
-    return {"documented": len(expected), "undocumented": 0}
+    return pages, "\n".join(lines)
+
+
+def generate() -> dict[str, int]:
+    inventory = _read_inventory()
+    pages_dir = CATALOG_DIR / "datasets"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    pages, index = _render_catalog(inventory)
+    for filename, content in pages.items():
+        (pages_dir / filename).write_text(content)
+    for path in pages_dir.glob("*.md"):
+        if path.name not in pages:
+            path.unlink()
+    (CATALOG_DIR / "index.md").write_text(index)
+    return {"documented": len(pages), "undocumented": 0}
 
 
 def check(*, live: bool = False) -> dict[str, int]:
@@ -557,7 +628,8 @@ def check(*, live: bool = False) -> dict[str, int]:
                 errors.append(f"live schema drift: {dataset_id}")
             if frozen["rows"] != observed["rows"]:
                 errors.append(f"live row-count drift: {dataset_id}")
-    expected_pages = {item["id"] + ".md" for item in datasets}
+    rendered_pages, rendered_index = _render_catalog(inventory)
+    expected_pages = set(rendered_pages)
     actual_pages = {path.name for path in (CATALOG_DIR / "datasets").glob("*.md")}
     missing = expected_pages - actual_pages
     extra = actual_pages - expected_pages
@@ -565,21 +637,20 @@ def check(*, live: bool = False) -> dict[str, int]:
         errors.append("missing pages: " + ", ".join(sorted(missing)))
     if extra:
         errors.append("undocumented pages: " + ", ".join(sorted(extra)))
-    for item in datasets:
-        path = CATALOG_DIR / "datasets" / f"{item['id']}.md"
-        if path.exists() and path.read_text() != _page(item):
-            errors.append(f"stale generated page: {item['id']}")
-    index_before = (CATALOG_DIR / "index.md").read_text() if (CATALOG_DIR / "index.md").exists() else None
-    generated = generate()
-    index_after = (CATALOG_DIR / "index.md").read_text()
-    if index_before is None or index_before != index_after:
+    for filename, expected_content in rendered_pages.items():
+        path = CATALOG_DIR / "datasets" / filename
+        if path.exists() and path.read_text() != expected_content:
+            errors.append(f"stale generated page: {path.stem}")
+    index_path = CATALOG_DIR / "index.md"
+    if not index_path.exists() or index_path.read_text() != rendered_index:
         errors.append("stale generated index")
     forbidden = re.compile(r"/Users/|/home/ubuntu|\.omoc/")
     for path in [CATALOG_DIR / "index.md", *sorted((CATALOG_DIR / "datasets").glob("*.md"))]:
-        if forbidden.search(path.read_text()):
+        if path.exists() and forbidden.search(path.read_text()):
             errors.append(f"local/legacy path leaked into {path}")
     if errors:
         raise SystemExit("catalog check failed:\n- " + "\n- ".join(errors))
+    generated = {"documented": len(rendered_pages), "undocumented": 0}
     print(json.dumps({**generated, "dataset_count": len(datasets)}, sort_keys=True))
     return generated
 

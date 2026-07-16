@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
+import pytest
+
+import scripts.parquet_catalog as parquet_catalog
 from scripts.parquet_catalog import CATALOG_DIR, INVENTORY_PATH, schema_hash
 
 
@@ -74,3 +78,78 @@ def test_catalog_has_no_private_local_paths() -> None:
     for path in paths:
         text = path.read_text()
         assert not any(token in text for token in forbidden), path
+
+
+def test_check_failure_is_byte_for_byte_read_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    catalog_dir = tmp_path / "parquet-catalog"
+    shutil.copytree(REPO_ROOT / CATALOG_DIR, catalog_dir)
+    stale_page = next((catalog_dir / "datasets").glob("*.md"))
+    stale_page.write_bytes(stale_page.read_bytes() + b"\nstale\n")
+    before = {
+        path.relative_to(catalog_dir): path.read_bytes()
+        for path in catalog_dir.rglob("*")
+        if path.is_file()
+    }
+    monkeypatch.setattr(parquet_catalog, "CATALOG_DIR", catalog_dir)
+    monkeypatch.setattr(parquet_catalog, "INVENTORY_PATH", catalog_dir / "inventory.json")
+
+    with pytest.raises(SystemExit, match="stale generated page"):
+        parquet_catalog.check()
+
+    after = {
+        path.relative_to(catalog_dir): path.read_bytes()
+        for path in catalog_dir.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_check_missing_index_fails_cleanly_without_mutation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    catalog_dir = tmp_path / "parquet-catalog"
+    shutil.copytree(REPO_ROOT / CATALOG_DIR, catalog_dir)
+    (catalog_dir / "index.md").unlink()
+    before = {
+        path.relative_to(catalog_dir): path.read_bytes()
+        for path in catalog_dir.rglob("*")
+        if path.is_file()
+    }
+    monkeypatch.setattr(parquet_catalog, "CATALOG_DIR", catalog_dir)
+    monkeypatch.setattr(parquet_catalog, "INVENTORY_PATH", catalog_dir / "inventory.json")
+
+    with pytest.raises(SystemExit, match="stale generated index"):
+        parquet_catalog.check()
+
+    after = {
+        path.relative_to(catalog_dir): path.read_bytes()
+        for path in catalog_dir.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_generated_key_claims_are_truthful_and_evidence_uses_edge_linkage() -> None:
+    pages = (REPO_ROOT / CATALOG_DIR / "datasets").glob("*.md")
+    text_by_name = {path.name: path.read_text() for path in pages}
+
+    assert all("Primary/unique key" not in text for text in text_by_name.values())
+    evidence = [text for name, text in text_by_name.items() if name.startswith("evidence__")]
+    assert evidence
+    assert all("uniqueness unvalidated" in text for text in evidence)
+    assert all("(relation, x_id, y_id)" in text or "edge_key" in text for text in evidence)
+
+
+def test_read_examples_are_dataset_scoped_and_planned_pages_are_non_executable() -> None:
+    pages = (REPO_ROOT / CATALOG_DIR / "datasets").glob("*.md")
+    for path in pages:
+        text = path.read_text()
+        assert "read_parquet('./*.parquet')" not in text, path.name
+        if path.name.startswith("planned_embedding__"):
+            assert "Current access is unavailable" in text, path.name
+            assert "NON-EXECUTABLE POST-PUBLICATION TEMPLATE" in text, path.name
+            assert "gcloud storage cp" not in text, path.name
+            assert "read_parquet(" not in text, path.name
+        else:
+            assert f"./parquet-catalog-data/{path.stem}/" in text, path.name
+            assert "rm -rf -- \"$LOCAL_DIR\"" in text, path.name
+            assert "paths = sorted(fs.glob(" in text, path.name
+            assert " ORDER BY " in text, path.name

@@ -18,7 +18,9 @@ Canonical molecule registry keyed in the ChEMBL namespace (example `CHEMBL941`).
 
 ## Keys and graph contract
 
-- Primary/unique key: `id`
+- Source-contract key fields: `id`
+- Candidate/join key fields: `none declared`
+- Uniqueness validation: **uniqueness unvalidated by footer-only catalog collection**
 - Foreign keys/linkage: `none declared`
 - node_type: `molecule`
 
@@ -83,7 +85,10 @@ Requester-pays prerequisite (once public IAM permits it):
 
 ```bash
 export BILLING_PROJECT='<your-gcp-billing-project>'
-gcloud storage cp --billing-project="$BILLING_PROJECT" 'gs://jouvencekb/kg/v2/nodes/molecule.parquet' ./
+LOCAL_DIR='./parquet-catalog-data/nodes__molecule'
+rm -rf -- "$LOCAL_DIR"
+mkdir -p "$LOCAL_DIR"
+gcloud storage cp --billing-project="$BILLING_PROJECT" 'gs://jouvencekb/kg/v2/nodes/molecule.parquet' "$LOCAL_DIR/"
 ```
 
 PyArrow (GCS credentials/application-default credentials must carry the billing project):
@@ -94,7 +99,7 @@ import gcsfs
 import pyarrow.dataset as ds
 billing_project = os.environ['BILLING_PROJECT']
 fs = gcsfs.GCSFileSystem(project=billing_project, requester_pays=billing_project)
-paths = fs.glob('jouvencekb/kg/v2/nodes/molecule.parquet')
+paths = sorted(fs.glob('jouvencekb/kg/v2/nodes/molecule.parquet'))
 dataset = ds.dataset(paths, filesystem=fs, format='parquet')
 print(dataset.head(5, columns=['id']))
 ```
@@ -103,7 +108,7 @@ DuckDB:
 
 ```sql
 -- Run after the requester-pays `gcloud storage cp` command above.
-SELECT id FROM read_parquet('./*.parquet') LIMIT 5;
+SELECT "id" FROM read_parquet('./parquet-catalog-data/nodes__molecule/molecule.parquet') ORDER BY "id" NULLS LAST LIMIT 5;
 ```
 
 ## LaminDB / PyG linkage
