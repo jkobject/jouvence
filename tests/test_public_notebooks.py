@@ -26,10 +26,23 @@ def test_requester_pays_requires_caller_project(monkeypatch: pytest.MonkeyPatch)
     with pytest.raises(ValueError, match="JOUVENCE_BILLING_PROJECT"):
         public._storage_options("gs://jouvencekb/kg/v2/nodes/gene.parquet", None)
     assert public._storage_options("gs://bucket/object", "consumer-project") == {
-        "project": "consumer-project",
         "requester_pays": "consumer-project",
         "token": "google_default",
     }
+
+    monkeypatch.setattr(
+        "gcsfs.credentials.gauth.default",
+        lambda **_kwargs: (object(), "adc-default-project"),
+    )
+    fs, path = public.url_to_fs(
+        "gs://bucket/object",
+        **public._storage_options("gs://bucket/object", "consumer-project"),
+        skip_instance_cache=True,
+    )
+    assert path == "bucket/object"
+    assert fs.project == "adc-default-project"
+    assert fs.requester_pays == "consumer-project"
+
     with pytest.raises(ValueError, match="exact instance"):
         public.query_lamindb_edges(relation="x", instance="other/instance")
     with pytest.raises(ValueError, match="unsupported exact-ID"):
