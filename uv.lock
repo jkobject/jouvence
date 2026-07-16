@@ -4601,6 +4601,10 @@ gnn = [
     { name = "torch" },
     { name = "torch-geometric" },
 ]
+notebooks = [
+    { name = "nbclient" },
+    { name = "nbformat" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -4648,6 +4652,10 @@ embeddings-text = [
 gnn = [
     { name = "torch", specifier = ">=2.12" },
     { name = "torch-geometric", specifier = ">=2.8" },
+]
+notebooks = [
+    { name = "nbclient", specifier = ">=0.10" },
+    { name = "nbformat", specifier = ">=5.10" },
 ]
 
 [[package]]
