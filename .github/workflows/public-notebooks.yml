@@ -1,0 +1,36 @@
+name: public-notebooks
+
+on:
+  pull_request:
+    paths:
+      - "notebooks/public/**"
+      - "manage_db/public_notebooks.py"
+      - "scripts/*public_notebooks.py"
+      - "tests/test_public_notebooks.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/public-notebooks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "notebooks/public/**"
+      - "manage_db/public_notebooks.py"
+      - "scripts/*public_notebooks.py"
+      - "tests/test_public_notebooks.py"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --frozen --group dev --group notebooks --group gnn
+      - run: uv run pytest -q tests/test_public_notebooks.py
+      - run: uv run python scripts/build_public_notebooks.py
+      - run: git diff --exit-code -- notebooks/public
+      - run: uv run python scripts/check_public_notebooks.py --execute

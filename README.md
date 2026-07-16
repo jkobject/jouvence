@@ -10,6 +10,42 @@ TxGNN is a graph neural network pre-trained on a comprehensive knowledge graph o
 
 ![TxGNN](fig/txgnn_fig1.png)
 
+## Jouvence public scientific notebooks
+
+The numbered suite in [`notebooks/public/`](notebooks/public/) introduces the
+Jouvence node/assertion/evidence/feature model and then demonstrates bounded
+entity exploration, provenance-aware biological questions, exact-instance
+LaminDB queries, a sampled PyG `HeteroData`, embedding retrieval, neighborhood
+analysis, and a deterministic link-prediction smoke.  Each notebook states what
+its output means biologically and what it does not prove.
+
+Run the complete fixture-backed suite without reading the live KG:
+
+```bash
+uv sync --group dev --group notebooks --group gnn
+uv run python scripts/build_public_notebooks.py
+uv run python scripts/check_public_notebooks.py --execute
+```
+
+Fixture mode is the default so the notebooks execute in a clean environment.
+For bounded live public reads, authenticate with Google application-default
+credentials and supply your own requester-pays billing project; this repository
+does not embed or require a project-specific default:
+
+```bash
+export JOUVENCE_DATA_MODE=live
+export JOUVENCE_BILLING_PROJECT='<consumer-billing-project>'
+```
+
+The helpers in `manage_db.public_notebooks` cap interactive reads at 10,000
+rows, seek by Parquet row group, and never default to macOS GCS-FUSE or a full-KG
+materialization.  Live LaminDB access is opt-in with
+`JOUVENCE_LAMIN_LIVE=1` and refuses any instance other than
+`jkobject/jouvencekb`; the mirror is currently incomplete, so canonical Parquet
+remains the source of truth.  Public embedding URIs are not assumed while the
+immutable release/license contract remains pending; set
+`JOUVENCE_EMBEDDING_URI` only to an accepted published shard.
+
 ### Installation
 
 ```bash
