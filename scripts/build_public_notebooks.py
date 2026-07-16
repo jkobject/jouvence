@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import nbformat as nbf
@@ -59,7 +60,10 @@ except ImportError as exc:
     return code(lines)
 
 
-def write(name: str, cells: list):
+def write(path: str, cells: list) -> None:
+    for index, cell in enumerate(cells):
+        identity = f"{path}:{index}:{cell['cell_type']}".encode()
+        cell["id"] = hashlib.sha256(identity).hexdigest()[:12]
     notebook = nbf.v4.new_notebook(cells=cells)
     notebook.metadata = {
         "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
@@ -70,7 +74,7 @@ def write(name: str, cells: list):
         if cell.cell_type == "code":
             cell.execution_count = None
             cell.outputs = []
-    nbf.write(notebook, OUT / name)
+    nbf.write(notebook, OUT / path)
 
 
 def main() -> None:
