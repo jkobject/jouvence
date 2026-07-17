@@ -298,6 +298,7 @@ def test_pyg_export_can_opt_in_to_provenance_node_types_for_audit(tmp_path: Path
 
 def test_run_pyg_gnn_smoke_trains_on_exported_heterodata(tmp_path: Path) -> None:
     kg_path = _build_tiny_kg(tmp_path)
+    _extend_disease_edges_for_smoke(kg_path)
     output_path = tmp_path / "pyg-smoke"
     build_pyg_export(
         BuildConfig(
@@ -379,6 +380,7 @@ def test_no_cap_export_defaults_to_sidecar_without_full_heterodata_pickle(tmp_pa
 
 def test_run_pyg_gnn_smoke_loads_selected_relation_from_sidecars(tmp_path: Path) -> None:
     kg_path = _build_tiny_kg(tmp_path)
+    _extend_disease_edges_for_smoke(kg_path)
     output_path = tmp_path / "pyg-sidecar-smoke"
     build_pyg_export(
         BuildConfig(
@@ -647,6 +649,24 @@ def test_pyg_export_wires_real_embeddings_and_learned_fallbacks(tmp_path: Path) 
     ]
     assert "full 100M-edge tensor materialization" in manifest["missing_feature_policy"]["materialization_policy"]
 
+    # Keep the original two-edge fixture for the exact embedding assertions
+    # above, then rebuild a split-capable graph for the leak-free smoke.
+    _extend_disease_edges_for_smoke(kg_path)
+    build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=None,
+            max_edges_per_relation=10,
+            feature_tables=("gene_textual_summary", "disease_prevalence_score", "molecule_development_phase"),
+            strict=True,
+            build_name="unit-embeddings-smoke",
+            embedding_features_root=str(embedding_root),
+            learned_fallback_config_path=str(embedding_root / "embeddings" / "reports" / "learned_fallback_config.json"),
+        )
+    )
     smoke = run_smoke(
         SmokeConfig(
             export_root=output_path,
@@ -721,19 +741,6 @@ def test_pyg_gnn_smoke_message_passing_graph_excludes_valid_and_test_labels() ->
 
 def _extend_disease_edges_for_smoke(kg_path: Path) -> None:
     root = kg_storage.open_kg_root(str(kg_path))
-    kg_storage.write_nodes(
-        root,
-        "disease",
-        _node_df(
-            ["EFO:0000001", "EFO:0000002", "EFO:0000003", "EFO:0000004"],
-            mondo_id=["MONDO:1", "MONDO:2", "MONDO:3", "MONDO:4"],
-            omim_id=["OMIM:1", "OMIM:2", "OMIM:3", "OMIM:4"],
-            doid_id=["DOID:1", "DOID:2", "DOID:3", "DOID:4"],
-            icd10_code=["A", "B", "C", "D"],
-            mesh_id=["M1", "M2", "M3", "M4"],
-            hp_id=["HP:1", "HP:2", "HP:3", "HP:4"],
-        ),
-    )
     kg_storage.write_edges(
         root,
         "disease_associated_gene",
@@ -744,8 +751,8 @@ def _extend_disease_edges_for_smoke(kg_path: Path) -> None:
             [
                 ("ENSG000001", "EFO:0000001"),
                 ("ENSG000002", "EFO:0000002"),
-                ("ENSG000003", "EFO:0000003"),
-                ("ENSG000001", "EFO:0000004"),
+                ("ENSG000003", "EFO:0000001"),
+                ("ENSG000001", "EFO:0000002"),
             ],
         ),
     )
