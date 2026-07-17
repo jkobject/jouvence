@@ -67,6 +67,20 @@ Protein relations remain in the schema for future direct protein evidence, but t
 
 The current canonical OpenTargets `gene_interacts_gene` relation remains broad. Its graph endpoints are gene-level (`ENSG`↔`ENSG`), while product identifiers and roles are evidence metadata inside `text_span`/`source_record_id`. Do not build `protein_interacts_protein`, `tf_regulates_gene`, `tf_binds_enhancer`, `transcript_interacts_protein`, or `transcript_interacts_gene` from this canonical relation. Those relations stay schema-valid for future source-native builders only, after raw endpoint policy, anti-join validation, and evidence support checks.
 
+### Block 1 D1 validation outcome — 2026-06-22
+
+Validation report: `docs/block1_validation_report.md`.
+
+The accepted Block 1 compendium decisions are:
+
+| Relation / source family | Decision | Validated evidence/source detail |
+| --- | --- | --- |
+| `gene_interacts_gene` from current canonical OpenTargets/TxGNN gene endpoints | Keep broad/no-split; no approved active `protein_interacts_protein`, `tf_regulates_gene`, `tf_binds_enhancer`, `transcript_interacts_protein`, or `transcript_interacts_gene` artifact from these rows. | `7,424,037` edges; `14,336,594` OpenTargets/interaction evidence rows; `642,150` TxGNN legacy broad edges remain a policy-accepted no-fabricated-evidence exception. |
+| `pathway_contains_gene` from GO/Reactome/TxGNN legacy pathway membership | Keep current gene-level canonical relation; no `pathway_contains_protein` split promoted from current gene endpoints. | `630,932` edges / `630,932` evidence rows; source datasets `OpenTargets/go`, `TxGNN/txgnn_legacy_go`, `TxGNN/txgnn_legacy_reactome`; zero endpoint anti-join misses in D1 cache. |
+| `molecule_targets_gene` from OpenTargets MoA and TxGNN DrugBank/CTD target rows | Keep current gene-level canonical relation; no `molecule_targets_protein` split promoted from these rows. | `41,239` edges / `41,239` evidence rows; source datasets `drug_protein`, `drug_mechanism_of_action`, `ctd_chemical_gene`; stale `molecule_targets_protein` predicate/direction/source-record tokens are zero. |
+
+D1 used `.omoc/gcs-cache/kg-v2`, a partial local validation cache. The missing-file list in `.omoc/reports/block1-validation-coverage-20260622.json` is a cache-completeness limitation, not a canonical source-policy decision. Whole-KG coverage must be rerun against mounted `/mnt/gcs/jouvencekb/kg/v2` or a complete mirror.
+
 ### S1 source-native expansion policy additions — 2026-06-21
 
 These policy decisions override earlier proposal-only wording until a later human-approved schema migration changes them:

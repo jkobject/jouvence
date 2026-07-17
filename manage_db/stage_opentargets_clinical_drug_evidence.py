@@ -293,9 +293,9 @@ def run(raw_root: Path, kg_cache: Path, out_root: Path) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--raw-root", type=Path, default=Path(".omoc/raw/opentargets/26.03"))
-    parser.add_argument("--kg-cache", type=Path, default=Path(".omoc/gcs-cache/kg-v2"))
-    parser.add_argument("--out-root", type=Path, default=Path(".omoc/staging/opentargets-clinical-drug-evidence-20260622-t_ceee5d53"))
+    parser.add_argument("--raw-root", type=Path, default=Path("artifacts/cache/raw/opentargets/26.03"))
+    parser.add_argument("--kg-cache", type=Path, default=Path("/Users/jkobject/mnt/gcs/jouvencekb-kg/v2"))
+    parser.add_argument("--out-root", type=Path, default=Path("artifacts/staged/opentargets-clinical-drug-evidence-20260622-t_ceee5d53"))
     args = parser.parse_args()
     report = run(args.raw_root, args.kg_cache, args.out_root)
     print(json.dumps(report, indent=2, sort_keys=True))

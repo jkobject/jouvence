@@ -152,6 +152,34 @@ def test_dry_run_without_lamindb_counts_valid_rows_as_would_create(tmp_path: Pat
 
 
 
+def test_dry_run_reports_schema_module_not_configured(tmp_path: Path, monkeypatch) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+    kg_storage.write_nodes(
+        root,
+        "gene",
+        pd.DataFrame([{
+            "id": "NCBI:1",
+            "ncbi_gene_id": "1",
+            "hgnc_id": None,
+            "uniprot_id": None,
+            "gene_name": "A1BG",
+        }]),
+    )
+
+    def _boom():
+        raise RuntimeError("'lnschema_txgnn' wasn't configured for this instance")
+
+    monkeypatch.setattr("manage_db.sync_parquet_nodes_to_lamindb._connect_lamin", lambda _: None)
+    monkeypatch.setattr("manage_db.sync_parquet_nodes_to_lamindb._registry_models", _boom)
+
+    summaries = sync_parquet_nodes_to_lamindb(tmp_path / "kg", node_types=["gene"], batch_size=1)
+
+    assert summaries[0].status == "schema_module_not_configured"
+    assert summaries[0].would_create == 1
+    assert summaries[0].status_detail is not None
+    assert "wasn't configured" in summaries[0].status_detail
+
+
 def test_dry_run_counts_protein_rows_as_would_create_without_lamindb(
     tmp_path: Path, monkeypatch
 ) -> None:

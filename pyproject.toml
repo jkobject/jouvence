@@ -22,16 +22,19 @@ dependencies = [
   "lnschema-txgnn",
   "matplotlib==3.10.8",
   "numpy==2.4.2",
-  "ipython==7.2.0",
+  "ipython>=8.18",
+  "ipykernel>=6.29",
   "pyarrow>=20",
   "pandas==3.0.0",
   "scikit-learn==1.8.0",
   "tqdm==4.67.3",
   "duckdb>=1.1.0",
+  "rdkit>=2025.9.1",
 ]
 
 [dependency-groups]
 dev = ["pytest>=8"]
+gnn = ["torch>=2.12", "torch-geometric>=2.8"]
 
 [tool.setuptools]
 include-package-data = true

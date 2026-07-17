@@ -26,4 +26,4 @@ Current unit resource limits are for the Ralph loop itself, not the final model 
 - `MemoryMax=8G`
 - `TimeoutStartSec=12h`
 
-The final tiny TxGNN model smoke remains separately constrained by `CLAUDE.md` Phase 9 to `CPUQuota=200%` and `MemoryMax=4G`.
+The final tiny TxGNN model smoke remains separately constrained by `AGENTS.md` Phase 9 to `CPUQuota=200%` and `MemoryMax=4G`.

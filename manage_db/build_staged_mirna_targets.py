@@ -207,7 +207,7 @@ def _write_parquet(path: Path, df: pd.DataFrame) -> None:
     df.reset_index(drop=True).to_parquet(path, index=False)
 
 
-def _default_output_dir(base: Path | str = ".omoc/staging") -> Path:
+def _default_output_dir(base: Path | str = "artifacts/staged") -> Path:
     return Path(base) / f"mirna-targets-{date.today().isoformat()}"
 
 
@@ -608,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target-source", action="append", default=[], help="Approved source-native target table; repeatable")
     parser.add_argument("--gene-nodes", default=None, help="Optional nodes/gene.parquet for gene endpoint anti-join validation")
     parser.add_argument("--source-audit", default=None, help="Optional JSON document describing source license/schema approvals for this staged sample")
-    parser.add_argument("--output-dir", default=None, help="Defaults to .omoc/staging/mirna-targets-YYYY-MM-DD")
+    parser.add_argument("--output-dir", default=None, help="Defaults to artifacts/staged/mirna-targets-YYYY-MM-DD")
     args = parser.parse_args(argv)
     counts = build_staged_mirna_targets(
         transcript_nodes_path=args.transcript_nodes,

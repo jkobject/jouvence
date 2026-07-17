@@ -127,10 +127,31 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+# Project-local datasets and generated outputs
 data/txdata/
 data/lamin_txgnn_fresh/
 data/lamin_txgnn_fresh2/
 data/opentargets/
 data/kg
 mjouvencekb/
+/artifacts/
+/.worktrees/
+/logs/
+
+# Local agent/runtime state (never reviewable source)
 .omoc/
+/.omx/
+/.claude/worktrees/
+/.openclaw/
+/.tmp/
+
+# Local databases, tool caches, and OS metadata
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+.ruff_cache/
+.uv-cache/
+.DS_Store

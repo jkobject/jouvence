@@ -42,6 +42,9 @@ _TEXTUAL_SUMMARY_TABLE_TYPES: dict[str, NodeType] = {
     "tissue_textual_summary": NodeType.TISSUE,
     "molecule_textual_summary": NodeType.MOLECULE,
     "pathway_textual_summary": NodeType.PATHWAY,
+    "cell_type_textual_summary": NodeType.CELL_TYPE,
+    "phenotype_textual_summary": NodeType.PHENOTYPE,
+    "cell_line_textual_summary": NodeType.CELL_LINE,
 }
 
 _STRING_COLUMNS = {name for name, _ in TEXTUAL_SUMMARY_PARQUET_COLUMNS}
@@ -118,6 +121,21 @@ SOURCE_POLICY: dict[str, dict[str, str]] = {
         "decision": "allow_with_attribution",
         "reason": "UBERON ontology definitions are open OBO Foundry ontology content; preserve term provenance.",
         "license": "CC BY 4.0 / ontology attribution",
+    },
+    "Cell Ontology": {
+        "decision": "allow_with_attribution",
+        "reason": "Cell Ontology definitions are open OBO Foundry ontology content; preserve CL term provenance.",
+        "license": "CC BY 4.0 / ontology attribution",
+    },
+    "HPO": {
+        "decision": "allow_with_attribution",
+        "reason": "Human Phenotype Ontology definitions are allowed with attribution; preserve HPO term provenance and license URL when available.",
+        "license": "HPO license / attribution required (https://hpo.jax.org/app/license)",
+    },
+    "Cellosaurus": {
+        "decision": "allow_with_attribution",
+        "reason": "Use local Cellosaurus OBO comment fields only when local header release/date and CC BY 4.0 attribution terms are captured; no web scraping.",
+        "license": "Creative Commons Attribution 4.0 International (CC BY 4.0); https://creativecommons.org/licenses/by/4.0/; attribution/link/change-notice required",
     },
     "HPA": {
         "decision": "allow_with_attribution_for_allowed_downloads",

@@ -652,7 +652,7 @@ def _release_from_headers(headers: Mapping[str, str]) -> str:
     return f"etag-{etag}" if etag else date.today().isoformat()
 
 
-def cache_complex_portal_human(url: str = COMPLEX_PORTAL_HUMAN_URL, raw_cache_dir: str | Path = ".omoc/raw/complex_portal") -> tuple[Path, dict[str, Any]]:
+def cache_complex_portal_human(url: str = COMPLEX_PORTAL_HUMAN_URL, raw_cache_dir: str | Path = "artifacts/cache/raw/complex_portal") -> tuple[Path, dict[str, Any]]:
     raw_cache = Path(raw_cache_dir)
     raw_cache.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(url, method="HEAD")
@@ -683,7 +683,7 @@ def build_staged_complex_portal(
     node_root: str | None = None,
     protein_nodes_path: str | Path | None = None,
     output_dir: str | Path | None = None,
-    raw_cache_dir: str | Path = ".omoc/raw/complex_portal",
+    raw_cache_dir: str | Path = "artifacts/cache/raw/complex_portal",
     source_url: str = COMPLEX_PORTAL_HUMAN_URL,
 ) -> dict[str, Any]:
     if input_path is None:
@@ -692,7 +692,7 @@ def build_staged_complex_portal(
         input_file = Path(input_path)
         manifest = {"source": SOURCE, "url": source_url, "cached_path": str(input_file), "release": input_file.parent.name if input_file.parent.name else "manual"}
     release = str(manifest.get("release") or "")
-    out_dir = Path(output_dir) if output_dir else Path(".omoc/staging") / f"complex-portal-protein-complexes-{date.today().isoformat()}"
+    out_dir = Path(output_dir) if output_dir else Path("artifacts/staged") / f"complex-portal-protein-complexes-{date.today().isoformat()}"
     complextab = read_complextab(input_file)
     uniprot_to_protein, ambiguous_uniprot, mapping_stats = build_uniprot_to_protein_map(node_root=node_root, protein_nodes_path=protein_nodes_path)
     result = build_from_complextab(
@@ -730,10 +730,10 @@ def build_staged_complex_portal(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", default=None, help="Optional cached Complex Portal human complextab 9606.tsv; downloads current release if omitted")
-    parser.add_argument("--raw-cache-dir", default=".omoc/raw/complex_portal", help="Repo-local raw cache for release-pinned complextab")
+    parser.add_argument("--raw-cache-dir", default="artifacts/cache/raw/complex_portal", help="Repo-local raw cache for release-pinned complextab")
     parser.add_argument("--node-root", default="", help="KG root containing nodes/protein.parquet for UniProt→ENSP mapping, e.g. gs://jouvencekb/kg/v2")
     parser.add_argument("--protein-nodes", default=None, help="Optional local protein.parquet for tests/offline builds")
-    parser.add_argument("--output-dir", default=None, help="Defaults to .omoc/staging/complex-portal-protein-complexes-YYYY-MM-DD")
+    parser.add_argument("--output-dir", default=None, help="Defaults to artifacts/staged/complex-portal-protein-complexes-YYYY-MM-DD")
     parser.add_argument("--source-url", default=COMPLEX_PORTAL_HUMAN_URL)
     args = parser.parse_args(argv)
     report = build_staged_complex_portal(

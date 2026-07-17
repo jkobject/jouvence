@@ -5,7 +5,7 @@ This audit maps the current notebook surface to a clean numbered sequence for ex
 ## Scope and constraints
 
 - Existing notebooks were inspected by reading metadata, markdown headings, imports, and representative code cells from the `.ipynb` JSON; heavy cells were not executed.
-- Repo context read for this audit: `CLAUDE.md`, `TODO.md`, `docs/kg_schema_overview.md`, `docs/source_measure_edge_matrix.md`, and `docs/txgnn_access_runbook.md`.
+- Repo context read for this audit: `AGENTS.md`, `TODO.md`, `docs/kg_schema_overview.md`, `docs/source_measure_edge_matrix.md`, and `docs/txgnn_access_runbook.md`.
 - Access constraint to preserve in notebooks: do not wait for macFUSE. Use the canonical GCS root `gs://jouvencekb/kg/v2` when direct GCS access works, or copy targeted tiny samples into `.omoc/gcs-cache/kg-v2/` with `gcloud storage cp` and inspect with DuckDB/PyArrow.
 - LaminDB remote `jkobject/jouvencekb` may be unavailable in anonymous worker shells. Notebooks that require LaminDB should include a short auth probe and treat missing LaminHub permissions as a documented blocker, not as a reason to stall the rest of the KG reproducibility path.
 - User preference / design rule: notebooks should call the existing loader, downloader, ingestion, audit, validation, sync, and export functions directly. They should not reimplement pipeline logic inline beyond small display helpers and assertions.

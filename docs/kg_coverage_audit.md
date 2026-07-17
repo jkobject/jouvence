@@ -31,13 +31,18 @@ Validation answers: "do present edges resolve to present node IDs?"
 Evidence audit answers: "which canonical edges have support rows, and are any
 support rows orphaned?"
 
-As of 2026-06-16 after the additive `cell_type_expresses_protein` and
-`mutation_causes_phenotype` tranche, the canonical export reports `15 / 15`
-node files and `44 / 80` edge files: `55,523,691` nodes and `151,549,604`
-edges.
+As of the latest full canonical cleanup report
+`.omoc/reports/schema-direction-update-coverage-20260619.json`, the canonical
+export reports `15 / 15` node files and `36 / 67` edge files: `55,523,691`
+nodes and `94,877,374` edges.
 The formerly missing node files (`cell_line`, `dataset`, `enhancer`) are now
-present. The remaining missing edge files are schema/vision relations that still
-need explicit source mapping; do not create empty placeholder Parquets for them.
+present. The schema denominator in the latest full cleanup baseline is `67` edge
+relations after source-native relation additions such as `molecule_targets_gene`,
+`gene_interacts_gene`, and `cell_line_gene_essentiality`; future ingestion should
+use measured gene endpoints instead of protein-named compatibility slots.
+Coverage evidence: `.omoc/reports/schema-direction-update-coverage-20260619.json`.
+The remaining missing edge files are schema/vision relations that still need
+explicit source mapping; do not create empty placeholder Parquets for them.
 Post-import coverage evidence is
 `.omoc/reports/hermes-kg-coverage-post-remaining-20260615T000243Z.json`, and
 new-slice endpoint validation evidence is
@@ -58,8 +63,10 @@ That full run predates the 2026-06-16 additive tranches and reported
 `144,155,654` edges. The new edge files were validated separately with
 targeted anti-joins:
 
-- `cell_type_expresses_protein`: `7,205,547` edges, zero dangling endpoints.
-- `mutation_causes_phenotype`: `25,545` edges, zero dangling endpoints; its
+- Direct cell-type protein expression remains source-policy-gated. Do not promote
+  RNA-expression-derived proxy rows into `cell_type_expresses_protein`; use only
+  direct protein abundance/staining sources with explicit endpoint policy.
+- `mutation_associated_phenotype`: `25,545` edges, zero dangling endpoints; its
   `26,980` evidence rows pass `manage_db.audit_edge_evidence` with zero
   unsupported/orphan support.
 - `gene_ortholog_gene`: `161,675` edges, zero dangling endpoints; matching
@@ -68,23 +75,32 @@ targeted anti-joins:
 - `cell_line_from_organism`: `1,183` edges, zero dangling endpoints; matching
   evidence rows pass `manage_db.audit_edge_evidence` with zero unsupported/orphan
   support.
-- `cell_line_expresses_protein`: naive full projection remains rejected
-  (`264,166,510` estimated edges), but a bounded canonical tranche is promoted:
-  `expression >= 12`, `207,889` mRNA-proxy cell-line→protein edges and matching
-  evidence rows, zero missing endpoints/orphans.
+- `cell_line_expresses_protein`: naive mRNA/gene-expression projection remains
+  rejected. Promote this relation only from direct cell-line proteomics or other
+  direct protein-measurement sources with evidence metadata.
 
-Current evidence status is tracked in `CLAUDE.md` and
-`docs/evidence_and_edge_schema_plan.md`. As of the 2026-06-16 targeted audits,
-canonical evidence exists for eleven relations
-(`cell_line_expresses_protein`, `cell_line_from_organism`,
-`disease_associated_gene`, `disease_involves_pathway`, `gene_ortholog_gene`,
-`mutation_affects_molecule_response`, `mutation_associated_disease`,
-`mutation_associated_gene`, `mutation_causes_protein_change`,
-`molecule_targets_protein`, and `mutation_causes_phenotype`) and targeted
-`manage_db.audit_edge_evidence` reports zero unsupported/orphan records for all
-eleven. The active evidence backlog now starts with clinical
-`molecule_treats_disease` / `molecule_contraindicates_disease`, then
-enhancer/regulatory and remaining expression support tranches.
+Current evidence status is tracked in `AGENTS.md` and
+`docs/evidence_and_edge_schema_plan.md`. Block 1 validation on 2026-06-22 is
+recorded in `docs/block1_validation_report.md`. It validates the accessible
+local cache `.omoc/gcs-cache/kg-v2`, not whole-KG coverage, because
+`/mnt/gcs/jouvencekb/kg/v2` was unavailable in that worker session.
+
+Block 1 evidence gate result:
+
+- `pathway_contains_gene`: `630,932` edges / `630,932` evidence rows,
+  `edges_without_evidence=0`, `evidence_without_edge=0`.
+- `molecule_targets_gene`: `41,239` edges / `41,239` evidence rows,
+  `edges_without_evidence=0`, `evidence_without_edge=0`; stale
+  `molecule_targets_protein` evidence tokens are zero.
+- `gene_interacts_gene`: `7,424,037` edges and `14,336,594`
+  OpenTargets/interaction evidence rows. The `642,150` TxGNN legacy broad edges
+  without evidence are an accepted policy exception, not a license to fabricate
+  evidence or split current gene endpoints into protein/TF/transcript relations.
+
+The active evidence backlog now starts with clinical
+`molecule_treats_disease` / `molecule_contraindicates_disease`, remaining
+direct protein-expression/context tranches, and future source-native mechanism
+relations approved from raw endpoint-native sources.
 
 ## Source policy for next gene-gene tranches
 

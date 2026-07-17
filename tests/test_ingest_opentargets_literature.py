@@ -13,7 +13,6 @@ from manage_db.ingest_opentargets import (
     ingest_evidence_backed_variants,
     ingest_expression,
     ingest_target_essentiality,
-    ingest_go,
     ingest_pharmacogenomics,
     ingest_literature,
     ingest_orthology,
@@ -389,7 +388,7 @@ def test_ingest_expression_projects_cell_type_gene_expression_to_proteins(tmp_pa
     assert protein_edges.loc[0, "x_id"] == "CL_0000540"
     assert protein_edges.loc[0, "y_id"] == "ENSP00000369497"
     assert protein_edges.loc[0, "y_type"] == "protein"
-    assert protein_edges.loc[0, "source"] == "OpenTargets/HPA;projected_via_gene_encodes_protein"
+    assert protein_edges.loc[0, "source"] == "OpenTargets/HPA;projected_via_protein_node_xref"
 
 
 def test_ingest_disease_phenotype_normalizes_ids_and_adds_stubs(tmp_path: Path) -> None:

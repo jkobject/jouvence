@@ -231,6 +231,8 @@ Stage 2 — motif support staging:
 - Join motif hits to ReMap observed-binding candidates by same TF + same enhancer + motif/peak overlap.
 - Store motif-only rows as candidate/support evidence only.
 
+Bounded implementation note (2026-06-24, `t_ea6e00ab`): a real JASPAR 2026 CORE vertebrate PFM scan has been staged for the accepted bounded CRM/peak lineage. No local JASPAR/HOCOMOCO/ENCODE motif hit table was present, so the task scanned UCSC hg38 sequence for bounded enhancer/CRM intersections from `t_a405fe3b`/`t_f558cee3`. It emitted `artifacts/staged/t_ea6e00ab/evidence/tf_binds_enhancer_motif_colocation.parquet` with 549 motif rows: 440 `motif_support` rows linked to parent ReMap observed evidence and 109 motif-only predicted/support rows with `edge_key=NULL`. The status is `review-required` / `staged-only`; no canonical writes. See `docs/remap_crm_motif_colocation_t_ea6e00ab.md` and `artifacts/staged/t_ea6e00ab/reports/remap_crm_motif_colocation_report.json`.
+
 Stage 3 — validation before any ingestion card:
 
 - Endpoint anti-join: all TF endpoints exist in `nodes/gene.parquet`; all enhancer endpoints exist in `nodes/enhancer.parquet`.
@@ -246,6 +248,7 @@ Stage 3 — validation before any ingestion card:
 - First observed source: ReMap 2022 human hg38 `all` MACS2 BED.
 - Active edge requirement: at least one observed ReMap binding peak overlapping an existing enhancer node after coordinate harmonization.
 - Motif support: JASPAR/HOCOMOCO hits can strengthen/annotate evidence only; motif-only remains candidate/evidence-only.
+- Motifs are a required evidence-support component for ReMap/CRM `tf_binds_enhancer` readiness. If a scope lacks local motif hits, a task must either materialize a bounded motif scan/track join or explicitly document why motif support is unavailable for reviewer acceptance.
 - Enhancer creation: do not create new enhancer nodes from ReMap peaks in the first builder.
 - Context: preserve ReMap biotype and mapped ontology/cell-line metadata in evidence; do not flatten to global context-free truth in evidence.
 - `tf_regulates_gene`: explicitly out of scope. Any future TF→gene relation must come from source-native directional regulation or from an approved context-qualified derived relation, not from this binding audit.

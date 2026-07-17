@@ -1,12 +1,12 @@
 # TxGNN `/home/ubuntu/data` cleanup log
 
-2026-06-11 Ralph/systemd tick migrated legacy TxGNN agent reports and the first
+2026-06-11 Ralph/systemd tick migrated archived TxGNN agent reports and the first
 verified local scratch archives away from `/home/ubuntu/data`.
 
 ## Repo-local report migration
 
 - Source removed: `/home/ubuntu/data/txgnn-agent-reports`
-- New repo path: `.omoc/reports/legacy-agent-reports/`
+- New repo path: `.omoc/reports/archived-agent-reports/`
 - Verification: source and destination `sha256sum` manifests matched before
   removing the source directory.
 

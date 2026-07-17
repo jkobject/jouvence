@@ -2,16 +2,16 @@
 name: coding-standards
 description:
   Non-negotiable standards for writing, testing, and documenting Python code.
-  Covers project planning with CLAUDE.md, memory estimation, testing,
+  Covers project planning with AGENTS.md, memory estimation, testing,
   documentation, notebook hygiene, function design, and environment management.
 globs: "**/*.py"
 ---
 
-## 1. Project Planning with CLAUDE.md
+## 1. Project Planning with AGENTS.md
 
-### The CLAUDE.md file is the source of truth
+### The AGENTS.md file is the source of truth
 
-Every project should have a `CLAUDE.md` file at the root containing:
+Every project should have a `AGENTS.md` file at the root containing:
 
 1. **Project overview** — what it does, key entry points, important context
 2. **Phased roadmap** — multi-phase plan with tasks and subtasks, using
@@ -22,16 +22,16 @@ Every project should have a `CLAUDE.md` file at the root containing:
 
 ### When starting a session
 
-1. **Read CLAUDE.md first** to understand the project and current state
+1. **Read AGENTS.md first** to understand the project and current state
 2. If the user gives a specific task, do that
-3. If no specific task is given, **look at the roadmap in CLAUDE.md** and pick
+3. If no specific task is given, **look at the roadmap in AGENTS.md** and pick
    up the next incomplete item (`- [ ]`)
 4. Mark tasks as in-progress or completed as you work
 
 ### Recording learnings
 
 When you discover something non-obvious after significant effort, **add it to
-CLAUDE.md** so it's not forgotten:
+AGENTS.md** so it's not forgotten:
 
 - Tricky API behaviors or gotchas
 - Environment setup quirks (paths, configs, auth)

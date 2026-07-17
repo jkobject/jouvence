@@ -113,7 +113,7 @@ HPA_CANCER_MAPPINGS: tuple[CancerMapping, ...] = (
 )
 
 
-def _default_output_dir(base: str | Path = ".omoc/staging") -> Path:
+def _default_output_dir(base: str | Path = "artifacts/staged") -> Path:
     return Path(base) / f"disease-tissue-phenotype-context-{date.today().isoformat()}"
 
 
@@ -503,9 +503,9 @@ def build(args: argparse.Namespace) -> dict[str, object]:
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--node-root", default=".omoc/gcs-cache/kg-v2/nodes", help="Directory containing disease.parquet and tissue.parquet for endpoint anti-join validation.")
-    parser.add_argument("--cache-dir", default=".omoc/gcs-cache/kg-v2/raw", help="Local raw source cache directory.")
-    parser.add_argument("--staging-root", default=".omoc/staging", help="Base directory for dated staged artifacts.")
+    parser.add_argument("--node-root", default="/Users/jkobject/mnt/gcs/jouvencekb-kg/v2/nodes", help="Directory containing disease.parquet and tissue.parquet for endpoint anti-join validation.")
+    parser.add_argument("--cache-dir", default="/Users/jkobject/mnt/gcs/jouvencekb-kg/v2/raw", help="Local raw source cache directory.")
+    parser.add_argument("--staging-root", default="artifacts/staged", help="Base directory for dated staged artifacts.")
     parser.add_argument("--output-dir", default="", help="Explicit output directory; overrides --staging-root/date default.")
     parser.add_argument("--hpa-release", default="", help="Override HPA release label if known.")
     parser.add_argument("--fetch-audit-sources", action="store_true", help="Download HPO/HPOA/UBERON audit sources if missing.")

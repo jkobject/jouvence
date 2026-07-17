@@ -74,6 +74,21 @@ class NodeType(str, Enum):
     ENHANCER = "enhancer"
 
 
+# Provenance/catalog entities are retained as canonical metadata tables but are
+# not graph-adjacency node types for training/inference exports. Keep source
+# papers and datasets in evidence/catalog fields (for example paper_id,
+# dataset_id, source_dataset), not as message-passing nodes.  The reviewed
+# cleanup policy from t_d97c4547 is retention-with-labels, not deletion: existing
+# canonical node/edge Parquets stay reversible/readable metadata, and exporters
+# must opt in explicitly before consuming them.
+TRAINING_GRAPH_EXCLUDED_NODE_TYPES: frozenset[NodeType] = frozenset(
+    {
+        NodeType.PAPER,
+        NodeType.DATASET,
+    }
+)
+
+
 @dataclass(frozen=True)
 class NodeTypeInfo:
     """Metadata for a single node type.
@@ -392,7 +407,7 @@ RELATIONS: list[Relation] = [
         NodeType.TRANSCRIPT,
         RelationKind.GENETIC,
         True,
-        "Transcript-level consequence such as splicing/UTR/coding-transcript effect; active schema relation but not canonical until bounded source-specific evidence and endpoint policy are selected",
+        "Transcript-level consequence such as splicing/UTR/coding-transcript effect; canonical promoted/review-accepted from OpenTargets VEP transcriptConsequences with canonical mutation/transcript endpoints and allowed transcript-local consequence policy",
     ),
     Relation(
         "mutation_causes_protein_change",
@@ -408,7 +423,7 @@ RELATIONS: list[Relation] = [
         NodeType.ENHANCER,
         RelationKind.GENETIC,
         False,
-        "Variant-enhancer interval overlap retained only for variants that also have disease, phenotype, drug-response, or other downstream association evidence; overlap itself is contextual evidence, not a standalone causal edge.",
+        "Variant-enhancer interval overlap: coordinate overlap alone remains context/support-only, while the reviewed non-context-support-gated candidate from t_73c67c1b was canonical promoted/review-required by t_00551bc3 with evidence support and leakage policy. This remains associative/indirect; stronger allele-specific regulatory or enhancer-activity evidence is preferred, and downstream disease/gene support is not by itself proof of enhancer perturbation.",
     ),
     Relation(
         "mutation_associated_disease",
@@ -933,6 +948,16 @@ RELATION_BY_NAME: dict[str, Relation] = {r.name: r for r in RELATIONS}
 CANDIDATE_RELATION_BY_NAME: dict[str, CandidateRelation] = {
     r.name: r for r in CANDIDATE_RELATIONS
 }
+
+# Relations with a provenance/catalog endpoint are canonical metadata inventory
+# only under the reviewed t_d97c4547 cleanup policy. They are not default
+# training/inference graph adjacency even when files exist under v2/edges. Use
+# explicit audit/debug exporter opt-in for these relations.
+GRAPH_DISCONNECTED_RELATIONS: frozenset[str] = frozenset(
+    r.name
+    for r in RELATIONS
+    if r.source in TRAINING_GRAPH_EXCLUDED_NODE_TYPES or r.target in TRAINING_GRAPH_EXCLUDED_NODE_TYPES
+)
 RELATIONS_BY_STATUS: dict[RelationStatus, list[Relation]] = {}
 for _r in RELATIONS:
     RELATIONS_BY_STATUS.setdefault(_r.status, []).append(_r)

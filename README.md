@@ -1,5 +1,32 @@
 # TxGNN: Zero-shot prediction of therapeutic use with geometric deep learning and human centered design
 
+This repository contains the official TxGNN implementation and the active **Jouvence KG** extension. TxGNN performs zero-shot drug-repurposing prediction over a heterogeneous biomedical graph; Jouvence expands the data, provenance, feature, export, and catalog layers around it.
+
+**Start here:** [installation](#installation) · [API usage](#core-api-interface) · [paper reproduction](reproduce/README.md) · [documentation](docs/README.md) · [current work](TODO.md) · [agent instructions](AGENTS.md)
+
+## Jouvence KG extension
+
+The extension builds a larger, source-aware biomedical knowledge graph around TxGNN with:
+
+- canonical Parquet nodes, edges, and source-specific evidence under `gs://jouvencekb/kg/v2`;
+- source-native relation semantics and explicit provenance rather than projected or placeholder edges;
+- LaminDB cataloging through the intended instance `jkobject/jouvencekb`;
+- memory-safe PyG/GNN export and learned/foundation feature pipelines;
+- staged build → independent review → canonical promotion gates.
+
+Large KG scans, LaminDB bulk syncs, ReMap processing, and production exports run only on the in-region `txgnn-worker`; the macOS GCS-FUSE mount is for small bounded inspection, not production work. The Kanban board `txgnn` is the live execution source of truth. `TODO.md` is only a compact mirror.
+
+Documentation and contribution routes:
+
+- [`docs/README.md`](docs/README.md) — documentation index: architecture, source/evidence policy, runbooks, and durable knowledge;
+- [`docs/guides/kg-architecture-and-evidence.md`](docs/guides/kg-architecture-and-evidence.md) — topology, evidence, metadata, features, and proof;
+- [`docs/guides/lamindb-porting-operations.md`](docs/guides/lamindb-porting-operations.md) — LaminDB migration, progress semantics, VM/GCS/storage rationale, cost controls, and recovery gates;
+- [`docs/pyg_export_runbook.md`](docs/pyg_export_runbook.md) — PyG/GNN export operations;
+- [`TODO.md`](TODO.md) — dated current-work mirror (Kanban is live truth);
+- [`AGENTS.md`](AGENTS.md) — mandatory boot and safety rules for automated contributors;
+- [`docs/coding_standards.md`](docs/coding_standards.md) — contribution conventions;
+- [`docs/txgnn_worker_disk_migration_t_3cf62bd8.md`](docs/txgnn_worker_disk_migration_t_3cf62bd8.md) — evidence for the 500 GB → 200 GB worker-disk migration.
+
 This repository hosts the official implementation of TxGNN, a model for identifying therapeutic opportunities for diseases with limited treatment options and minimal molecular understanding that leverages recent advances in geometric deep learning and human-centered. 
 
 TxGNN is a graph neural network pre-trained on a comprehensive knowledge graph of 17,080 clinically-recognized diseases and 7,957 therapeutic candidates. The model can process various therapeutic tasks, such as indication and contraindication prediction, in a unified formulation. Once trained, we show that TxGNN can perform zero-shot inference on new diseases without additional parameters or fine-tuning on ground truth labels.
@@ -20,7 +47,7 @@ conda install -c dglteam dgl-cuda{$CUDA_VERSION}==0.5.2 # checkout https://www.d
 pip install TxGNN
 ```
 
-Note that if you want to use disease-area split, you should also install PyG following [this instruction](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) since some legacy data processing code uses PyG utility functions.
+Note that if you want to use disease-area split, you should also install PyG following [this instruction](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) since some archived data processing code uses PyG utility functions.
 
 ### Core API Interface
 Using the API, you can (1) reproduce the results in our paper and (2) train TxGNN on your own drug repurposing dataset using a few lines of code, and also generate graph explanations. 
