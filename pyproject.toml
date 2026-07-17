@@ -35,6 +35,12 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest>=8"]
 gnn = ["torch>=2.12", "torch-geometric>=2.8"]
+embeddings-text = ["sentence-transformers>=3.0", "torch>=2.12"]
+embeddings-edge = ["sentence-transformers>=3.0", "torch>=2.12"]
+embeddings-molecule = ["transformers>=4.40", "torch>=2.12", "rdkit>=2025.9.1"]
+embeddings-protein = ["fair-esm>=2.0", "torch>=2.12"]
+embeddings-nucleotide = ["transformers>=4.40", "torch>=2.12"]
+notebooks = ["nbclient>=0.10", "nbformat>=5.10"]
 
 [tool.setuptools]
 include-package-data = true

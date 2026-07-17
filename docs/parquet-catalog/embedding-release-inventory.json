@@ -1,0 +1,667 @@
+{
+  "common_release_schema": {
+    "release_physical_types": {
+      "embedding": "fixed_size_list<float32>[embedding_dim]",
+      "embedding_dim": "int32",
+      "embedding_dtype": "string constant float32",
+      "embedding_format": "string constant fixed_size_list_float32",
+      "embedding_key": "string",
+      "node_id": "string",
+      "node_type": "string",
+      "window_count": "int32; non-null; >=1; exactly 1 for rows whose preprocessing uses no windows"
+    },
+    "required_columns": [
+      "embedding_key",
+      "node_id",
+      "node_type",
+      "source_feature_table",
+      "source_feature_key",
+      "source_feature_hash",
+      "modality",
+      "embedding_model",
+      "embedding_version",
+      "embedding_dim",
+      "embedding_dtype",
+      "embedding_format",
+      "embedding",
+      "pooling",
+      "normalization",
+      "preprocessing",
+      "input_length",
+      "window_count",
+      "created_at",
+      "source_feature_release",
+      "provenance",
+      "license",
+      "citation"
+    ],
+    "required_validation": {
+      "all_zero_vectors": 0,
+      "bad_dimensions": 0,
+      "duplicate_embedding_keys": 0,
+      "embedding_key_set_equal": true,
+      "float32_vector_bytes_equal_by_embedding_key": true,
+      "node_id_and_type_equal_by_embedding_key": true,
+      "non_finite_vectors": 0,
+      "row_count_equal": true,
+      "source_feature_hash_equal_by_embedding_key": true
+    },
+    "sort_order": [
+      "node_type",
+      "node_id",
+      "embedding_key"
+    ],
+    "source_schema_observation": "Authorized samples from all four existing staged modalities physically store embedding as list<double> while row metadata says embedding_dtype=float32 and embedding_format=list_float32. Public compaction must reconcile this explicitly by casting each element to float32 and writing fixed_size_list<float32>; it must not copy the source Arrow schema blindly.",
+    "uniqueness": [
+      "embedding_key"
+    ],
+    "vector_parity_definition": "For every source row, cast the source list<double> element-wise to IEEE-754 float32. The compacted fixed_size_list<float32> bytes must equal those cast float32 bytes exactly and preserve element order. No tolerance-based parity and no re-embedding are allowed."
+  },
+  "created_at_paris": "2026-07-15T15:32:44+02:00",
+  "datasets": [
+    {
+      "artifact_validation_status": "accepted staged-only by reviewer t_1e302941",
+      "blockers": [
+        "The model revision is a symbolic fair-esm function label, not an immutable checkpoint digest.",
+        "No model-license evidence is present in the authorized producer/reviewer packet, so effective public redistribution terms cannot be stated.",
+        "The staged root is local-only; a publication worker needs an explicitly authorized, immutable transfer/input mechanism.",
+        "The public Arrow schema requires reviewed reconciliation from source list<double> to fixed_size_list<float32>."
+      ],
+      "canonical_target": "gs://jouvencekb/kg/v2/features/embeddings/protein_sequence/protein/esm2_t33_650m_ur50d/release_20260715_v1__src_39f3e5434cca/",
+      "compaction": {
+        "estimated_bytes_from_current_parquets": 2843445128,
+        "estimated_bytes_per_part_from_current_density": [
+          1421735252,
+          1421709876
+        ],
+        "must_run_on": "txgnn-worker or another explicitly approved in-region worker",
+        "planned_data_parts": 2,
+        "planned_row_ranges": [
+          [
+            0,
+            56026
+          ],
+          [
+            56026,
+            112051
+          ]
+        ],
+        "reason": "110,007 Parquet parts for 112,051 rows is not a distributable physical layout.",
+        "required": true,
+        "source_part_copy_allowed": false,
+        "target_object_size": "soft 1 GiB, allowed 256 MiB-2 GiB; deterministic row split may be adjusted after dry-run only if final tail would be below 256 MiB"
+      },
+      "dataset_id": "protein_esm2_t33_full",
+      "licenses": {
+        "effective_public_release_license": null,
+        "input_terms_recorded_in_rows": [
+          "EMBL-EBI open data / attribution"
+        ],
+        "model_license": null
+      },
+      "logical_dataset": {
+        "embedding_dim": 1280,
+        "embedding_version": "esm2_t33_650M_UR50D@fair-esm-pretrained-function-current+layer_33+mean_pool_window_mean_l2+policy_v1",
+        "failed_rows": 0,
+        "modality": "protein_sequence",
+        "model": "esm2_t33_650M_UR50D",
+        "node_type": "protein",
+        "normalization": "l2",
+        "pooling": "esm2_residue_mean_per_window_then_mean_of_window_vectors",
+        "requested_revision": "fair-esm-pretrained-function-current",
+        "resolved_revision": "fair-esm-pretrained-function-current",
+        "rows": 112051,
+        "semantic_dtype": "float32",
+        "skipped_rows": 0,
+        "source_physical_embedding_type": "list<double>",
+        "window_policy": {
+          "estimated_max_windows_per_sequence": 36,
+          "estimated_total_windows": 122573,
+          "max_residues_per_window": 1022,
+          "sequences_longer_than_window": 8001,
+          "silent_truncation": false,
+          "window_stride": 1022
+        }
+      },
+      "producer_task": "t_85461bd9",
+      "reviewer_task": "t_1e302941",
+      "source_feature": {
+        "crc32c_base64": "KJ2Gbg==",
+        "generation": "1782169822702242",
+        "md5_base64": "pdmnKfOl7yhaECHW+X9ssQ==",
+        "rows": 112051,
+        "sha256": "74ba1a50894826887fabf0849d139277e8887a82773cec2c28a754e2bd2260dd",
+        "size_bytes": 32214242,
+        "uri": "gs://jouvencekb/kg/v2/features/protein_sequence.parquet"
+      },
+      "status": "blocked"
+    },
+    {
+      "artifact_validation_status": "accepted staged-only by reviewer t_673c2e30",
+      "blockers": [
+        "No model-license evidence is present in the authorized producer/reviewer packet.",
+        "The staged root is local-only; publication needs an explicitly authorized transfer/input mechanism.",
+        "The public Arrow schema requires reviewed reconciliation from source list<double> to fixed_size_list<float32>."
+      ],
+      "canonical_target": "gs://jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/",
+      "compaction": {
+        "estimated_bytes_from_current_parquets": 573780997,
+        "planned_data_parts": 1,
+        "planned_row_ranges": [
+          [
+            0,
+            187268
+          ]
+        ],
+        "reason": "183 approximately 3 MiB parts should be one practical immutable shard.",
+        "required": true,
+        "target_object_size": "single approximately 547.20 MiB object"
+      },
+      "dataset_id": "transcript_nucleotide_transformer_full",
+      "licenses": {
+        "effective_public_release_license": null,
+        "input_terms_recorded_in_rows": [
+          "EMBL-EBI open data / attribution"
+        ],
+        "model_license": null
+      },
+      "logical_dataset": {
+        "embedding_dim": 512,
+        "embedding_version": "InstaDeepAI/nucleotide-transformer-v2-50m-multi-species@81b29e5786726d891dbf929404ef20adca5b36f1+attention_masked_mean_pool_window_mean_l2+policy_v1",
+        "modality": "transcript_cdna_nucleotide_sequence",
+        "model": "InstaDeepAI/nucleotide-transformer-v2-50m-multi-species",
+        "node_type": "transcript",
+        "normalization": "l2",
+        "pooling": "attention_masked_mean_pool_last_hidden_state_per_window_then_mean_of_window_vectors",
+        "requested_revision": "81b29e5786726d891dbf929404ef20adca5b36f1",
+        "resolved_revision": "81b29e5786726d891dbf929404ef20adca5b36f1",
+        "rows": 187268,
+        "semantic_dtype": "float32",
+        "skipped_rows": 0,
+        "source_physical_embedding_type": "list<double>",
+        "window_policy": {
+          "estimated_max_windows_per_sequence": 14,
+          "estimated_total_windows": 197164,
+          "max_nucleotides_per_window": 6000,
+          "sequences_longer_than_window": 8873,
+          "silent_truncation": false,
+          "transcript_to_gene_aggregation": false,
+          "window_stride": 6000
+        }
+      },
+      "producer_task": "t_4cb7a1c9",
+      "reviewer_task": "t_673c2e30",
+      "source_feature": {
+        "crc32c_base64": "bz9Cjw==",
+        "generation": "1782169828167398",
+        "md5_base64": "TKpPK0phr6IFBBbJQ8zYQg==",
+        "rows": 187268,
+        "sha256": "d54d93312a86877c09bea14b5b6fe6ecd281ce7debede9585cfd2294823806c6",
+        "size_bytes": 137652176,
+        "uri": "gs://jouvencekb/kg/v2/features/transcript_sequence.parquet"
+      },
+      "status": "blocked"
+    },
+    {
+      "artifact_validation_status": "accepted staged-only by reviewer t_730e48b2",
+      "blockers": [
+        "The model revision is symbolic huggingface-main, not an immutable checkpoint commit.",
+        "No model-license evidence is present in the authorized producer/reviewer packet.",
+        "No explicit no-silent-truncation/max-token policy is evidenced for the text run.",
+        "The public Arrow schema requires reviewed reconciliation from source list<double> to fixed_size_list<float32>."
+      ],
+      "canonical_targets": [
+        "gs://jouvencekb/kg/v2/features/embeddings/text/cell_line/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "gs://jouvencekb/kg/v2/features/embeddings/text/cell_type/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "gs://jouvencekb/kg/v2/features/embeddings/text/disease/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "gs://jouvencekb/kg/v2/features/embeddings/text/gene/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "gs://jouvencekb/kg/v2/features/embeddings/text/molecule/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "gs://jouvencekb/kg/v2/features/embeddings/text/pathway/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "gs://jouvencekb/kg/v2/features/embeddings/text/phenotype/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "gs://jouvencekb/kg/v2/features/embeddings/text/protein/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "gs://jouvencekb/kg/v2/features/embeddings/text/tissue/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/"
+      ],
+      "compaction": {
+        "estimated_bytes_from_current_parquets": 1949153710,
+        "planned_data_parts": 9,
+        "reason": "Each node type is already one logical Parquet object. Objects below 256 MiB are justified terminal objects at a logical node-type boundary; gene and protein objects are already within the target range.",
+        "required": false,
+        "tail_exception": "one object per node type, even when below 256 MiB"
+      },
+      "dataset_id": "text_sbiobert_full",
+      "licenses": {
+        "effective_public_release_license": null,
+        "input_terms_by_node_type": {
+          "cell_line": "CC BY 4.0 with Cellosaurus attribution/link/change notice",
+          "cell_type": "CC BY 4.0 / ontology attribution",
+          "disease": "CC BY 4.0 / upstream source attribution",
+          "gene": "CC BY 4.0 / upstream source attribution",
+          "molecule": "CC BY-SA 3.0",
+          "pathway": "CC BY 4.0",
+          "phenotype": "HPO license / attribution required (https://hpo.jax.org/app/license)",
+          "protein": "CC BY 4.0",
+          "tissue": "CC BY 4.0 / ontology attribution"
+        },
+        "model_license": null
+      },
+      "logical_dataset": {
+        "embedding_dim": 768,
+        "embedding_version": "pritamdeka/S-BioBERT-snli-multinli-stsb@huggingface-main+policy_v1",
+        "logical_subdatasets": 9,
+        "modality": "text",
+        "model": "pritamdeka/S-BioBERT-snli-multinli-stsb",
+        "node_types": [
+          "cell_line",
+          "cell_type",
+          "disease",
+          "gene",
+          "molecule",
+          "pathway",
+          "phenotype",
+          "protein",
+          "tissue"
+        ],
+        "normalization": "l2",
+        "pooling": "sentence_transformer_model_default_mean_pooling",
+        "requested_revision": "huggingface-main",
+        "resolved_revision": "huggingface-main",
+        "rows": 490336,
+        "semantic_dtype": "float32",
+        "source_physical_embedding_type": "list<double>",
+        "window_policy": {
+          "silent_truncation_policy_evidence": null,
+          "window_count": 1
+        }
+      },
+      "producer_task": "t_1ef98e9b",
+      "reviewer_task": "t_730e48b2",
+      "source_features": [
+        {
+          "crc32c_base64": "CGmOmg==",
+          "generation": "1782169808349167",
+          "md5_base64": "P0Csj2Geo9hgpI+UDq5lGw==",
+          "node_type": "cell_line",
+          "rows": 1140,
+          "sha256": "42d38cbafb9185727b0e3729b9a8dc7358f0888cae49a668519776ea64112392",
+          "size_bytes": 419158,
+          "uri": "gs://jouvencekb/kg/v2/features/cell_line_textual_summary.parquet"
+        },
+        {
+          "crc32c_base64": "HNEhIw==",
+          "generation": "1782169810447963",
+          "md5_base64": "7OjTIkfpZ1eeNfhJ5Cffsg==",
+          "node_type": "cell_type",
+          "rows": 3135,
+          "sha256": "53154405f8df86f73aee44c1acb02e354051926f21a690f4b6c72d90f8592853",
+          "size_bytes": 352433,
+          "uri": "gs://jouvencekb/kg/v2/features/cell_type_textual_summary.parquet"
+        },
+        {
+          "crc32c_base64": "uiqsnA==",
+          "generation": "1782169812047483",
+          "md5_base64": "0BYaowYTpCIDg+Jrmxjqpg==",
+          "node_type": "disease",
+          "rows": 26395,
+          "sha256": "0b7437f6f1ac50dbb34dadecde3d01001f542f9d70e2ba271093e601e8dff9df",
+          "size_bytes": 2964350,
+          "uri": "gs://jouvencekb/kg/v2/features/disease_textual_summary.parquet"
+        },
+        {
+          "crc32c_base64": "RZuhQw==",
+          "generation": "1782169813900972",
+          "md5_base64": "gSS9z4G+qMdJi59Inq+Xvw==",
+          "node_type": "gene",
+          "rows": 212029,
+          "sha256": "42e7fe60ab88ed5c5dc59c4ba200e911bc1dc51d6ef7ae7ba40c8ab72ebc13cc",
+          "size_bytes": 7588830,
+          "uri": "gs://jouvencekb/kg/v2/features/gene_textual_summary.parquet"
+        },
+        {
+          "crc32c_base64": "InV3zA==",
+          "generation": "1782169815729970",
+          "md5_base64": "Pjqe3hbkOvsDB9RK3MA2hw==",
+          "node_type": "molecule",
+          "rows": 22230,
+          "sha256": "bb8ed31ffb66d1304f50b7b051b51d5793432809091b2e097202b95e02e9a03f",
+          "size_bytes": 730115,
+          "uri": "gs://jouvencekb/kg/v2/features/molecule_textual_summary.parquet"
+        },
+        {
+          "crc32c_base64": "X+qWEw==",
+          "generation": "1782169817298055",
+          "md5_base64": "c1uy6AykMCvF8LQQ2u60kg==",
+          "node_type": "pathway",
+          "rows": 37492,
+          "sha256": "45183aa9c9626a21f15354bc4ff712b6e4f8ee638b07a3f72aacdf2b5f537c15",
+          "size_bytes": 3578312,
+          "uri": "gs://jouvencekb/kg/v2/features/pathway_textual_summary.parquet"
+        },
+        {
+          "crc32c_base64": "w4HIzA==",
+          "generation": "1782169819880354",
+          "md5_base64": "ZeRlCu86punWj82aOEDrKA==",
+          "node_type": "phenotype",
+          "rows": 13810,
+          "sha256": "0259764377cf649d73c628083a0057b0c12715869cf899059b50ffefdd1d64c3",
+          "size_bytes": 1296148,
+          "uri": "gs://jouvencekb/kg/v2/features/phenotype_textual_summary.parquet"
+        },
+        {
+          "crc32c_base64": "U+NYGg==",
+          "generation": "1782205935050909",
+          "md5_base64": "kvIdtD+Xo9cy+lx8Ahw7DQ==",
+          "node_type": "protein",
+          "rows": 162163,
+          "sha256": "8f563232443a4034827c2630f64c298828016d642db33b8a23b293ad879ee22a",
+          "size_bytes": 18040728,
+          "uri": "gs://jouvencekb/kg/v2/features/protein_textual_summary.parquet"
+        },
+        {
+          "crc32c_base64": "uW2SvA==",
+          "generation": "1782169825680065",
+          "md5_base64": "JHwrwyZUuRWTNXURNePDGQ==",
+          "node_type": "tissue",
+          "rows": 11942,
+          "sha256": "4f3f640404aee633422ca058b505dc4cf560c3c4277819b458e68dbc21108d3c",
+          "size_bytes": 1290803,
+          "uri": "gs://jouvencekb/kg/v2/features/tissue_textual_summary.parquet"
+        }
+      ],
+      "status": "blocked"
+    },
+    {
+      "artifact_validation_status": "accepted staged-only by reviewer t_e34d565a, but current manifest hash differs from the reviewer-recorded manifest hash",
+      "blockers": [
+        "Current manifest SHA256 d2be6a... differs from reviewer-recorded SHA256 1ccb0d...; exact current artifact identity needs a fresh reviewer gate.",
+        "No model-license evidence is present in the authorized producer/reviewer packet.",
+        "The public Arrow schema requires reviewed reconciliation from source list<double> to fixed_size_list<float32>."
+      ],
+      "canonical_target": "gs://jouvencekb/kg/v2/features/embeddings/molecule_smiles/molecule/chemberta_77m_mlm/release_20260715_v1__src_d2be6a75579f/",
+      "compaction": {
+        "estimated_bytes_from_current_parquets": 41385590,
+        "planned_data_parts": 1,
+        "reason": "One 39.47 MiB object is a justified final object for the complete logical molecule dataset.",
+        "required": false,
+        "tail_exception": "complete logical dataset is smaller than 256 MiB"
+      },
+      "dataset_id": "molecule_smiles_chemberta_full",
+      "licenses": {
+        "effective_public_release_license": null,
+        "input_terms_recorded_in_rows": [
+          "ChEMBL CC BY-SA 3.0 / OpenTargets CC BY 4.0 with upstream attribution"
+        ],
+        "model_license": null
+      },
+      "logical_dataset": {
+        "embedding_dim": 384,
+        "embedding_version": "DeepChem/ChemBERTa-77M-MLM@ed8a5374f2024ec8da53760af91a33fb8f6a15ff+mean_pool_l2+policy_v1",
+        "modality": "molecule_smiles",
+        "model": "DeepChem/ChemBERTa-77M-MLM",
+        "node_type": "molecule",
+        "normalization": "l2",
+        "pooling": "attention_masked_mean_pool_last_hidden_state",
+        "requested_revision": "main",
+        "resolved_revision": "ed8a5374f2024ec8da53760af91a33fb8f6a15ff",
+        "rows": 18614,
+        "semantic_dtype": "float32",
+        "skipped_rows": 0,
+        "source_physical_embedding_type": "list<double>",
+        "window_policy": {
+          "invalid_smiles": "skip without placeholder",
+          "max_tokens": 256
+        }
+      },
+      "producer_task": "t_553fcfa0",
+      "reviewer_task": "t_e34d565a",
+      "source_feature": {
+        "crc32c_base64": "ZbCUFw==",
+        "generation": "1782204703155462",
+        "md5_base64": "5ZuBlVEb3kfRO4USn6qptA==",
+        "rows": 18614,
+        "sha256": "4d49fb6274445face5fadc52ad54d5d69877e5f121eafdd2cac187806672207a",
+        "size_bytes": 4719133,
+        "uri": "gs://jouvencekb/kg/v2/features/molecule_fingerprint.parquet"
+      },
+      "status": "blocked"
+    },
+    {
+      "artifact_validation_status": "source candidate staged/review-required; no gene NT embedding exists",
+      "blockers": [
+        "The gene genomic sequence feature is staged/review-required and is not canonically promoted.",
+        "No gene NT model/checkpoint, dimension, license, or effective license is accepted.",
+        "No explicit window_size/stride/pooling policy exists for loci with p99 approximately 305 kb and maximum 499,324 bases.",
+        "No gene embedding Parquet, manifest, checksum, validation, or reviewer acceptance exists.",
+        "Input license terms are not stated in the authorized candidate handoff."
+      ],
+      "canonical_target": null,
+      "canonical_target_status": "unresolved; no approved model/revision/release identity exists, so no URI is guessed",
+      "compaction": {
+        "estimated_bytes": 0,
+        "planned_data_parts": 0,
+        "reason": "No embedding artifact exists to compact.",
+        "required": null
+      },
+      "dataset_id": "gene_genomic_nucleotide_embedding",
+      "licenses": {
+        "effective_public_release_license": null,
+        "input_terms": null,
+        "model_license": null
+      },
+      "logical_dataset": {
+        "embedding_dim": null,
+        "embedding_rows": 0,
+        "modality": "gene_genomic_sequence",
+        "model": null,
+        "model_revision": null,
+        "node_type": "gene",
+        "normalization": null,
+        "pooling": null,
+        "window_policy": null
+      },
+      "producer_task": "t_720528ea",
+      "reviewer_task": null,
+      "source_candidate": {
+        "endpoint_antijoin_rows": 0,
+        "fasta_sha256": "d8c3af0094a7bba6125763bad779ec18a81483c739c6ed122094bdf86c187b92",
+        "gtf_sha256": "75ec5b7a1bbb8ce566622dd9abf974ad37d390130325dae6d197d1a590854c50",
+        "interval_crc32c_base64": "d+a+aw==",
+        "interval_generation": "1782392570070397",
+        "interval_md5_base64": "9Iv9QR8Av9u6XTW2TjFnvw==",
+        "interval_rows": 78644,
+        "interval_size_bytes": 6860923,
+        "interval_uri": "gs://jouvencekb/kg/staging/gene-genomic-sequence-20260625-t_720528ea/features/gene_genomic_interval.parquet",
+        "max_sequence_length": 500000,
+        "over_500kb_skipped": 480,
+        "sequence_crc32c_base64": "l8hGIA==",
+        "sequence_generation": "1782392574620379",
+        "sequence_md5_base64": null,
+        "sequence_policy": "full gene locus including introns in gene-strand orientation; no truncation; loci over 500 kb skipped",
+        "sequence_rows": 78164,
+        "sequence_size_bytes": 600050191,
+        "sequence_total_bases": 2092341363,
+        "sequence_uri": "gs://jouvencekb/kg/staging/gene-genomic-sequence-20260625-t_720528ea/features/gene_genomic_sequence.parquet",
+        "source_release": "Ensembl release 114 / GRCh38 primary assembly FASTA last-modified 2025-01-30 / GTF last-modified 2025-01-27"
+      },
+      "status": "blocked"
+    }
+  ],
+  "per_dataset_readme_schema_contract": {
+    "README.md": [
+      "scientific meaning and node type",
+      "source features, generations, hashes, citations, and licenses",
+      "model/checkpoint/model license",
+      "payload construction and preprocessing",
+      "pooling, normalization, window/truncation policy",
+      "logical rows versus physical shards",
+      "schema and vector dtype/dimension",
+      "checksums and validation summary",
+      "attribution/share-alike or other downstream obligations",
+      "known limitations and coverage"
+    ],
+    "checksums.sha256": "One lowercase SHA256 and relative object path per data object, sorted lexicographically by path.",
+    "schema.json": [
+      "ordered columns and Arrow/Parquet physical types",
+      "nullable flags",
+      "fixed embedding dimension",
+      "primary/unique key",
+      "sort order",
+      "constant-value constraints",
+      "modality-specific extra columns",
+      "float32 parity definition"
+    ]
+  },
+  "release_id": "jouvence-public-embeddings-20260715-v1",
+  "release_size_and_object_estimate": {
+    "current_existing_data_parquet_bytes": 5407765425,
+    "current_existing_data_size_gib": 5.0363740185,
+    "estimate_method": "No-growth planning estimate equals exact current Parquet bytes. Actual fixed-size float32 compaction bytes must be measured in a dry-run manifest before publication and may be lower; no guessed compression ratio is asserted.",
+    "existing_logical_embedding_rows": 808269,
+    "object_count_formula": "13 data objects + (12 included canonical leaf targets * 3 exact sidecar objects) + 2 exact top-level objects = 51",
+    "planned_data_objects_by_dataset": {
+      "gene_genomic_nucleotide_embedding": 0,
+      "molecule_smiles_chemberta_full": 1,
+      "protein_esm2_t33_full": 2,
+      "text_sbiobert_full": 9,
+      "transcript_nucleotide_transformer_full": 1
+    },
+    "planned_dataset_sidecars": 36,
+    "planned_existing_data_objects": 13,
+    "planned_top_level_objects": 2,
+    "planned_total_objects": 51,
+    "sidecar_definition": "README.md, schema.json, and checksums.sha256 at each of the 12 included canonical leaf targets listed in release_topology. Gene NT is excluded until an accepted embedding gives it a non-null immutable canonical target."
+  },
+  "release_topology": {
+    "excluded_datasets": [
+      {
+        "dataset_id": "gene_genomic_nucleotide_embedding",
+        "reason": "No embedding or approved model/release identity exists; canonical_target is null, so it owns no release root, sidecar, data object, or top-level dataset entry."
+      }
+    ],
+    "included_leaf_targets": [
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/protein_sequence/protein/esm2_t33_650m_ur50d/release_20260715_v1__src_39f3e5434cca/checksums.sha256",
+        "dataset_id": "protein_esm2_t33_full",
+        "node_type": "protein",
+        "planned_data_objects": 2,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/protein_sequence/protein/esm2_t33_650m_ur50d/release_20260715_v1__src_39f3e5434cca/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/protein_sequence/protein/esm2_t33_650m_ur50d/release_20260715_v1__src_39f3e5434cca/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/protein_sequence/protein/esm2_t33_650m_ur50d/release_20260715_v1__src_39f3e5434cca/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/checksums.sha256",
+        "dataset_id": "transcript_nucleotide_transformer_full",
+        "node_type": "transcript",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/nucleotide_sequence/transcript/nucleotide_transformer_v2_50m_multi_species/release_20260715_v1__src_74d50ff1fdbb/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/cell_line/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/checksums.sha256",
+        "dataset_id": "text_sbiobert_full",
+        "node_type": "cell_line",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/cell_line/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/text/cell_line/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/cell_line/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/cell_type/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/checksums.sha256",
+        "dataset_id": "text_sbiobert_full",
+        "node_type": "cell_type",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/cell_type/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/text/cell_type/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/cell_type/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/disease/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/checksums.sha256",
+        "dataset_id": "text_sbiobert_full",
+        "node_type": "disease",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/disease/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/text/disease/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/disease/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/gene/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/checksums.sha256",
+        "dataset_id": "text_sbiobert_full",
+        "node_type": "gene",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/gene/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/text/gene/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/gene/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/molecule/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/checksums.sha256",
+        "dataset_id": "text_sbiobert_full",
+        "node_type": "molecule",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/molecule/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/text/molecule/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/molecule/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/pathway/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/checksums.sha256",
+        "dataset_id": "text_sbiobert_full",
+        "node_type": "pathway",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/pathway/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/text/pathway/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/pathway/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/phenotype/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/checksums.sha256",
+        "dataset_id": "text_sbiobert_full",
+        "node_type": "phenotype",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/phenotype/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/text/phenotype/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/phenotype/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/protein/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/checksums.sha256",
+        "dataset_id": "text_sbiobert_full",
+        "node_type": "protein",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/protein/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/text/protein/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/protein/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/tissue/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/checksums.sha256",
+        "dataset_id": "text_sbiobert_full",
+        "node_type": "tissue",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/tissue/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/text/tissue/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/text/tissue/sbiobert_snli_multinli_stsb/release_20260715_v1__src_b0cc26307c23/schema.json"
+      },
+      {
+        "checksums_uri": "gs://jouvencekb/kg/v2/features/embeddings/molecule_smiles/molecule/chemberta_77m_mlm/release_20260715_v1__src_d2be6a75579f/checksums.sha256",
+        "dataset_id": "molecule_smiles_chemberta_full",
+        "node_type": "molecule",
+        "planned_data_objects": 1,
+        "readme_uri": "gs://jouvencekb/kg/v2/features/embeddings/molecule_smiles/molecule/chemberta_77m_mlm/release_20260715_v1__src_d2be6a75579f/README.md",
+        "root": "gs://jouvencekb/kg/v2/features/embeddings/molecule_smiles/molecule/chemberta_77m_mlm/release_20260715_v1__src_d2be6a75579f/",
+        "schema_uri": "gs://jouvencekb/kg/v2/features/embeddings/molecule_smiles/molecule/chemberta_77m_mlm/release_20260715_v1__src_d2be6a75579f/schema.json"
+      }
+    ],
+    "sidecar_ownership": "per canonical leaf target",
+    "top_level_objects": [
+      "gs://jouvencekb/kg/v2/features/embeddings/manifests/jouvence-public-embeddings-20260715-v1.json",
+      "gs://jouvencekb/kg/v2/features/embeddings/manifests/jouvence-public-embeddings-20260715-v1.README.md"
+    ]
+  },
+  "schema_version": "jouvence.public_embedding_release_inventory.v1.1",
+  "scope": {
+    "canonical_root": "gs://jouvencekb/kg/v2/features/embeddings",
+    "canonical_write_authorized": false,
+    "github_write_authorized": false,
+    "iam_write_authorized": false,
+    "logical_dataset_definition": "A reviewed embedding relation identified by node type, modality, model revision, and policy. Logical rows are independent of source or release shard count.",
+    "physical_shard_definition": "An immutable Parquet object carrying a contiguous, deterministic key-sorted slice of one logical dataset. Shard count is an operational packaging choice and is not dataset cardinality.",
+    "top_level_manifest_uri": "gs://jouvencekb/kg/v2/features/embeddings/manifests/jouvence-public-embeddings-20260715-v1.json"
+  },
+  "task_id": "t_7ce00440"
+}

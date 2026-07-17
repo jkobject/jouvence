@@ -12,7 +12,13 @@ from manage_db import kg_storage
 from manage_db import build_pyg_export as build_mod
 from manage_db.build_pyg_export import BuildConfig, build_pyg_export, main
 from manage_db.kg_schema import GRAPH_DISCONNECTED_RELATIONS
-from manage_db.run_pyg_gnn_smoke import SmokeConfig, run_smoke
+from manage_db.run_pyg_gnn_smoke import (
+    SmokeConfig,
+    _build_training_message_passing_graph,
+    _split_edges,
+    main as smoke_main,
+    run_smoke,
+)
 
 
 def _node_df(ids: list[str], **extra: list[str]) -> pd.DataFrame:
@@ -292,6 +298,7 @@ def test_pyg_export_can_opt_in_to_provenance_node_types_for_audit(tmp_path: Path
 
 def test_run_pyg_gnn_smoke_trains_on_exported_heterodata(tmp_path: Path) -> None:
     kg_path = _build_tiny_kg(tmp_path)
+    _extend_disease_edges_for_smoke(kg_path)
     output_path = tmp_path / "pyg-smoke"
     build_pyg_export(
         BuildConfig(
@@ -322,12 +329,21 @@ def test_run_pyg_gnn_smoke_trains_on_exported_heterodata(tmp_path: Path) -> None
     assert result.validation["checks"]["edge_tensors_present"] is True
     assert result.validation["checks"]["reverse_edges_are_transpose"] is True
     assert result.split_counts == {
-        "train_positive_edges": 1,
-        "train_negative_edges": 1,
+        "train_positive_edges": 2,
+        "train_negative_edges": 2,
         "valid_positive_edges": 1,
         "valid_negative_edges": 1,
+        "test_positive_edges": 1,
+        "test_negative_edges": 1,
     }
     assert result.metrics["epochs"] == 2.0
+    assert result.config["relation_role"] == "primary_link_prediction_relation_with_other_relations_as_auxiliary_message_passing_context"
+    assert result.graph_sizes["primary_relation"] == "disease_associated_gene"
+    assert result.graph_sizes["primary_message_passing_edge_count"] == result.split_counts["train_positive_edges"]
+    assert result.graph_sizes["auxiliary_forward_relations"] == ["molecule_targets_gene"]
+    assert "test_loss" in result.metrics
+    assert "test_accuracy" in result.metrics
+    assert result.validation["checks"]["heldout_edges_removed_from_message_passing"] is True
     assert (tmp_path / "smoke_metrics.json").exists()
 
 
@@ -364,6 +380,7 @@ def test_no_cap_export_defaults_to_sidecar_without_full_heterodata_pickle(tmp_pa
 
 def test_run_pyg_gnn_smoke_loads_selected_relation_from_sidecars(tmp_path: Path) -> None:
     kg_path = _build_tiny_kg(tmp_path)
+    _extend_disease_edges_for_smoke(kg_path)
     output_path = tmp_path / "pyg-sidecar-smoke"
     build_pyg_export(
         BuildConfig(
@@ -632,6 +649,24 @@ def test_pyg_export_wires_real_embeddings_and_learned_fallbacks(tmp_path: Path) 
     ]
     assert "full 100M-edge tensor materialization" in manifest["missing_feature_policy"]["materialization_policy"]
 
+    # Keep the original two-edge fixture for the exact embedding assertions
+    # above, then rebuild a split-capable graph for the leak-free smoke.
+    _extend_disease_edges_for_smoke(kg_path)
+    build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=None,
+            max_edges_per_relation=10,
+            feature_tables=("gene_textual_summary", "disease_prevalence_score", "molecule_development_phase"),
+            strict=True,
+            build_name="unit-embeddings-smoke",
+            embedding_features_root=str(embedding_root),
+            learned_fallback_config_path=str(embedding_root / "embeddings" / "reports" / "learned_fallback_config.json"),
+        )
+    )
     smoke = run_smoke(
         SmokeConfig(
             export_root=output_path,
@@ -644,3 +679,214 @@ def test_pyg_export_wires_real_embeddings_and_learned_fallbacks(tmp_path: Path) 
     assert smoke.status == "pass"
     assert smoke.validation["checks"]["edge_attr_tensors_present"] is True
     assert smoke.validation["checks"]["selected_edge_attr_consumed_by_predictor"] is True
+    assert smoke.validation["edge_attr_usage"]["all_edge_types_have_edge_attr"] is True
+    assert smoke.graph_sizes["forward_edge_counts"] == {"disease_associated_gene": 4, "molecule_targets_gene": 2}
+
+
+def test_pyg_gnn_smoke_split_includes_disjoint_heldout_test_edges() -> None:
+    import torch
+
+    edge_index = torch.tensor(
+        [
+            [0, 1, 2, 3, 4, 5],
+            [10, 11, 12, 13, 14, 15],
+        ],
+        dtype=torch.long,
+    )
+
+    train_pos, valid_pos, test_pos, train_idx, valid_idx, test_idx = _split_edges(
+        edge_index, max_train_edges=2, seed=7423
+    )
+
+    assert train_pos.size(1) == 2
+    assert valid_pos.size(1) == 1
+    assert test_pos.size(1) == 1
+    assert len(set(train_idx.tolist()) & set(valid_idx.tolist())) == 0
+    assert len(set(train_idx.tolist()) & set(test_idx.tolist())) == 0
+    assert len(set(valid_idx.tolist()) & set(test_idx.tolist())) == 0
+
+
+def test_pyg_gnn_smoke_message_passing_graph_excludes_valid_and_test_labels() -> None:
+    import torch
+    from torch_geometric.data import HeteroData
+
+    data = HeteroData()
+    data["gene"].num_nodes = 6
+    data["gene"].x = torch.randn(6, 4)
+    data["disease"].num_nodes = 6
+    data["disease"].x = torch.randn(6, 4)
+    edge_type = ("gene", "disease_associated_gene", "disease")
+    reverse_edge_type = ("disease", "rev_disease_associated_gene", "gene")
+    data[edge_type].edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long)
+    data[edge_type].edge_attr = torch.arange(12, dtype=torch.float32).view(4, 3)
+    data[reverse_edge_type].edge_index = data[edge_type].edge_index[[1, 0], :]
+    data[reverse_edge_type].edge_attr = data[edge_type].edge_attr.clone()
+
+    train_idx = torch.tensor([0, 2], dtype=torch.long)
+    valid_idx = torch.tensor([1], dtype=torch.long)
+    test_idx = torch.tensor([3], dtype=torch.long)
+
+    mp_data = _build_training_message_passing_graph(
+        data, edge_type, reverse_edge_type, train_idx, valid_idx, test_idx
+    )
+
+    assert mp_data[edge_type].edge_index.tolist() == [[0, 2], [1, 3]]
+    assert mp_data[reverse_edge_type].edge_index.tolist() == [[1, 3], [0, 2]]
+    assert mp_data[edge_type].edge_attr.tolist() == [[0.0, 1.0, 2.0], [6.0, 7.0, 8.0]]
+    assert [1, 2] not in mp_data[edge_type].edge_index.t().tolist()
+    assert [3, 4] not in mp_data[edge_type].edge_index.t().tolist()
+    assert [2, 1] not in mp_data[reverse_edge_type].edge_index.t().tolist()
+    assert [4, 3] not in mp_data[reverse_edge_type].edge_index.t().tolist()
+
+
+def _extend_disease_edges_for_smoke(kg_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(kg_path))
+    kg_storage.write_edges(
+        root,
+        "disease_associated_gene",
+        _edge_df(
+            "disease_associated_gene",
+            "gene",
+            "disease",
+            [
+                ("ENSG000001", "EFO:0000001"),
+                ("ENSG000002", "EFO:0000002"),
+                ("ENSG000003", "EFO:0000001"),
+                ("ENSG000001", "EFO:0000002"),
+            ],
+        ),
+    )
+
+
+def test_run_pyg_gnn_smoke_cli_writes_leak_free_metrics(tmp_path: Path, capsys) -> None:
+    kg_path = _build_tiny_kg(tmp_path)
+    _extend_disease_edges_for_smoke(kg_path)
+    output_path = tmp_path / "pyg-smoke-cli"
+    metrics_path = tmp_path / "smoke-cli-metrics.json"
+    build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=None,
+            max_edges_per_relation=10,
+            strict=True,
+            build_name="unit-smoke-cli",
+        )
+    )
+
+    rc = smoke_main(
+        [
+            "--export-root",
+            str(output_path),
+            "--relation",
+            "disease_associated_gene",
+            "--epochs",
+            "1",
+            "--hidden-channels",
+            "4",
+            "--max-train-edges",
+            "2",
+            "--seed",
+            "7423",
+            "--output-json",
+            str(metrics_path),
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    persisted = json.loads(metrics_path.read_text())
+    for result in (payload, persisted):
+        assert result["status"] == "pass"
+        assert result["split_counts"] == {
+            "train_positive_edges": 2,
+            "train_negative_edges": 2,
+            "valid_positive_edges": 1,
+            "valid_negative_edges": 1,
+            "test_positive_edges": 1,
+            "test_negative_edges": 1,
+        }
+        assert result["validation"]["checks"]["heldout_edges_removed_from_message_passing"] is True
+        assert result["validation"]["checks"]["message_passing_edge_count_matches_train_split"] is True
+        assert result["validation"]["checks"]["selected_edge_attr_consumed_by_predictor"] is True
+        assert result["validation"]["edge_attr_usage"]["selected_edge_attr_consumed_by_predictor"] is True
+        assert result["graph_sizes"]["primary_relation"] == "disease_associated_gene"
+        assert result["graph_sizes"]["primary_message_passing_edge_count"] == 2
+        assert result["graph_sizes"]["auxiliary_forward_relations"] == ["molecule_targets_gene"]
+        assert result["config"]["seed"] == 7423
+        assert result["metrics"]["train_loss_trace"]
+
+
+def _extend_molecule_target_edges_for_smoke(kg_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(kg_path))
+    kg_storage.write_nodes(
+        root,
+        "molecule",
+        _node_df(
+            ["CHEMBL1", "CHEMBL2", "CHEMBL3", "CHEMBL4"],
+            drugbank_id=["DB1", "DB2", "DB3", "DB4"],
+            pubchem_cid=["11", "22", "33", "44"],
+            cas_rn=["CAS1", "CAS2", "CAS3", "CAS4"],
+            inchikey=["I1", "I2", "I3", "I4"],
+            smiles=["C", "CC", "CCC", "CCCC"],
+        ),
+    )
+    kg_storage.write_edges(
+        root,
+        "molecule_targets_gene",
+        _edge_df(
+            "molecule_targets_gene",
+            "molecule",
+            "gene",
+            [
+                ("CHEMBL1", "ENSG000001"),
+                ("CHEMBL2", "ENSG000002"),
+                ("CHEMBL3", "ENSG000003"),
+                ("CHEMBL4", "ENSG000001"),
+            ],
+        ),
+    )
+
+
+def test_run_pyg_gnn_smoke_evaluates_multiple_primary_relations(tmp_path: Path) -> None:
+    kg_path = _build_tiny_kg(tmp_path)
+    _extend_disease_edges_for_smoke(kg_path)
+    _extend_molecule_target_edges_for_smoke(kg_path)
+    output_path = tmp_path / "pyg-multitarget-smoke"
+    build_pyg_export(
+        BuildConfig(
+            kg_root=str(kg_path),
+            output_root=str(output_path),
+            node_types=("gene", "disease", "molecule"),
+            relations=("disease_associated_gene", "molecule_targets_gene"),
+            max_nodes_per_type=None,
+            max_edges_per_relation=10,
+            strict=True,
+            build_name="unit-multitarget-smoke",
+        )
+    )
+
+    result = run_smoke(
+        SmokeConfig(
+            export_root=output_path,
+            primary_relations=("disease_associated_gene", "molecule_targets_gene"),
+            epochs=1,
+            hidden_channels=4,
+            max_train_edges=2,
+            output_json=tmp_path / "multitarget_metrics.json",
+        )
+    )
+
+    assert result.status == "pass"
+    assert result.config["primary_relations"] == ["disease_associated_gene", "molecule_targets_gene"]
+    assert set(result.primary_results) == {"disease_associated_gene", "molecule_targets_gene"}
+    for relation, payload in result.primary_results.items():
+        assert payload["relation"] == relation
+        assert payload["validation"]["checks"]["heldout_edges_removed_from_message_passing"] is True
+        assert payload["validation"]["checks"]["message_passing_edge_count_matches_train_split"] is True
+        assert payload["validation"]["checks"]["selected_edge_attr_consumed_by_predictor"] is True
+        assert payload["metrics"]["train_loss_trace"]
+    assert set(result.metrics["primary_relation_metrics"]) == {"disease_associated_gene", "molecule_targets_gene"}
+    assert (tmp_path / "multitarget_metrics.json").exists()
