@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""TxGNN Kanban watchdog for review-required routing hygiene.
+"""Jouvence Kanban watchdog for review-required routing hygiene.
 
-Default behavior is read-only dry-run. It scans the active TxGNN board for blocked
+Default behavior is read-only dry-run. It scans the active Jouvence board for blocked
 producer cards that contain a `review-required` handoff and verifies that each has
 one of:
 
@@ -608,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(
-            f"TxGNN review watchdog: {payload['review_required_producers']} review-required producers; "
+            f"Jouvence review watchdog: {payload['review_required_producers']} review-required producers; "
             f"{payload['missing_routes']} missing routes; "
             f"{payload['accepted_reviews_pending_close']} accepted reviews pending producer close"
         )

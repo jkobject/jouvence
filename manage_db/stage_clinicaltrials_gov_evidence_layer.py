@@ -254,7 +254,7 @@ def _pick_references(refs_module: dict[str, Any]) -> str:
 
 def fetch_study(nct_id: str, *, sleep_seconds: float = 0.05) -> dict[str, Any]:
     url = f"{CTGOV_API_BASE}/{urllib.parse.quote(nct_id)}?format=json"
-    req = urllib.request.Request(url, headers={"User-Agent": "TxGNN-Jouvence-KG-prototype/0.1"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Jouvence-KG-prototype/0.1"})
     with urllib.request.urlopen(req, timeout=30) as response:
         data = json.load(response)
     if sleep_seconds:

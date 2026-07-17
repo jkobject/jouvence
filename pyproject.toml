@@ -3,15 +3,15 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "TxGNN"
-description = "TxGNN"
+name = "Jouvence"
+description = "Source-aware biomedical knowledge graph and drug-repurposing project built on upstream TxGNN"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 authors = [
-  { name = "TxGNN Team", email = "kexinh@stanford.edu" }
+  { name = "Jouvence maintainers" }
 ]
-urls = { Homepage = "https://github.com/mims-harvard/TxGNN" }
+urls = { Homepage = "https://github.com/jkobject/jouvence", Repository = "https://github.com/jkobject/jouvence", Upstream = "https://github.com/mims-harvard/TxGNN" }
 dynamic = ["version"]
 dependencies = [
   "fsspec>=2024.5.0",

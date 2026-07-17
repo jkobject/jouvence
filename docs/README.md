@@ -1,4 +1,4 @@
-# TxGNN / Jouvence documentation
+# Jouvence documentation
 
 This directory is the single home for durable project knowledge. Start at the repository [`README.md`](../README.md) for the public project overview, [`AGENTS.md`](../AGENTS.md) for agent boot rules, and [`TODO.md`](../TODO.md) for the current work mirror.
 
@@ -34,7 +34,7 @@ This directory is the single home for durable project knowledge. Start at the re
 ### LaminDB, VM, and storage
 
 - [`lamindb_kg_export_design.md`](lamindb_kg_export_design.md) — catalog/sync architecture.
-- [`txgnn_access_runbook.md`](txgnn_access_runbook.md) — GCS and bounded local access.
+- [`txgnn_access_runbook.md`](txgnn_access_runbook.md) — Jouvence GCS and bounded local access; filename retained for compatibility.
 - [`txgnn_worker_disk_migration_t_3cf62bd8.md`](txgnn_worker_disk_migration_t_3cf62bd8.md) — worker disk migration and rollback evidence.
 - [`storage.md`](storage.md) — storage layout and constraints.
 

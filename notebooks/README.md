@@ -1,8 +1,8 @@
 # KG reproducibility notebooks
 
-This directory contains notebooks for explaining and reproducing the Jouvence/TxGNN KG build. The rule is that notebooks call existing package code (`manage_db`, `txdata_download`, `txgnn`) and keep inline code limited to configuration, display, and validation queries.
+This directory contains notebooks for explaining and reproducing the Jouvence KG build. The rule is that notebooks call existing package code (`manage_db`, `txdata_download`, `txgnn`) and keep inline code limited to configuration, display, and validation queries. The `txgnn` import remains the compatibility namespace for the upstream model library.
 
-Default behavior is safe and lightweight: notebooks use sample/read-only mode, may use the verified FUSE mount at `/Users/jkobject/mnt/gcs/jouvencekb-kg/v2` only for small bounded inspection, and keep heavy production writes behind explicit environment flags. Heavy TxGNN jobs are VM-only: run LaminDB/PyG/ReMap/embedding/full-KG jobs on `txgnn-worker` or another explicitly approved in-region worker with `gs://jouvencekb/kg/v2`, never through Mac GCS-FUSE. `.omoc` is retired and should not be used for new notebook caches.
+Default behavior is safe and lightweight: notebooks use sample/read-only mode, may use the verified FUSE mount at `/Users/jkobject/mnt/gcs/jouvencekb-kg/v2` only for small bounded inspection, and keep heavy production writes behind explicit environment flags. Heavy Jouvence jobs are VM-only: run LaminDB/PyG/ReMap/embedding/full-KG jobs on `txgnn-worker` or another explicitly approved in-region worker with `gs://jouvencekb/kg/v2`, never through Mac GCS-FUSE. `.omoc` is retired and should not be used for new notebook caches.
 
 ## Sequence
 
@@ -36,10 +36,12 @@ uv run python -c "import nbformat; nbformat.validate(nbformat.read('notebooks/6_
 
 For interactive execution, start with defaults. Heavy cells are guarded by environment variables:
 
-- `TXGNN_NOTEBOOK_SAMPLE_MODE=1` (default): prefer cached/local samples.
-- `TXGNN_NOTEBOOK_RUN_BUILD=1`: allow builder cells to write under `data/kg` or configured output roots.
-- `TXGNN_NOTEBOOK_FULL_VALIDATION=1`: run full DuckDB endpoint validation on a local/mounted KG root.
-- `TXGNN_NOTEBOOK_RUN_BLOCK1_SPLIT=1`: reserved for tested Block 1 splitter functions; do not implement split transforms inline in notebooks.
+- `JOUVENCE_NOTEBOOK_SAMPLE_MODE=1` (default): prefer cached/local samples.
+- `JOUVENCE_NOTEBOOK_RUN_BUILD=1`: allow builder cells to write under `data/kg` or configured output roots.
+- `JOUVENCE_NOTEBOOK_FULL_VALIDATION=1`: run full DuckDB endpoint validation on a local/mounted KG root.
+- `JOUVENCE_NOTEBOOK_RUN_BLOCK1_SPLIT=1`: reserved for tested Block 1 splitter functions; do not implement split transforms inline in notebooks.
+
+Existing `TXGNN_*` notebook variables remain accepted as deprecated aliases. When both names are set, the corresponding `JOUVENCE_*` variable wins.
 
 Use direct `gs://jouvencekb/kg/v2` reads or, for small bounded inspection only, the verified FUSE mount at `/Users/jkobject/mnt/gcs/jouvencekb-kg/v2` for reproducibility. If a notebook needs a bounded local cache, use `artifacts/cache/<notebook-or-task>/`, not `.omoc`. Do not require macFUSE when direct GCS access is sufficient, and do not use Mac FUSE for heavy production notebook runs.
 

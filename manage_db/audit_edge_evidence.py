@@ -89,7 +89,7 @@ def _to_jsonable(audit: EvidenceAudit) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Audit TxGNN edge evidence coverage.")
+    parser = argparse.ArgumentParser(description="Audit Jouvence edge evidence coverage.")
     parser.add_argument("kg_path", help="Path or gs:// URI to a KG root.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     parser.add_argument(

@@ -40,7 +40,7 @@ def _storage_options(uri: str, billing_project: str | None) -> dict[str, Any]:
     if not project:
         raise ValueError(
             "GCS reads require billing_project=... or JOUVENCE_BILLING_PROJECT; "
-            "no project-specific default is embedded in TxGNN."
+            "no project-specific default is embedded in Jouvence."
         )
     return {
         "requester_pays": project,
