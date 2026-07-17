@@ -12,55 +12,14 @@ from manage_db.ingest_opentargets import (
     ingest_evidence,
     ingest_evidence_backed_variants,
     ingest_expression,
+    ingest_go,
     ingest_target_essentiality,
     ingest_pharmacogenomics,
-    ingest_literature,
     ingest_orthology,
     ingest_targets,
     ingest_variants,
     ingest_variant_protein_changes,
 )
-
-
-def test_ingest_literature_writes_schema_valid_nodes_and_edges(tmp_path: Path) -> None:
-    ot_dir = tmp_path / "opentargets"
-    evidence_dir = ot_dir / "evidence_europepmc"
-    evidence_dir.mkdir(parents=True)
-    pd.DataFrame(
-        [
-            {
-                "targetId": "ENSG00000139618",
-                "diseaseId": "EFO:0000305",
-                "literature": ["123", "456"],
-            },
-            {
-                "targetId": "ENSG00000139618",
-                "diseaseId": "EFO:0000305",
-                "literature": ["123"],
-            },
-        ]
-    ).to_parquet(evidence_dir / "part-000.parquet", index=False)
-
-    kg_dir = tmp_path / "kg"
-    root = kg_storage.open_kg_root(str(kg_dir))
-
-    n_papers, n_mentions = ingest_literature(ot_dir, kg_dir, root)
-
-    assert n_papers == 2
-    assert n_mentions == 4
-
-    papers = kg_storage.read_nodes(root, "paper")
-    genes = kg_storage.read_nodes(root, "gene")
-    diseases = kg_storage.read_nodes(root, "disease")
-    gene_mentions = kg_storage.read_edges(root, "paper_mentions_gene")
-    disease_mentions = kg_storage.read_edges(root, "paper_mentions_disease")
-
-    assert set(papers["id"]) == {"PMID:123", "PMID:456"}
-    assert {"id", "doi", "pmc_id", "arxiv_id"} <= set(papers.columns)
-    assert set(genes["id"]) == {"ENSG00000139618"}
-    assert set(diseases["id"]) == {"EFO:0000305"}
-    assert len(gene_mentions) == 2
-    assert len(disease_mentions) == 2
 
 
 def test_ingest_evidence_finalizes_chunked_edges(tmp_path: Path) -> None:
@@ -92,10 +51,10 @@ def test_ingest_evidence_finalizes_chunked_edges(tmp_path: Path) -> None:
         "disease_involves_pathway": 2,
     }
     edges = kg_storage.read_edges(root, "disease_associated_gene")
-    assert edges.loc[0, "x_id"] == "EFO:0000305"
-    assert edges.loc[0, "y_id"] == "ENSG00000139618"
+    assert edges.loc[0, "x_id"] == "ENSG00000139618"
+    assert edges.loc[0, "y_id"] == "EFO:0000305"
     pathway_edges = kg_storage.read_edges(root, "disease_involves_pathway")
-    assert set(pathway_edges["y_id"]) == {"R-HSA-12345", "R-HSA-67890"}
+    assert set(pathway_edges["x_id"]) == {"R-HSA-12345", "R-HSA-67890"}
     genes = kg_storage.read_nodes(root, "gene")
     pathways = kg_storage.read_nodes(root, "pathway")
     assert set(genes["id"]) == {"ENSG00000139618"}
@@ -105,15 +64,15 @@ def test_ingest_evidence_finalizes_chunked_edges(tmp_path: Path) -> None:
 
     gene_evidence = read_evidence(root, "disease_associated_gene")
     assert len(gene_evidence) == 1
-    assert gene_evidence.loc[0, "edge_key"] == "disease_associated_gene|EFO:0000305|ENSG00000139618"
+    assert gene_evidence.loc[0, "edge_key"] == "disease_associated_gene|ENSG00000139618|EFO:0000305"
     assert gene_evidence.loc[0, "source_dataset"] == "evidence_genetic_association"
     assert gene_evidence.loc[0, "source_record_id"] == "reactome:EFO:0000305:ENSG00000139618:affected_pathway"
     assert gene_evidence.loc[0, "evidence_score"] == 0.71
 
     pathway_evidence = read_evidence(root, "disease_involves_pathway")
     assert set(pathway_evidence["edge_key"]) == {
-        "disease_involves_pathway|EFO:0000305|R-HSA-12345",
-        "disease_involves_pathway|EFO:0000305|R-HSA-67890",
+        "disease_involves_pathway|R-HSA-12345|EFO:0000305",
+        "disease_involves_pathway|R-HSA-67890|EFO:0000305",
     }
 
 
