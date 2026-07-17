@@ -208,6 +208,10 @@ def copy_gcs_object_if_exists(uri: str, destination: Path, required: bool) -> bo
     if not gcloud_object_exists(uri):
         if required:
             raise FileNotFoundError(f"Required GCS input not found: {uri}")
+        # A reusable cache must represent the current GCS snapshot. Keeping an
+        # older optional file here would silently feed stale features/evidence
+        # into the embedding run after the source object disappears.
+        destination.unlink(missing_ok=True)
         return False
     destination.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["gcloud", "storage", "cp", "--quiet", uri, str(destination)], check=True)

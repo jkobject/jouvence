@@ -216,3 +216,19 @@ def test_text_only_scaffold_smoke_skips_edge_inputs(tmp_path: Path) -> None:
     assert protein_path.exists()
     assert pq.ParquetFile(protein_path).metadata.num_rows == 1
     assert manifest["validation"]["passed"] is True
+
+
+def test_optional_gcs_miss_removes_stale_cached_file(tmp_path: Path, monkeypatch) -> None:
+    destination = tmp_path / "cache" / "features" / "stale.parquet"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"stale")
+    monkeypatch.setattr(builder, "gcloud_object_exists", lambda _uri: False)
+
+    copied = builder.copy_gcs_object_if_exists(
+        "gs://jouvencekb/kg/v2/features/stale.parquet",
+        destination,
+        required=False,
+    )
+
+    assert copied is False
+    assert not destination.exists()
