@@ -205,7 +205,7 @@ def refresh(release_contract: Path | None, *, write: bool = True) -> dict[str, A
     import gcsfs
     import pyarrow.parquet as pq
 
-    fs = gcsfs.GCSFileSystem(project=PROJECT)
+    fs = gcsfs.GCSFileSystem(project=PROJECT, requester_pays=PROJECT)
     datasets: list[dict[str, Any]] = []
     for dataset_id, layer, paths in _logical_groups(fs):
         fields: list[dict[str, Any]] | None = None
@@ -289,7 +289,7 @@ def _uri_pattern(objects: list[dict[str, Any]]) -> str:
     uris = [o["uri"] for o in objects]
     if all("summary_chr" in uri for uri in uris):
         return "gs://jouvencekb/kg/v2/features/remap_crm_tf_enhancer_support_full/summary_chr{1..22,X,Y}.parquet"
-    parents = {str(Path(uri).parent) for uri in uris}
+    parents = {uri.rpartition("/")[0] for uri in uris}
     if len(parents) == 1:
         return sorted(parents)[0] + "/part-*.parquet"
     return " | ".join(uris)
