@@ -4,6 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
+import gcsfs
 import pytest
 
 import scripts.parquet_catalog as parquet_catalog
@@ -153,3 +154,34 @@ def test_read_examples_are_dataset_scoped_and_planned_pages_are_non_executable()
             assert "rm -rf -- \"$LOCAL_DIR\"" in text, path.name
             assert "paths = sorted(fs.glob(" in text, path.name
             assert " ORDER BY " in text, path.name
+
+
+def test_live_refresh_supplies_requester_pays_billing_project(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+
+    def fake_filesystem(**kwargs: object) -> object:
+        calls.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(gcsfs, "GCSFileSystem", fake_filesystem)
+    monkeypatch.setattr(parquet_catalog, "_logical_groups", lambda _fs: [])
+
+    parquet_catalog.refresh(None, write=False)
+
+    assert calls == [
+        {
+            "project": parquet_catalog.PROJECT,
+            "requester_pays": parquet_catalog.PROJECT,
+        }
+    ]
+
+
+def test_generic_sharded_uri_pattern_preserves_gcs_scheme() -> None:
+    objects = [
+        {"uri": "gs://jouvencekb/kg/v2/features/example/part-00000.parquet"},
+        {"uri": "gs://jouvencekb/kg/v2/features/example/part-00001.parquet"},
+    ]
+
+    assert parquet_catalog._uri_pattern(objects) == (
+        "gs://jouvencekb/kg/v2/features/example/part-*.parquet"
+    )
