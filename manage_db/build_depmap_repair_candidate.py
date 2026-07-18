@@ -34,6 +34,10 @@ _REQUIRED_SOURCE_COLUMNS = {
     "expression",
     "is_essential",
 }
+_EXPLICIT_EXPRESSION_SQL = (
+    "TRY_CAST(expression AS DOUBLE) IS NOT NULL "
+    "AND NOT isnan(TRY_CAST(expression AS DOUBLE))"
+)
 
 
 def _sql_string(value: str | Path) -> str:
@@ -56,8 +60,71 @@ def _copy_query(connection: duckdb.DuckDBPyConnection, query: str, path: Path) -
     )
 
 
+def _validate_relation_artifacts(
+    edge_path: Path,
+    evidence_path: Path,
+    *,
+    cell_line_nodes: Path | None,
+    gene_nodes: Path | None,
+) -> dict[str, int]:
+    connection = duckdb.connect()
+    try:
+        edge_sql = _sql_string(edge_path)
+        evidence_sql = _sql_string(evidence_path)
+        endpoint_selects = "0, 0"
+        if cell_line_nodes is not None and gene_nodes is not None:
+            endpoint_selects = f"""
+                (SELECT count(*) FROM read_parquet({edge_sql}) AS edges
+                 LEFT JOIN read_parquet({_sql_string(cell_line_nodes)}) AS nodes
+                   ON CAST(edges.x_id AS VARCHAR) = CAST(nodes.id AS VARCHAR)
+                 WHERE nodes.id IS NULL),
+                (SELECT count(*) FROM read_parquet({edge_sql}) AS edges
+                 LEFT JOIN read_parquet({_sql_string(gene_nodes)}) AS nodes
+                   ON CAST(edges.y_id AS VARCHAR) = CAST(nodes.id AS VARCHAR)
+                 WHERE nodes.id IS NULL)
+            """
+        values = connection.execute(
+            f"""
+            SELECT
+                (SELECT count(*) - count(DISTINCT (relation, x_id, y_id)) FROM read_parquet({edge_sql})),
+                (SELECT count(*) - count(DISTINCT (edge_key, source_record_id)) FROM read_parquet({evidence_sql})),
+                (SELECT count(*) FROM (
+                    SELECT relation, x_id, y_id FROM read_parquet({edge_sql})
+                    EXCEPT
+                    SELECT relation, x_id, y_id FROM read_parquet({evidence_sql})
+                )),
+                (SELECT count(*) FROM (
+                    SELECT relation, x_id, y_id FROM read_parquet({evidence_sql})
+                    EXCEPT
+                    SELECT relation, x_id, y_id FROM read_parquet({edge_sql})
+                )),
+                (SELECT count(*) FROM read_parquet({edge_sql})
+                 WHERE x_id IS NULL OR x_type IS NULL OR y_id IS NULL OR y_type IS NULL
+                    OR relation IS NULL OR source IS NULL OR credibility IS NULL),
+                (SELECT count(*) FROM read_parquet({evidence_sql})
+                 WHERE edge_key IS NULL OR relation IS NULL OR x_id IS NULL OR x_type IS NULL
+                    OR y_id IS NULL OR y_type IS NULL OR source IS NULL OR source_record_id IS NULL),
+                {endpoint_selects}
+            """
+        ).fetchone()
+        assert values is not None
+    finally:
+        connection.close()
+    names = (
+        "duplicate_edge_identities",
+        "duplicate_evidence_identities",
+        "edges_without_evidence",
+        "evidence_without_edge",
+        "null_edge_identity_rows",
+        "null_evidence_identity_rows",
+        "missing_cell_line_endpoints",
+        "missing_gene_endpoints",
+    )
+    return {name: int(value) for name, value in zip(names, values, strict=True)}
+
+
 def _edge_query(source: str, relation: str, *, explicit_expression: bool) -> str:
-    where = "WHERE expression IS NOT NULL" if explicit_expression else ""
+    where = f"WHERE {_EXPLICIT_EXPRESSION_SQL}" if explicit_expression else ""
     display = "expresses gene" if relation == EXPRESSION else "gene essentiality"
     return f"""
         SELECT
@@ -83,7 +150,7 @@ def _evidence_query(
     *,
     explicit_expression: bool,
 ) -> str:
-    where = "WHERE expression IS NOT NULL" if explicit_expression else ""
+    where = f"WHERE {_EXPLICIT_EXPRESSION_SQL}" if explicit_expression else ""
     score = "CAST(expression AS DOUBLE)" if explicit_expression else "NULL::DOUBLE"
     effect = "NULL::DOUBLE" if explicit_expression else "CAST(gene_effect AS DOUBLE)"
     direction = (
@@ -141,12 +208,21 @@ def build_depmap_repair_candidate(
     source_metageneration: str | None = None,
     expected_source_rows: int | None = None,
     expected_expression_rows: int | None = None,
+    cell_line_nodes_path: str | Path | None = None,
+    gene_nodes_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Split one pinned legacy DepMap object into deterministic staged artifacts."""
     source = Path(source_path)
     output = Path(output_dir)
+    cell_line_nodes = None if cell_line_nodes_path is None else Path(cell_line_nodes_path)
+    gene_nodes = None if gene_nodes_path is None else Path(gene_nodes_path)
     if not source.is_file():
         raise FileNotFoundError(source)
+    if (cell_line_nodes is None) != (gene_nodes is None):
+        raise ValueError("cell-line and gene node paths must be provided together")
+    for node_path in (cell_line_nodes, gene_nodes):
+        if node_path is not None and not node_path.is_file():
+            raise FileNotFoundError(node_path)
     if output.exists() and any(output.iterdir()):
         raise FileExistsError(f"output directory is not empty: {output}")
 
@@ -164,12 +240,23 @@ def build_depmap_repair_candidate(
             f"""
             SELECT
                 count(*) AS source_rows,
-                count(*) FILTER (WHERE expression IS NOT NULL) AS explicit_expression_rows,
-                count(*) FILTER (WHERE gene_effect IS NULL) AS null_gene_effect_rows,
+                count(*) FILTER (WHERE {_EXPLICIT_EXPRESSION_SQL}) AS explicit_expression_rows,
+                count(*) FILTER (
+                    WHERE TRY_CAST(gene_effect AS DOUBLE) IS NULL
+                       OR isnan(TRY_CAST(gene_effect AS DOUBLE))
+                ) AS null_gene_effect_rows,
                 count(*) FILTER (WHERE is_essential IS NULL) AS null_is_essential_rows,
                 count(*) - count(DISTINCT (CAST(x_id AS VARCHAR), CAST(y_id AS VARCHAR))) AS duplicate_edge_identities,
-                count(*) FILTER (WHERE CAST(x_type AS VARCHAR) != 'cell_line') AS invalid_x_types,
-                count(*) FILTER (WHERE CAST(y_type AS VARCHAR) != 'gene') AS invalid_y_types
+                count(*) FILTER (
+                    WHERE x_id IS NULL OR CAST(x_id AS VARCHAR) = ''
+                       OR CAST(x_type AS VARCHAR) IS DISTINCT FROM 'cell_line'
+                ) AS invalid_x_types,
+                count(*) FILTER (
+                    WHERE y_id IS NULL OR CAST(y_id AS VARCHAR) = ''
+                       OR CAST(y_type AS VARCHAR) IS DISTINCT FROM 'gene'
+                ) AS invalid_y_types,
+                count(*) FILTER (WHERE source IS NULL OR CAST(source AS VARCHAR) = '') AS null_source_rows,
+                count(*) FILTER (WHERE credibility IS NULL) AS null_credibility_rows
             FROM read_parquet({_sql_string(source_sql)})
             """
         ).fetchone()
@@ -184,6 +271,8 @@ def build_depmap_repair_candidate(
                 "duplicate_edge_identities",
                 "invalid_x_types",
                 "invalid_y_types",
+                "null_source_rows",
+                "null_credibility_rows",
             )
             if int(stats[name]) != 0
         }
@@ -205,6 +294,27 @@ def build_depmap_repair_candidate(
         }
         if changed_counts:
             raise ValueError(f"pinned count contract changed: {changed_counts}")
+
+        if cell_line_nodes is not None and gene_nodes is not None:
+            endpoint_stats = connection.execute(
+                f"""
+                SELECT
+                    count(*) FILTER (WHERE cells.id IS NULL) AS missing_cell_line_endpoints,
+                    count(*) FILTER (WHERE genes.id IS NULL) AS missing_gene_endpoints
+                FROM read_parquet({_sql_string(source_sql)}) AS source
+                LEFT JOIN read_parquet({_sql_string(cell_line_nodes)}) AS cells
+                    ON CAST(source.x_id AS VARCHAR) = CAST(cells.id AS VARCHAR)
+                LEFT JOIN read_parquet({_sql_string(gene_nodes)}) AS genes
+                    ON CAST(source.y_id AS VARCHAR) = CAST(genes.id AS VARCHAR)
+                """
+            ).fetchone()
+            assert endpoint_stats is not None
+            missing_endpoints = {
+                "missing_cell_line_endpoints": int(endpoint_stats[0]),
+                "missing_gene_endpoints": int(endpoint_stats[1]),
+            }
+            if any(missing_endpoints.values()):
+                raise ValueError(f"source endpoint validation failed: {missing_endpoints}")
 
         for relation, explicit_expression in ((ESSENTIALITY, False), (EXPRESSION, True)):
             _copy_query(
@@ -232,6 +342,7 @@ def build_depmap_repair_candidate(
     }
     relations: dict[str, dict[str, Any]] = {}
     content_hashes: dict[str, str] = {}
+    objects: dict[str, dict[str, Any]] = {}
     for relation, expected in expected_rows.items():
         edge_path = output / "edges" / f"{relation}.parquet"
         evidence_path = output / "evidence" / f"{relation}.parquet"
@@ -247,15 +358,33 @@ def build_depmap_repair_candidate(
             raise RuntimeError(f"{relation} edge schema mismatch: {edge_schema}")
         if evidence_schema != EVIDENCE_COLUMNS:
             raise RuntimeError(f"{relation} evidence schema mismatch: {evidence_schema}")
+        validation = _validate_relation_artifacts(
+            edge_path,
+            evidence_path,
+            cell_line_nodes=cell_line_nodes,
+            gene_nodes=gene_nodes,
+        )
+        if any(validation.values()):
+            raise RuntimeError(f"{relation} validation failed: {validation}")
         relations[relation] = {
             "edge_rows": edge_rows,
             "evidence_rows": evidence_rows,
-            "edges_without_evidence": 0,
-            "evidence_without_edge": 0,
+            **validation,
         }
         for path in (edge_path, evidence_path):
             relative = path.relative_to(output).as_posix()
-            content_hashes[relative] = _sha256(path)
+            sha256 = _sha256(path)
+            content_hashes[relative] = sha256
+            schema = pq.read_schema(path)
+            objects[relative] = {
+                "rows": pq.ParquetFile(path).metadata.num_rows,
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256,
+                "schema": [
+                    {"name": field.name, "type": str(field.type), "nullable": field.nullable}
+                    for field in schema
+                ],
+            }
 
     report: dict[str, Any] = {
         "status": "staged-only",
@@ -275,6 +404,7 @@ def build_depmap_repair_candidate(
         },
         "relations": relations,
         "content_hashes": dict(sorted(content_hashes.items())),
+        "objects": dict(sorted(objects.items())),
         "created_at": created_at,
     }
     output.mkdir(parents=True, exist_ok=True)
@@ -294,6 +424,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--created-at", required=True)
     parser.add_argument("--expected-source-rows", type=int, required=True)
     parser.add_argument("--expected-expression-rows", type=int, required=True)
+    parser.add_argument("--cell-line-nodes-path", required=True)
+    parser.add_argument("--gene-nodes-path", required=True)
     args = parser.parse_args(argv)
     report = build_depmap_repair_candidate(
         args.source_path,
@@ -304,6 +436,8 @@ def main(argv: list[str] | None = None) -> int:
         created_at=args.created_at,
         expected_source_rows=args.expected_source_rows,
         expected_expression_rows=args.expected_expression_rows,
+        cell_line_nodes_path=args.cell_line_nodes_path,
+        gene_nodes_path=args.gene_nodes_path,
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
