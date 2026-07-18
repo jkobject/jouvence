@@ -1,4 +1,4 @@
-# TxGNN / Jouvence KG TODO — current human mirror
+# Jouvence TODO — current human mirror
 
 Kanban board `txgnn` remains the dispatch/source-of-truth. This file is a compact human overview; detailed phase mirrors live in `todo.d/`.
 
@@ -12,7 +12,7 @@ Do **not** use `.omoc` for new work. It is a legacy scratch/cache location from 
 - `gs://jouvencekb/kg/staging/...` for remote staged artifacts;
 - canonical writes only under `gs://jouvencekb/kg/v2/...` after validation + review.
 
-Heavy TxGNN jobs are VM-only. Any card that may run LaminDB full/bulk syncs, production/full PyG/GNN exports or training, ReMap scaling, embeddings/full-KG scans, all-relation reads, or bulk canonical KG reads/writes must state `must_run_on=txgnn-worker` (or another explicitly approved in-region worker), use `gs://jouvencekb/kg/v2` as source, and forbid `/Users/jkobject/mnt/gcs/...` / macOS GCS-FUSE for heavy work. Required preflight: verify `hostname`, launch/inspect with `gcloud compute ssh txgnn-worker`, check for an existing related writer/process, and fail if any heavy input/output path starts with `/Users/jkobject/mnt/gcs`. Copyable card template: `artifacts/reports/t_d682b7ad/heavy_job_vm_only_card_template.md`.
+Heavy Jouvence jobs are VM-only. Any card that may run LaminDB full/bulk syncs, production/full PyG/GNN exports or training, ReMap scaling, embeddings/full-KG scans, all-relation reads, or bulk canonical KG reads/writes must state `must_run_on=txgnn-worker` (the retained VM name) or another explicitly approved in-region worker, use `gs://jouvencekb/kg/v2` as source, and forbid `/Users/jkobject/mnt/gcs/...` / macOS GCS-FUSE for heavy work. Required preflight: verify `hostname`, launch/inspect with `gcloud compute ssh txgnn-worker`, check for an existing related writer/process, and fail if any heavy input/output path starts with `/Users/jkobject/mnt/gcs`. Copyable card template: `artifacts/reports/t_d682b7ad/heavy_job_vm_only_card_template.md`.
 
 ReMap fresh-UDC continuations: foreground Kanban cards should use `--max-tiles 5`. Larger bounded continuations require a local/background supervisor with explicit heartbeat/progress JSON, stdout/stderr/rc capture, task-local fresh UDC, and canonical-negative validation/enforcement. Never reuse the old suspected-corrupt `artifacts/cache/t_1bc29376/udc` cache (relative, absolute, or descendant spellings are supervisor-rejected after path normalization). Full/unbounded caps (`--max-tiles >= 3220`, including `3220`) are rejected unless `--reviewed-full-run-override` is supplied after a separate reviewed operations gate; do not use the override for normal bounded continuations. Current supervisor template: `artifacts/reports/t_a2674d49/remap_fresh_udc_supervisor.py`; plan: `artifacts/reports/t_a2674d49/remap_supervisor_plan.md`.
 
@@ -172,7 +172,7 @@ Use `docs/relation_backlog_prioritized.md` and `todo.d/04_relations.md`. A relat
 
 ## Git / reviewability
 
-The migration from `t_4cab4a2f` is now executed: `/Users/jkobject/.openclaw/workspace/work/txgnn` is the canonical local worktree for `https://github.com/jkobject/TxGNN`. Project-level Git commands and human review run here; parallel task worktrees remain under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`.
+The migration from `t_4cab4a2f` is now executed: `/Users/jkobject/.openclaw/workspace/work/txgnn` is the canonical local worktree for `https://github.com/jkobject/jouvence`. The local `txgnn` path remains for compatibility. Project-level Git commands and human review run here; parallel task worktrees remain under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`.
 
 The root still contains ignored local artifacts/caches. Reviewability therefore requires an explicit Git diff and generated-file guard; directory contents alone are not a commit surface. Do not initialize or maintain a second canonical checkout under `~/code`.
 

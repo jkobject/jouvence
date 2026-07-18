@@ -77,7 +77,7 @@ def _to_jsonable(audit: CoverageAudit) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Audit TxGNN KG node/edge file coverage against kg_schema.py."
+        description="Audit Jouvence KG node/edge file coverage against kg_schema.py."
     )
     parser.add_argument("kg_path", help="Path or gs:// URI to a KG root.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")

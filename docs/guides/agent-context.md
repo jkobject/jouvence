@@ -1,5 +1,5 @@
 
-# TxGNN / Jouvence KG agent context
+# Jouvence agent context
 
 [← Documentation index](../README.md) · [Lessons learned](lessons-learned.md) · [LaminDB operations](lamindb-porting-operations.md)
 
@@ -7,17 +7,17 @@
 
 ## Current operating posture
 
-`work/txgnn` is the canonical local worktree for `https://github.com/jkobject/TxGNN` and the project-level review surface. It also holds ignored local artifacts/caches, so reviewers must inspect the explicit Git diff rather than infer scope from directory contents. Parallel task worktrees belong under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`; do not create a second canonical checkout under `~/code`.
+`work/txgnn` is the canonical local worktree for `https://github.com/jkobject/jouvence` and the project-level review surface. The local path is retained for compatibility. It also holds ignored local artifacts/caches, so reviewers must inspect the explicit Git diff rather than infer scope from directory contents. Parallel task worktrees belong under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`; do not create a second canonical checkout under `~/code`.
 
 Default KG access:
 
 - Canonical KG bucket root: `gs://jouvencekb/kg/v2`
 - Verified macOS FUSE root: `/Users/jkobject/mnt/gcs/jouvencekb-kg/v2` for small bounded/local inspection only.
-- Heavy TxGNN jobs are VM-only: LaminDB full/bulk syncs, production/full PyG/GNN exports or training, ReMap scaling, embeddings/full-KG scans, all-relation reads, and bulk canonical KG reads/writes must run on `txgnn-worker` or another explicitly approved in-region worker using `gs://jouvencekb/kg/v2`; do not run them through `/Users/jkobject/mnt/gcs/...` / macOS GCS-FUSE.
+- Heavy Jouvence jobs are VM-only: LaminDB full/bulk syncs, production/full PyG/GNN exports or training, ReMap scaling, embeddings/full-KG scans, all-relation reads, and bulk canonical KG reads/writes must run on `txgnn-worker` (retained VM name) or another explicitly approved in-region worker using `gs://jouvencekb/kg/v2`; do not run them through `/Users/jkobject/mnt/gcs/...` / macOS GCS-FUSE.
 - Heavy-card preflight must include `must_run_on=txgnn-worker`, `hostname`, `gcloud compute ssh txgnn-worker`, an existing-process check, and a hard failure if any heavy input/output path starts with `/Users/jkobject/mnt/gcs`.
 - New outputs: `artifacts/staged/<task-id>/`, `artifacts/cache/<task-id>/`, `docs/`, or `gs://jouvencekb/kg/staging/...`
 - `.omoc/` is legacy-only.
-- TxGNN automation is strictly project-scoped. Never stop, pause, resize, or otherwise manage `pert-gym` resources from a TxGNN task; another session may legitimately be using them.
+- Jouvence automation is strictly project-scoped. Never stop, pause, resize, or otherwise manage `pert-gym` resources from a Jouvence task; another session may legitimately be using them.
 
 Python is managed with `uv`; use `uv run ...`. Intended LaminDB instance is `jkobject/jouvencekb`; prove the connected instance before writes and stop if the VM resolves to `jkobject/repo` or anything else.
 

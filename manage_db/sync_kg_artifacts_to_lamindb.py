@@ -109,7 +109,7 @@ def _description(entry: dict[str, Any]) -> str:
         "parquet_schema_hash": entry.get("parquet_schema_hash"),
         "metadata": entry.get("metadata", {}),
     }
-    return "Canonical Jouvence/TxGNN KG artifact\n" + json.dumps(payload, sort_keys=True)
+    return "Canonical Jouvence KG artifact\n" + json.dumps(payload, sort_keys=True)
 
 
 def _description_has_fingerprint(record: Any, fingerprint: str | None) -> bool:
@@ -194,7 +194,7 @@ def _ensure_collection(ln: Any, name: str, *, dry_run: bool):
             model(
                 artifacts=[],
                 key=name,
-                description="Canonical Jouvence/TxGNN KG v2 artifact collection",
+                description="Canonical Jouvence KG v2 artifact collection",
             )
         )
     except Exception:

@@ -15,8 +15,8 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "jouvence",
     "lnschema-txgnn",
-    "txgnn",
 ]
 overrides = [{ name = "pandas", specifier = "==3.0.0" }]
 
@@ -1712,6 +1712,114 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/41/f2/d34e8b3a08a9cc79a50b2208a93dce981fe615b64d5a4d4abee421d898df/joblib-1.5.3.tar.gz", hash = "sha256:8561a3269e6801106863fd0d6d84bb737be9e7631e33aaed3fb9ce5953688da3", size = 331603, upload-time = "2025-12-15T08:41:46.427Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7b/91/984aca2ec129e2757d1e4e3c81c3fcda9d0f85b74670a094cc443d9ee949/joblib-1.5.3-py3-none-any.whl", hash = "sha256:5fc3c5039fc5ca8c0276333a188bbd59d6b7ab37fe6632daa76bc7f9ec18e713", size = 309071, upload-time = "2025-12-15T08:41:44.973Z" },
+]
+
+[[package]]
+name = "jouvence"
+source = { editable = "." }
+dependencies = [
+    { name = "duckdb" },
+    { name = "fsspec" },
+    { name = "gcsfs" },
+    { name = "goatools" },
+    { name = "google-cloud-storage" },
+    { name = "ipykernel" },
+    { name = "ipython" },
+    { name = "lamindb" },
+    { name = "lnschema-txgnn" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+    { name = "rdkit" },
+    { name = "scikit-learn" },
+    { name = "tqdm" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+embeddings-edge = [
+    { name = "sentence-transformers" },
+    { name = "torch" },
+]
+embeddings-molecule = [
+    { name = "rdkit" },
+    { name = "torch" },
+    { name = "transformers" },
+]
+embeddings-nucleotide = [
+    { name = "torch" },
+    { name = "transformers" },
+]
+embeddings-protein = [
+    { name = "fair-esm" },
+    { name = "torch" },
+]
+embeddings-text = [
+    { name = "sentence-transformers" },
+    { name = "torch" },
+]
+gnn = [
+    { name = "torch" },
+    { name = "torch-geometric" },
+]
+notebooks = [
+    { name = "nbclient" },
+    { name = "nbformat" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "duckdb", specifier = ">=1.1.0" },
+    { name = "fsspec", specifier = ">=2024.5.0" },
+    { name = "gcsfs", specifier = ">=2024.6.1" },
+    { name = "goatools", specifier = "==1.5.2" },
+    { name = "google-cloud-storage", specifier = ">=2.16.0" },
+    { name = "ipykernel", specifier = ">=6.29" },
+    { name = "ipython", specifier = ">=8.18" },
+    { name = "lamindb", specifier = "==2.2.1" },
+    { name = "lnschema-txgnn", editable = "manage_db/lnschema_txgnn" },
+    { name = "matplotlib", specifier = "==3.10.8" },
+    { name = "numpy", specifier = "==2.4.2" },
+    { name = "pandas", specifier = "==3.0.0" },
+    { name = "pyarrow", specifier = ">=20" },
+    { name = "rdkit", specifier = ">=2025.9.1" },
+    { name = "scikit-learn", specifier = "==1.8.0" },
+    { name = "tqdm", specifier = "==4.67.3" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
+embeddings-edge = [
+    { name = "sentence-transformers", specifier = ">=3.0" },
+    { name = "torch", specifier = ">=2.12" },
+]
+embeddings-molecule = [
+    { name = "rdkit", specifier = ">=2025.9.1" },
+    { name = "torch", specifier = ">=2.12" },
+    { name = "transformers", specifier = ">=4.40" },
+]
+embeddings-nucleotide = [
+    { name = "torch", specifier = ">=2.12" },
+    { name = "transformers", specifier = ">=4.40" },
+]
+embeddings-protein = [
+    { name = "fair-esm", specifier = ">=2.0" },
+    { name = "torch", specifier = ">=2.12" },
+]
+embeddings-text = [
+    { name = "sentence-transformers", specifier = ">=3.0" },
+    { name = "torch", specifier = ">=2.12" },
+]
+gnn = [
+    { name = "torch", specifier = ">=2.12" },
+    { name = "torch-geometric", specifier = ">=2.8" },
+]
+notebooks = [
+    { name = "nbclient", specifier = ">=0.10" },
+    { name = "nbformat", specifier = ">=5.10" },
 ]
 
 [[package]]
@@ -4548,114 +4656,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a4/09/5683146fda6a2b569deb78ccfd8fbfea8bfe55f726b081c0a6bb18dd6f28/triton-3.7.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:2020153b08280415ec0da6607834e79166442147e78e144df06b508c75b186d2", size = 197729537, upload-time = "2026-06-17T19:53:35.516Z" },
     { url = "https://files.pythonhosted.org/packages/e9/f8/448220c3092019f9fdfab39ec47985968181d67da34b44f6a7f6280a5cbb/triton-3.7.1-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:c58e4c61f0c73b5dba3b5d19b4a7093c32f90dc18b2a7f121a7c16ccd31107b7", size = 184814760, upload-time = "2026-06-17T20:04:04.984Z" },
     { url = "https://files.pythonhosted.org/packages/f0/ac/229b7d4589d2e5937310e72c6d46e89599d16a4a12b479ffa1499fee8eb8/triton-3.7.1-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:10ba85fa2cca4a2fbdeb36bf1cb082f2c252bda55bf9fccd74f65ec5bc647e68", size = 197824404, upload-time = "2026-06-17T19:53:42.772Z" },
-]
-
-[[package]]
-name = "txgnn"
-source = { editable = "." }
-dependencies = [
-    { name = "duckdb" },
-    { name = "fsspec" },
-    { name = "gcsfs" },
-    { name = "goatools" },
-    { name = "google-cloud-storage" },
-    { name = "ipykernel" },
-    { name = "ipython" },
-    { name = "lamindb" },
-    { name = "lnschema-txgnn" },
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pyarrow" },
-    { name = "rdkit" },
-    { name = "scikit-learn" },
-    { name = "tqdm" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-embeddings-edge = [
-    { name = "sentence-transformers" },
-    { name = "torch" },
-]
-embeddings-molecule = [
-    { name = "rdkit" },
-    { name = "torch" },
-    { name = "transformers" },
-]
-embeddings-nucleotide = [
-    { name = "torch" },
-    { name = "transformers" },
-]
-embeddings-protein = [
-    { name = "fair-esm" },
-    { name = "torch" },
-]
-embeddings-text = [
-    { name = "sentence-transformers" },
-    { name = "torch" },
-]
-gnn = [
-    { name = "torch" },
-    { name = "torch-geometric" },
-]
-notebooks = [
-    { name = "nbclient" },
-    { name = "nbformat" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "duckdb", specifier = ">=1.1.0" },
-    { name = "fsspec", specifier = ">=2024.5.0" },
-    { name = "gcsfs", specifier = ">=2024.6.1" },
-    { name = "goatools", specifier = "==1.5.2" },
-    { name = "google-cloud-storage", specifier = ">=2.16.0" },
-    { name = "ipykernel", specifier = ">=6.29" },
-    { name = "ipython", specifier = ">=8.18" },
-    { name = "lamindb", specifier = "==2.2.1" },
-    { name = "lnschema-txgnn", editable = "manage_db/lnschema_txgnn" },
-    { name = "matplotlib", specifier = "==3.10.8" },
-    { name = "numpy", specifier = "==2.4.2" },
-    { name = "pandas", specifier = "==3.0.0" },
-    { name = "pyarrow", specifier = ">=20" },
-    { name = "rdkit", specifier = ">=2025.9.1" },
-    { name = "scikit-learn", specifier = "==1.8.0" },
-    { name = "tqdm", specifier = "==4.67.3" },
-]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8" }]
-embeddings-edge = [
-    { name = "sentence-transformers", specifier = ">=3.0" },
-    { name = "torch", specifier = ">=2.12" },
-]
-embeddings-molecule = [
-    { name = "rdkit", specifier = ">=2025.9.1" },
-    { name = "torch", specifier = ">=2.12" },
-    { name = "transformers", specifier = ">=4.40" },
-]
-embeddings-nucleotide = [
-    { name = "torch", specifier = ">=2.12" },
-    { name = "transformers", specifier = ">=4.40" },
-]
-embeddings-protein = [
-    { name = "fair-esm", specifier = ">=2.0" },
-    { name = "torch", specifier = ">=2.12" },
-]
-embeddings-text = [
-    { name = "sentence-transformers", specifier = ">=3.0" },
-    { name = "torch", specifier = ">=2.12" },
-]
-gnn = [
-    { name = "torch", specifier = ">=2.12" },
-    { name = "torch-geometric", specifier = ">=2.8" },
-]
-notebooks = [
-    { name = "nbclient", specifier = ">=0.10" },
-    { name = "nbformat", specifier = ">=5.10" },
 ]
 
 [[package]]

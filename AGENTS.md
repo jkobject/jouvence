@@ -1,11 +1,11 @@
 
-# AGENTS.md — TxGNN / Jouvence KG agent boot
+# AGENTS.md — Jouvence agent boot
 
-This is the single required boot file for TxGNN agents. This file replaces the old dual-entrypoint pattern; do not ask workers to read a second root boot file.
+This is the single required boot file for Jouvence agents. This file replaces the old dual-entrypoint pattern; do not ask workers to read a second root boot file.
 
 ## Project gist
 
-TxGNN is a Python ML research library for zero-shot drug repurposing on a heterogeneous biomedical KG. This workspace is expanding it into the Jouvence KG with OpenTargets, HPA, TxData, source-backed evidence, LaminDB cataloging, PyG/GNN export, and learned/foundation embeddings.
+Jouvence is a biomedical knowledge-graph and zero-shot drug-repurposing project built from the upstream TxGNN method and Python library. This workspace expands that foundation with OpenTargets, HPA, TxData, source-backed evidence, LaminDB cataloging, PyG/GNN export, and learned/foundation embeddings. The legacy `txgnn` import package and `TxGNN` model class remain compatibility boundaries.
 
 ## Current source of truth
 
@@ -21,9 +21,9 @@ TxGNN is a Python ML research library for zero-shot drug repurposing on a hetero
 
 ## Reviewability rule
 
-`/Users/jkobject/.openclaw/workspace/work/txgnn` is the canonical local TxGNN worktree for `https://github.com/jkobject/TxGNN`. It also contains ignored local artifacts/caches; those do not make the Git diff reviewable by themselves.
+`/Users/jkobject/.openclaw/workspace/work/txgnn` is the canonical local Jouvence worktree for `https://github.com/jkobject/jouvence`. The local path remains unchanged as a compatibility boundary. It also contains ignored local artifacts/caches; those do not make the Git diff reviewable by themselves.
 
-Run project-level Git commands from this root and verify `git rev-parse --show-toplevel` resolves to it. Parallel task worktrees remain under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`. Never `git init` another TxGNN directory or commit ignored artifacts, caches, credentials, GCS/FUSE mirrors, or unrelated workspace state.
+Run project-level Git commands from this root and verify `git rev-parse --show-toplevel` resolves to it. Parallel task worktrees remain under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`. Never `git init` another Jouvence directory or commit ignored artifacts, caches, credentials, GCS/FUSE mirrors, or unrelated workspace state.
 
 ## Context discipline
 
@@ -42,9 +42,9 @@ When creating Kanban cards, include: target relation/artifact, source files, all
 - Do not treat old `.omoc` paths as current operating instructions; `.omoc/` is legacy-only.
 - Use `artifacts/staged/<task-id>/`, `artifacts/cache/<task-id>/`, `docs/`, or `gs://jouvencekb/kg/staging/...` for new outputs.
 - Canonical KG root: `gs://jouvencekb/kg/v2`; verified FUSE root: `/Users/jkobject/mnt/gcs/jouvencekb-kg/v2`.
-- Heavy TxGNN jobs (LaminDB full/bulk syncs, production/full PyG/GNN exports or training, ReMap scaling, embedding/full-KG scans, and any all-relation or bulk canonical KG read/write) must run on `txgnn-worker` or another explicitly approved in-region worker using `gs://jouvencekb/kg/v2`; do **not** run them from the Mac through `/Users/jkobject/mnt/gcs/...` / macOS GCS-FUSE.
+- Heavy Jouvence jobs (LaminDB full/bulk syncs, production/full PyG/GNN exports or training, ReMap scaling, embedding/full-KG scans, and any all-relation or bulk canonical KG read/write) must run on `txgnn-worker` or another explicitly approved in-region worker using `gs://jouvencekb/kg/v2`; do **not** run them from the Mac through `/Users/jkobject/mnt/gcs/...` / macOS GCS-FUSE.
 - Heavy cards must include `must_run_on=txgnn-worker` (or the approved worker), preflight `hostname`, use `gcloud compute ssh` for worker launch/inspection, check for an existing related writer/process before starting, and fail immediately if any heavy input/output path starts with `/Users/jkobject/mnt/gcs`.
-- Project boundary is strict: TxGNN agents and cost guards may manage only TxGNN resources. Never pause, stop, resize, reinterpret, or gate `pert-gym` VMs, crons, disks, processes, or cards; concurrent project activity may be intentional.
+- Project boundary is strict: Jouvence agents and cost guards may manage only Jouvence resources. Never pause, stop, resize, reinterpret, or gate `pert-gym` VMs, crons, disks, processes, or cards; concurrent project activity may be intentional.
 - Canonical writes require explicit card authorization, validation evidence, and reviewer acceptance.
 - Python is managed with `uv`; use `uv run ...`.
 - Intended LaminDB instance: `jkobject/jouvencekb`. Before every write-capable run, prove the connected instance explicitly; a VM config pointing to `jkobject/repo` is a hard blocker, not a harmless alias.

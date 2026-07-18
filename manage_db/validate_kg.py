@@ -329,7 +329,7 @@ def _print_report(report) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Validate a TxGNN Parquet KG with exact bounded-memory anti-joins."
+        description="Validate a Jouvence Parquet KG with exact bounded-memory anti-joins."
     )
     parser.add_argument(
         "kg_path",

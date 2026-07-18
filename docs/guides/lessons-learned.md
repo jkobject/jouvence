@@ -1,4 +1,4 @@
-# TxGNN / Jouvence KG — Lessons learned
+# Jouvence — lessons learned
 
 [← Documentation index](../README.md) · [KG architecture](kg-architecture-and-evidence.md) · [Source-native modeling](source-native-modeling.md) · [PyG/embeddings](pyg-and-embedding-contracts.md) · [Review/promotion](review-promotion-and-reviewability.md)
 

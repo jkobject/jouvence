@@ -59,7 +59,7 @@ DEFAULT_OT_EVIDENCE = Path(
 )
 DEFAULT_KG_ROOT = Path("/Users/jkobject/mnt/gcs/jouvencekb-kg/v2")
 DEFAULT_OUT_ROOT = Path(f"artifacts/staged/{TASK_ID}_clinical_trials_gov_production_candidate")
-DEFAULT_USER_AGENT = "TxGNN-Jouvence-KG-clinical-trials-production-candidate/0.2"
+DEFAULT_USER_AGENT = "Jouvence-KG-clinical-trials-production-candidate/0.2"
 LICENSE_TEXT = "ClinicalTrials.gov/NLM public API; staging-only, verify redistribution/attribution terms before canonical promotion"
 
 

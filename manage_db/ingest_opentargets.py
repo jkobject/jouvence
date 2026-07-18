@@ -3385,7 +3385,7 @@ def run(
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Ingest OpenTargets Platform data into the TxGNN KG Parquet schema"
+        description="Ingest OpenTargets Platform data into the Jouvence KG Parquet schema"
     )
     parser.add_argument(
         "--data-dir", default="./data",
