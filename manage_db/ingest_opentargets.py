@@ -491,6 +491,60 @@ def _finalize_edge_chunks_streaming(
     return n_written
 
 
+def _remove_edge_rows_by_source_streaming(
+    root: kg_storage.KGRoot,
+    relation: str,
+    source: str,
+) -> int:
+    """Remove one obsolete source from an edge file without loading it all into memory."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    path = root._edge_internal(relation)
+    if not root.fs.exists(path):
+        return 0
+
+    tmp_path = f"{path}.source-filter.tmp"
+    removed = 0
+    kept = 0
+    writer = None
+    try:
+        with root.fs.open(path, "rb") as input_fh, root.fs.open(tmp_path, "wb") as output_fh:
+            parquet = pq.ParquetFile(input_fh)
+            if "source" not in parquet.schema_arrow.names:
+                return 0
+            for batch in parquet.iter_batches(batch_size=100_000):
+                table = pa.Table.from_batches([batch])
+                keep = pc.fill_null(pc.not_equal(table["source"], source), True)
+                filtered = table.filter(keep)
+                removed += table.num_rows - filtered.num_rows
+                if not filtered.num_rows:
+                    continue
+                if writer is None:
+                    writer = pq.ParquetWriter(output_fh, parquet.schema_arrow)
+                writer.write_table(filtered)
+                kept += filtered.num_rows
+            if writer is not None:
+                writer.close()
+                writer = None
+
+        if removed:
+            root.fs.rm(path)
+            if kept:
+                root.fs.mv(tmp_path, path)
+            else:
+                root.fs.rm(tmp_path)
+        else:
+            root.fs.rm(tmp_path)
+    finally:
+        if writer is not None:
+            writer.close()
+        if root.fs.exists(tmp_path):
+            root.fs.rm(tmp_path)
+    return removed
+
+
 
 def _finalize_node_chunks_streaming(
     chunk_dir: Path,
@@ -1814,6 +1868,13 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
     )
     # target_essentiality contains gene-level dependency and RNA measurements,
     # never direct proteomics. Keep the result key for caller compatibility.
+    removed_projected_protein_rows = _remove_edge_rows_by_source_streaming(
+        root,
+        "cell_line_expresses_protein",
+        "OpenTargets/DepMap;projected_via_protein_node_xref",
+    )
+    if removed_projected_protein_rows:
+        log.info("  removed %d obsolete projected protein-expression edges", removed_projected_protein_rows)
     results["cell_line_expresses_protein"] = 0
     results["cell_line_derived_from_tissue"] = _finalize_edge_chunks_streaming(
         tissue_chunks,

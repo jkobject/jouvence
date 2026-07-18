@@ -647,6 +647,7 @@ def _ingest_target_essentiality_screen(
     screen_measurements: dict[str, object],
     *,
     is_essential: bool | None,
+    seed_protein_edges: bool = False,
 ) -> tuple[dict[str, int], kg_storage.KGRoot]:
     ot_dir = tmp_path / "opentargets"
     te_dir = ot_dir / "target_essentiality"
@@ -698,6 +699,35 @@ def _ingest_target_essentiality_screen(
             ]
         ),
     )
+    if seed_protein_edges:
+        kg_storage.write_edges(
+            root,
+            "cell_line_expresses_protein",
+            pd.DataFrame(
+                [
+                    {
+                        "x_id": "ACH-000001",
+                        "x_type": "cell_line",
+                        "y_id": "ENSP00000123456",
+                        "y_type": "protein",
+                        "relation": "cell_line_expresses_protein",
+                        "display_relation": "expresses protein",
+                        "source": "OpenTargets/DepMap;projected_via_protein_node_xref",
+                        "credibility": 3,
+                    },
+                    {
+                        "x_id": "ACH-000002",
+                        "x_type": "cell_line",
+                        "y_id": "ENSP00000123456",
+                        "y_type": "protein",
+                        "relation": "cell_line_expresses_protein",
+                        "display_relation": "expresses protein",
+                        "source": "DepMap/CCLE direct proteomics",
+                        "credibility": 3,
+                    },
+                ]
+            ),
+        )
     results = ingest_target_essentiality(ot_dir, kg_dir, root)
 
     return results, root
@@ -777,3 +807,16 @@ def test_ingest_target_essentiality_mixed_measurements_write_both_relations(tmp_
     dataset_edges = kg_storage.read_edges(root, "dataset_contains_cell_line")
     assert dataset_edges.loc[0, "x_type"] == "dataset"
     assert dataset_edges.loc[0, "y_type"] == "cell_line"
+
+
+def test_ingest_target_essentiality_removes_only_obsolete_projected_protein_edges(tmp_path: Path) -> None:
+    results, root = _ingest_target_essentiality_screen(
+        tmp_path,
+        {"geneEffect": -1.2},
+        is_essential=True,
+        seed_protein_edges=True,
+    )
+
+    assert results["cell_line_expresses_protein"] == 0
+    protein_edges = kg_storage.read_edges(root, "cell_line_expresses_protein")
+    assert protein_edges["source"].tolist() == ["DepMap/CCLE direct proteomics"]
