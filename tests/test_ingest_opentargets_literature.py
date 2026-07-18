@@ -8,6 +8,7 @@ import pytest
 from manage_db import kg_storage
 from manage_db.ingest_opentargets import (
     _has_explicit_measurement,
+    _remove_edge_rows_by_source_streaming,
     ingest_biosample,
     ingest_disease_phenotype,
     ingest_drugs,
@@ -832,3 +833,127 @@ def test_ingest_target_essentiality_removes_only_obsolete_projected_protein_edge
     assert results["cell_line_expresses_protein"] == 0
     protein_edges = kg_storage.read_edges(root, "cell_line_expresses_protein")
     assert protein_edges["source"].tolist() == ["DepMap/CCLE direct proteomics"]
+
+
+_OBSOLETE_DEPMAP_PROJECTION = "OpenTargets/DepMap;projected_via_protein_node_xref"
+_DIRECT_DEPMAP_PROTEOMICS = "DepMap/CCLE direct proteomics"
+
+
+def _write_source_filter_edges(root: kg_storage.KGRoot, sources: list[str]) -> None:
+    kg_storage.write_edges(
+        root,
+        "cell_line_expresses_protein",
+        pd.DataFrame(
+            [
+                {
+                    "x_id": f"ACH-{index:06d}",
+                    "x_type": "cell_line",
+                    "y_id": "ENSP00000123456",
+                    "y_type": "protein",
+                    "relation": "cell_line_expresses_protein",
+                    "display_relation": "expresses protein",
+                    "source": source,
+                    "credibility": 3,
+                }
+                for index, source in enumerate(sources, start=1)
+            ]
+        ),
+    )
+
+
+def _source_filter_task_files(path: Path) -> list[Path]:
+    return list(path.parent.glob(f"{path.name}.source-filter.*"))
+
+
+def test_remove_edge_rows_by_source_preserves_other_sources_and_removes_stale_rows(tmp_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+    _write_source_filter_edges(root, [_OBSOLETE_DEPMAP_PROJECTION, _DIRECT_DEPMAP_PROTEOMICS])
+
+    removed = _remove_edge_rows_by_source_streaming(
+        root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+    )
+
+    assert removed == 1
+    edges = kg_storage.read_edges(root, "cell_line_expresses_protein")
+    assert edges["source"].tolist() == [_DIRECT_DEPMAP_PROTEOMICS]
+    assert _source_filter_task_files(Path(root._edge_internal("cell_line_expresses_protein"))) == []
+
+
+def test_remove_edge_rows_by_source_publish_failure_restores_original_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+    _write_source_filter_edges(root, [_OBSOLETE_DEPMAP_PROJECTION, _DIRECT_DEPMAP_PROTEOMICS])
+    path = Path(root._edge_internal("cell_line_expresses_protein"))
+    original_bytes = path.read_bytes()
+    real_mv = root.fs.mv
+
+    def fail_filtered_publish(src: str, dst: str, recursive: bool = True, **kwargs) -> None:
+        if ".source-filter.tmp" in str(src) and str(dst) == str(path):
+            raise RuntimeError("injected publish failure")
+        real_mv(src, dst, recursive=recursive, **kwargs)
+
+    monkeypatch.setattr(root.fs, "mv", fail_filtered_publish)
+
+    with pytest.raises(RuntimeError, match="injected publish failure"):
+        _remove_edge_rows_by_source_streaming(
+            root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+        )
+
+    assert path.read_bytes() == original_bytes
+    assert kg_storage.read_edges(root, "cell_line_expresses_protein")["source"].tolist() == [
+        _OBSOLETE_DEPMAP_PROJECTION,
+        _DIRECT_DEPMAP_PROTEOMICS,
+    ]
+    assert _source_filter_task_files(path) == []
+
+
+def test_remove_edge_rows_by_source_uses_unique_temp_names_across_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+    _write_source_filter_edges(root, [_DIRECT_DEPMAP_PROTEOMICS])
+    path = Path(root._edge_internal("cell_line_expresses_protein"))
+    real_open = root.fs.open
+    temp_writes: list[str] = []
+
+    def record_temp_writes(candidate: str, mode: str = "rb", *args, **kwargs):
+        if mode == "wb" and ".source-filter.tmp" in str(candidate):
+            temp_writes.append(str(candidate))
+        return real_open(candidate, mode, *args, **kwargs)
+
+    monkeypatch.setattr(root.fs, "open", record_temp_writes)
+
+    for _ in range(2):
+        assert (
+            _remove_edge_rows_by_source_streaming(
+                root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+            )
+            == 0
+        )
+
+    assert len(temp_writes) == 2
+    assert len(set(temp_writes)) == 2
+    assert _source_filter_task_files(path) == []
+
+
+def test_remove_edge_rows_by_source_handles_missing_and_all_stale_artifacts(tmp_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+    path = Path(root._edge_internal("cell_line_expresses_protein"))
+
+    assert (
+        _remove_edge_rows_by_source_streaming(
+            root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+        )
+        == 0
+    )
+
+    _write_source_filter_edges(root, [_OBSOLETE_DEPMAP_PROJECTION, _OBSOLETE_DEPMAP_PROJECTION])
+    assert (
+        _remove_edge_rows_by_source_streaming(
+            root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+        )
+        == 2
+    )
+    assert not path.exists()
+    assert _source_filter_task_files(path) == []

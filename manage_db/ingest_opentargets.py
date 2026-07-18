@@ -497,6 +497,9 @@ def _remove_edge_rows_by_source_streaming(
     source: str,
 ) -> int:
     """Remove one obsolete source from an edge file without loading it all into memory."""
+    import os
+    import uuid
+
     import pyarrow as pa
     import pyarrow.compute as pc
     import pyarrow.parquet as pq
@@ -505,7 +508,9 @@ def _remove_edge_rows_by_source_streaming(
     if not root.fs.exists(path):
         return 0
 
-    tmp_path = f"{path}.source-filter.tmp"
+    task_suffix = f"{os.getpid()}_{uuid.uuid4().hex}"
+    tmp_path = f"{path}.source-filter.tmp.{task_suffix}"
+    backup_path = f"{path}.source-filter.backup.{task_suffix}"
     removed = 0
     kept = 0
     writer = None
@@ -530,16 +535,29 @@ def _remove_edge_rows_by_source_streaming(
                 writer = None
 
         if removed:
-            root.fs.rm(path)
             if kept:
-                root.fs.mv(tmp_path, path)
+                root.fs.mv(path, backup_path)
+                try:
+                    root.fs.mv(tmp_path, path)
+                except BaseException:
+                    if root.fs.exists(path):
+                        root.fs.rm(path)
+                    root.fs.mv(backup_path, path)
+                    raise
+                root.fs.rm(backup_path)
             else:
+                root.fs.rm(path)
                 root.fs.rm(tmp_path)
         else:
             root.fs.rm(tmp_path)
     finally:
         if writer is not None:
             writer.close()
+        if root.fs.exists(backup_path):
+            if root.fs.exists(path):
+                root.fs.rm(backup_path)
+            else:
+                root.fs.mv(backup_path, path)
         if root.fs.exists(tmp_path):
             root.fs.rm(tmp_path)
     return removed
