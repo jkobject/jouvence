@@ -207,6 +207,18 @@ def _to_list(val) -> list:
         return [val] if val else []
 
 
+def _has_explicit_measurement(value: object) -> bool:
+    """Return whether a source field contains a scalar measurement, including zero/False."""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    try:
+        return bool(pd.notna(value))
+    except (TypeError, ValueError):
+        return False
+
+
 def _first_scalar(values) -> str | None:
     """Return the first non-empty scalar from a nested/list-like value."""
     if isinstance(values, str):
@@ -1591,8 +1603,8 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
 
     chunks_base = out_dir / ".chunks" / "target_essentiality"
     cell_line_chunks = chunks_base / "cell_line"
+    essentiality_chunks = chunks_base / "cell_line_gene_essentiality"
     expr_chunks = chunks_base / "cell_line_expresses_gene"
-    protein_expr_chunks = chunks_base / "cell_line_expresses_protein"
     tissue_chunks = chunks_base / "cell_line_derived_from_tissue"
     disease_chunks = chunks_base / "cell_line_associated_disease"
     dataset_cell_line_chunks = chunks_base / "dataset_contains_cell_line"
@@ -1615,7 +1627,6 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
     )
 
     seen_cell_lines: set[str] = set()
-    gene_to_proteins = _build_gene_to_protein_map(root)
 
     for chunk in _read_parquet_dir_chunked(
         te_dir,
@@ -1623,8 +1634,8 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
         chunksize=25_000,
     ):
         cell_line_rows: list[dict[str, object]] = []
+        essentiality_rows: list[dict[str, object]] = []
         expr_rows: list[dict[str, object]] = []
-        protein_expr_rows: list[dict[str, object]] = []
         tissue_rows: list[dict[str, object]] = []
         disease_rows: list[dict[str, object]] = []
         dataset_cell_line_rows: list[dict[str, object]] = []
@@ -1707,33 +1718,30 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
                             credibility=Credibility.ESTABLISHED_FACT,
                         ))
 
-                        expr_rows.append(_make_edge(
-                            x_id=cell_line_id,
-                            x_type=NodeType.CELL_LINE.value,
-                            y_id=gene_id,
-                            y_type=NodeType.GENE.value,
-                            relation="cell_line_expresses_gene",
-                            display_relation="expresses gene",
-                            source="OpenTargets/DepMap",
-                            credibility=Credibility.ESTABLISHED_FACT,
-                            gene_effect=gene_effect,
-                            expression=expression,
-                            is_essential=is_essential,
-                        ))
-                        for protein_id in gene_to_proteins.get(gene_id, []):
-                            protein_expr_rows.append(_make_edge(
+                        if _has_explicit_measurement(gene_effect) or _has_explicit_measurement(is_essential):
+                            essentiality_rows.append(_make_edge(
                                 x_id=cell_line_id,
                                 x_type=NodeType.CELL_LINE.value,
-                                y_id=protein_id,
-                                y_type=NodeType.PROTEIN.value,
-                                relation="cell_line_expresses_protein",
-                                display_relation="expresses protein",
-                                source="OpenTargets/DepMap;projected_via_protein_node_xref",
+                                y_id=gene_id,
+                                y_type=NodeType.GENE.value,
+                                relation="cell_line_gene_essentiality",
+                                display_relation="gene essentiality",
+                                source="OpenTargets/DepMap",
                                 credibility=Credibility.ESTABLISHED_FACT,
-                                gene_id=gene_id,
                                 gene_effect=gene_effect,
-                                expression=expression,
                                 is_essential=is_essential,
+                            ))
+                        if _has_explicit_measurement(expression):
+                            expr_rows.append(_make_edge(
+                                x_id=cell_line_id,
+                                x_type=NodeType.CELL_LINE.value,
+                                y_id=gene_id,
+                                y_type=NodeType.GENE.value,
+                                relation="cell_line_expresses_gene",
+                                display_relation="expresses gene",
+                                source="OpenTargets/DepMap",
+                                credibility=Credibility.ESTABLISHED_FACT,
+                                expression=expression,
                             ))
 
                         if tissue_id.startswith("UBERON:"):
@@ -1774,8 +1782,8 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
 
         for df, chunk_dir in [
             (pd.DataFrame(cell_line_rows), cell_line_chunks),
+            (pd.DataFrame(essentiality_rows), essentiality_chunks),
             (pd.DataFrame(expr_rows), expr_chunks),
-            (pd.DataFrame(protein_expr_rows), protein_expr_chunks),
             (pd.DataFrame(tissue_rows), tissue_chunks),
             (pd.DataFrame(disease_rows), disease_chunks),
             (pd.DataFrame(dataset_cell_line_rows), dataset_cell_line_chunks),
@@ -1792,18 +1800,21 @@ def ingest_target_essentiality(ot_dir: Path, out_dir: Path, root: kg_storage.KGR
         lambda df: kg_storage.write_nodes(root, NodeType.CELL_LINE.value, df, mode="overwrite"),
         dedup_cols=["id"],
     )
+    results["cell_line_gene_essentiality"] = _finalize_edge_chunks_streaming(
+        essentiality_chunks,
+        root,
+        "cell_line_gene_essentiality",
+        dedup_cols=["x_id", "y_id", "relation", "source"],
+    )
     results["cell_line_expresses_gene"] = _finalize_edge_chunks_streaming(
         expr_chunks,
         root,
         "cell_line_expresses_gene",
         dedup_cols=["x_id", "y_id", "relation", "source"],
     )
-    results["cell_line_expresses_protein"] = _finalize_edge_chunks_streaming(
-        protein_expr_chunks,
-        root,
-        "cell_line_expresses_protein",
-        dedup_cols=["x_id", "y_id", "relation", "source"],
-    )
+    # target_essentiality contains gene-level dependency and RNA measurements,
+    # never direct proteomics. Keep the result key for caller compatibility.
+    results["cell_line_expresses_protein"] = 0
     results["cell_line_derived_from_tissue"] = _finalize_edge_chunks_streaming(
         tissue_chunks,
         root,

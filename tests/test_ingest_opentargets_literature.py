@@ -642,35 +642,39 @@ def test_ingest_evidence_backed_variants_joins_gwas_credible_sets(tmp_path: Path
 
 
 
-def test_ingest_target_essentiality_writes_cell_line_context(tmp_path: Path) -> None:
+def _ingest_target_essentiality_screen(
+    tmp_path: Path,
+    screen_measurements: dict[str, object],
+    *,
+    is_essential: bool | None,
+) -> tuple[dict[str, int], kg_storage.KGRoot]:
     ot_dir = tmp_path / "opentargets"
     te_dir = ot_dir / "target_essentiality"
     te_dir.mkdir(parents=True)
+    essentiality: dict[str, object] = {
+        "depMapEssentiality": [
+            {
+                "tissueId": "UBERON_0002367",
+                "tissueName": "prostate gland",
+                "screens": [
+                    {
+                        "depmapId": "ACH-000001",
+                        "cellLineName": "A549",
+                        "diseaseFromSource": "lung carcinoma",
+                        "diseaseCellLineId": "EFO_0001071",
+                        **screen_measurements,
+                    }
+                ],
+            }
+        ],
+    }
+    if is_essential is not None:
+        essentiality["isEssential"] = is_essential
     pd.DataFrame(
         [
             {
                 "id": "ENSG00000123456",
-                "geneEssentiality": [
-                    {
-                        "isEssential": True,
-                        "depMapEssentiality": [
-                            {
-                                "tissueId": "UBERON_0002367",
-                                "tissueName": "prostate gland",
-                                "screens": [
-                                    {
-                                        "depmapId": "ACH-000001",
-                                        "cellLineName": "A549",
-                                        "diseaseFromSource": "lung carcinoma",
-                                        "diseaseCellLineId": "EFO_0001071",
-                                        "geneEffect": -1.2,
-                                        "expression": 4.5,
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                ],
+                "geneEssentiality": [essentiality],
             }
         ]
     ).to_parquet(te_dir / "part-000.parquet", index=False)
@@ -696,11 +700,68 @@ def test_ingest_target_essentiality_writes_cell_line_context(tmp_path: Path) -> 
     )
     results = ingest_target_essentiality(ot_dir, kg_dir, root)
 
-    assert results["cell_line"] == 1
+    return results, root
+
+
+def test_ingest_target_essentiality_only_writes_essentiality_relation(tmp_path: Path) -> None:
+    results, root = _ingest_target_essentiality_screen(
+        tmp_path,
+        {"geneEffect": -1.2},
+        is_essential=True,
+    )
+
+    assert results["cell_line_gene_essentiality"] == 1
+    assert results["cell_line_expresses_gene"] == 0
+    assert results["cell_line_expresses_protein"] == 0
+
+    edges = kg_storage.read_edges(root, "cell_line_gene_essentiality")
+    assert edges.loc[0, "relation"] == "cell_line_gene_essentiality"
+    assert edges.loc[0, "gene_effect"] == -1.2
+    assert bool(edges.loc[0, "is_essential"]) is True
+    assert "expression" not in edges.columns
+
+
+def test_ingest_target_essentiality_expression_only_writes_expression_relation(tmp_path: Path) -> None:
+    results, root = _ingest_target_essentiality_screen(
+        tmp_path,
+        {"expression": 4.5},
+        is_essential=None,
+    )
+
+    assert results["cell_line_gene_essentiality"] == 0
     assert results["cell_line_expresses_gene"] == 1
-    assert results["cell_line_expresses_protein"] == 1
+    assert results["cell_line_expresses_protein"] == 0
+
+    edges = kg_storage.read_edges(root, "cell_line_expresses_gene")
+    assert edges.loc[0, "relation"] == "cell_line_expresses_gene"
+    assert edges.loc[0, "expression"] == 4.5
+    assert "gene_effect" not in edges.columns
+    assert "is_essential" not in edges.columns
+
+
+def test_ingest_target_essentiality_mixed_measurements_write_both_relations(tmp_path: Path) -> None:
+    results, root = _ingest_target_essentiality_screen(
+        tmp_path,
+        {"geneEffect": -1.2, "expression": 4.5},
+        is_essential=True,
+    )
+
+    assert results["cell_line"] == 1
+    assert results["cell_line_gene_essentiality"] == 1
+    assert results["cell_line_expresses_gene"] == 1
+    assert results["cell_line_expresses_protein"] == 0
     assert results["cell_line_derived_from_tissue"] == 1
     assert results["cell_line_associated_disease"] == 1
+
+    essentiality_edges = kg_storage.read_edges(root, "cell_line_gene_essentiality")
+    assert essentiality_edges.loc[0, "gene_effect"] == -1.2
+    assert bool(essentiality_edges.loc[0, "is_essential"]) is True
+    assert "expression" not in essentiality_edges.columns
+
+    expression_edges = kg_storage.read_edges(root, "cell_line_expresses_gene")
+    assert expression_edges.loc[0, "expression"] == 4.5
+    assert "gene_effect" not in expression_edges.columns
+    assert "is_essential" not in expression_edges.columns
 
     cell_lines = kg_storage.read_nodes(root, "cell_line")
     assert cell_lines.loc[0, "id"] == "ACH-000001"
