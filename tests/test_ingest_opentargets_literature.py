@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from manage_db import kg_storage
 from manage_db.ingest_opentargets import (
+    _has_explicit_measurement,
     ingest_biosample,
     ingest_disease_phenotype,
     ingest_drugs,
@@ -20,6 +22,16 @@ from manage_db.ingest_opentargets import (
     ingest_variants,
     ingest_variant_protein_changes,
 )
+
+
+@pytest.mark.parametrize("value", [0, 0.0, False])
+def test_has_explicit_measurement_preserves_zero_and_false(value: object) -> None:
+    assert _has_explicit_measurement(value) is True
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), pd.NA, pd.NaT])
+def test_has_explicit_measurement_rejects_missing_scalars(value: object) -> None:
+    assert _has_explicit_measurement(value) is False
 
 
 def test_ingest_evidence_finalizes_chunked_edges(tmp_path: Path) -> None:
