@@ -40,6 +40,8 @@ Jouvence keeps broad, stable relation identities. GoF/LoF, pharmacological actio
 
 The authoritative field families, examples, inference constraints, and validation gates are in [`../causal_edge_feature_model.md`](../causal_edge_feature_model.md).
 
+The edge records the accepted biological assertion; the evidence records assay/source modality and derivation context. Consequently, direct protein-product expression may support an inferred `x_expresses_gene` edge through an exact protein/transcript/gene mapping, with `support_mode=protein_product_observed` in `evidence_inferred/`. This does not assert an RNA measurement. The reverse RNA/gene-expression→protein-expression projection remains forbidden.
+
 ## Feature/context is a valid final representation
 
 Data does not need to become topology to be valuable. Use metadata, feature, evidence, or proof sidecars when the source is contextual, dense, or potentially leaky.

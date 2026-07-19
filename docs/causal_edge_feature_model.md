@@ -1,7 +1,9 @@
 # Causal semantics as features of existing edges
 
-Status: **authoritative modeling doctrine**  
-Decision owner: Jérémie Kalfon  
+Status: **authoritative modeling doctrine**
+
+Decision owner: Jérémie Kalfon
+
 Decision date: 2026-07-19
 
 ## Decision
@@ -52,6 +54,30 @@ Illustrative rows:
 | `…` | `gain_of_function` | `risk` | `dominant` | `ClinVar` | `…` | `…` |
 
 High-cardinality raw text, PMIDs, assay records, source payloads, populations, doses, times, and biosample details remain in evidence rather than being duplicated into the edge row.
+
+## Biological assertion versus evidence modality
+
+The relation table represents the accepted biological assertion. The evidence table records how that assertion was observed or derived: RNA assay, proteomics, clinical record, source dataset, sample, threshold, time, and other context. A source modality must not silently redefine the biological meaning of the relation.
+
+In particular, a directly observed protein product is sufficient biological support that its encoding gene is expressed in that context. Therefore:
+
+```text
+x_expresses_protein(x, protein)
++ exact protein -> transcript -> gene mapping
+=> inferred x_expresses_gene(x, gene)
+```
+
+is approved. The derived gene-expression edge must retain `support_mode=protein_product_observed`, the supporting protein/isoform, mapping version, source assertion IDs, and context in `evidence_inferred/`. It must not claim that RNA itself was measured. The converse remains invalid: RNA/gene expression does not guarantee that a particular protein or isoform was produced.
+
+Likewise, an accepted projection from a protein-level disease association to its encoding gene is a biological endpoint projection, while the protein-native assertion remains its evidence:
+
+```text
+disease_associated_protein(protein, disease)
++ exact protein -> transcript -> gene mapping
+=> inferred disease_associated_gene(gene, disease)
+```
+
+The reverse gene-to-protein projection is not automatic because the causal transcript, isoform, or protein product may be unknown.
 
 ## Aggregation and conflict policy
 
@@ -193,8 +219,23 @@ The requested endpoint remains a direct inferred `molecule → disease` edge. On
 - C1 variant–protein–disease remains a staged hypothesis/coverage-repair lane, with direct protein consequence and disease-specific evidence required.
 - C2 variant–gene–disease is restricted to direct coding/pathogenic, splice, or colocalized-eQTL/explicit-L2G support. Simple containment, LD-only, or nearest-gene assignment is excluded.
 - C3 variant–enhancer–gene–disease is removed entirely from v1.
-- C4, H3, H4, ontology closures, HPO propagation, gene→transcript→protein product derivation, and Reactome closure are out of scope.
 - H1 signed drug–target–disease and direct pharmacogenomic C5 remain fail-closed until the required edge features are materially present and reviewed.
+
+### Approved relation-composition allowlist
+
+All strong/structural and conditional candidates below are in scope for staged generation. Their epistemic class must be preserved; a conditional candidate must not be relabeled as an observed or certain edge.
+
+1. **Mutation consequence -> gene attribution.** `mutation_affects_transcript + gene_has_transcript` and `mutation_causes_protein_change + transcript_encodes_protein + gene_has_transcript` may support `mutation_associated_gene` with exact transcript/protein/assembly mapping and an explicit attribution feature. `mutation_in_gene` containment alone remains insufficient.
+2. **Mutation–disease–phenotype.** The complete triangle is accepted as a coherence feature. `mutation_associated_disease + disease_has_phenotype -> mutation_associated_phenotype` is a conditional downstream candidate only, preserving disease context, penetrance limits, and source independence. Shared phenotype alone must not infer a mutation–disease edge.
+3. **Cell-type -> tissue existential expression.** `cell_type_found_in_tissue + cell_type_expresses_gene` may yield inferred `tissue_expresses_gene` meaning that at least one compatible population in the tissue expresses the gene. Evidence must preserve the supporting cell type and context; it is not a claim of a bulk assay.
+4. **Protein-changing mutation -> disease/phenotype endpoints.** A disease- or phenotype-associated mutation with an exact protein consequence may generate conditional protein/gene–disease or gene–phenotype candidates. Pathogenicity, isoform, assembly, and disease/phenotype context determine strength.
+5. **Protein expression -> gene expression.** `x_expresses_protein + exact protein-to-gene mapping -> inferred x_expresses_gene` is approved as a biological implication. Protein observation is evidence; no RNA measurement is asserted. The reverse is not approved.
+6. **Protein–disease -> gene–disease.** `disease_associated_protein + exact protein-to-gene mapping -> inferred disease_associated_gene` is approved. The reverse remains conditional and requires protein/isoform-specific support.
+7. **Pathway triangles.** Gene/protein disease association plus pathway membership certainly supports a derived “pathway contains an associated member” feature. It may support a conditional pathway–disease candidate only with specificity, multiple independent members or pathway-native evidence, and a circularity check. A disease pathway does not imply association of every member.
+8. **Disease–phenotype–tissue.** Two sides may generate only a conditional localization candidate; the complete triangle is accepted as a coherence feature. Preserve anatomical specificity, clinical context, and source independence. Never form a Cartesian product of all disease tissues and phenotypes.
+9. **Signed pharmacology and pharmacogenomics.** Signed treatment/harm, allelic triangulation, and efficacy-qualified direct molecule–disease candidates remain approved but fail closed until polarity and context features exist.
+
+The following generic joins remain excluded: gene/RNA expression -> protein expression; shared phenotype -> disease identity; pathway involvement -> every member gene; generic cell/cell-line response plus a molecule-associated phenotype without a matched readout, direction, dose/time, and context.
 
 ## Validation requirements
 
