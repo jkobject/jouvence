@@ -2,6 +2,7 @@ import importlib.util
 import json
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,6 +29,7 @@ def make_con() -> sqlite3.Connection:
             priority INTEGER DEFAULT 0,
             workspace_path TEXT,
             result TEXT,
+            idempotency_key TEXT,
             current_run_id INTEGER,
             created_at INTEGER NOT NULL
         );
@@ -54,8 +56,8 @@ def make_con() -> sqlite3.Connection:
 def insert_task(con: sqlite3.Connection, task_id: str, assignee: str, status: str, *, title: str = "TxGNN task", body: str = "", current_run_id: int | None = None, created_at: int = 1) -> None:
     con.execute(
         """
-        INSERT INTO tasks (id, title, body, assignee, status, priority, workspace_path, result, current_run_id, created_at)
-        VALUES (?, ?, ?, ?, ?, 90, '/work/txgnn', '', ?, ?)
+        INSERT INTO tasks (id, title, body, assignee, status, priority, workspace_path, result, idempotency_key, current_run_id, created_at)
+        VALUES (?, ?, ?, ?, ?, 90, '/work/txgnn', '', NULL, ?, ?)
         """,
         (task_id, title, body, assignee, status, current_run_id, created_at),
     )
@@ -235,12 +237,12 @@ def test_ungated_reviewer_comment_takes_priority_over_unrelated_tofix_report() -
     assert route.routed_by == "comment"
 
 
-def test_dispatchable_linked_child_is_still_healthy_without_comment() -> None:
+def test_dispatchable_linked_reviewer_is_still_healthy_without_comment() -> None:
     con = make_con()
     producer_id = "t_feedbeef"
     linked_id = "t_deadbeef"
     insert_task(con, producer_id, "dev", "blocked", body="review-required: please review")
-    insert_task(con, linked_id, "tester", "ready", title="Ready tester", created_at=2)
+    insert_task(con, linked_id, "reviewer", "ready", title="Ready reviewer", created_at=2)
     con.execute("INSERT INTO task_links (parent_id, child_id) VALUES (?, ?)", (producer_id, linked_id))
 
     routes = watchdog.classify(con)
@@ -390,3 +392,276 @@ def test_run_hermes_places_board_before_subcommand(monkeypatch) -> None:
 
     assert watchdog.run_hermes(["create", "hello"], board="txgnn") == "ok"
     assert calls == [["hermes", "kanban", "--board", "txgnn", "create", "hello"]]
+
+
+def test_incident_manual_revision_reviewer_suppresses_watchdog_duplicate() -> None:
+    con = make_con()
+    producer_id = "t_1cdcf211"
+    manual_id = "t_ec266263"
+    duplicate_id = "t_0f87e931"
+    revision = "8a85542f2a948abc50203bfcff530383772c389d"
+    insert_task(con, producer_id, "dev", "blocked", body="review-required: PR #15", created_at=1)
+    con.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dev', ?, 10)",
+        (producer_id, f"Implementation handoff for PR #15 at immutable commit `{revision}`."),
+    )
+    insert_task(
+        con,
+        manual_id,
+        "reviewer",
+        "running",
+        title="review: PRISM 20Q2 staged candidate PR #15",
+        body=f"Independent review for producer `{producer_id}` at immutable commit `{revision}`.",
+        created_at=11,
+    )
+    insert_task(
+        con,
+        duplicate_id,
+        "reviewer",
+        "done",
+        title=f"REVIEW {producer_id}: generated duplicate",
+        body=f"Parent producer: `{producer_id}`; duplicate/no-op.",
+        created_at=12,
+    )
+    insert_task(
+        con,
+        "t_aaaaaaaa",
+        "reviewer",
+        "running",
+        title="unrelated reviewer",
+        body=f"Independent review for producer `t_bbbbbbbb` at immutable commit `{revision}`.",
+        created_at=13,
+    )
+    insert_task(
+        con,
+        "t_cccccccc",
+        "reviewer",
+        "running",
+        title="stale reviewer",
+        body=f"Independent review for producer `{producer_id}` at immutable commit `1111111111111111111111111111111111111111`.",
+        created_at=14,
+    )
+
+    routes = watchdog.classify(con)
+
+    assert len(routes) == 1
+    assert routes[0].reviewer_id == manual_id
+    assert routes[0].routed_by == "producer-revision"
+
+
+def test_revision_extraction_ignores_session_dates_and_task_ids() -> None:
+    revision = "8a85542f2a948abc50203bfcff530383772c389d"
+
+    assert watchdog.revisions_in(
+        "session 20260719_150632_6a293b for t_1cdcf211; no revision yet"
+    ) == []
+    assert watchdog.revisions_in(f"review @ {revision[:8]}") == [revision[:8]]
+    assert watchdog.revisions_in(f"immutable commit `{revision}`") == [revision]
+
+
+def test_accepted_terminal_reviewer_for_same_revision_is_closeable() -> None:
+    con = make_con()
+    producer_id = "t_1cdcf211"
+    reviewer_id = "t_ec266263"
+    revision = "8a85542f2a948abc50203bfcff530383772c389d"
+    insert_task(con, producer_id, "dev", "blocked", body="review-required: PR #15", created_at=1)
+    con.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dev', ?, 10)",
+        (producer_id, f"review-required at immutable commit `{revision}`"),
+    )
+    insert_task(
+        con,
+        reviewer_id,
+        "reviewer",
+        "done",
+        body=f"Review producer `{producer_id}` at immutable commit `{revision}`.",
+        created_at=11,
+    )
+    con.execute(
+        "INSERT INTO task_runs (id, task_id, started_at, summary, metadata) VALUES (1, ?, 12, ?, ?)",
+        (
+            reviewer_id,
+            "review accepted after independent validation",
+            json.dumps({"approved": True}),
+        ),
+    )
+
+    route = watchdog.classify(con)[0]
+
+    assert route.reviewer_id == reviewer_id
+    assert route.routed_by == "accepted-review"
+    assert route.closeable is True
+
+
+def test_changes_requested_for_prior_revision_does_not_cover_fresh_revision() -> None:
+    con = make_con()
+    producer_id = "t_1cdcf211"
+    old_revision = "1111111111111111111111111111111111111111"
+    new_revision = "2222222222222222222222222222222222222222"
+    insert_task(con, producer_id, "dev", "blocked", body="review-required: PR #15", created_at=1)
+    con.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dev', ?, 20)",
+        (producer_id, f"review-required fixed at immutable commit `{new_revision}`"),
+    )
+    insert_task(
+        con,
+        "t_ec266263",
+        "reviewer",
+        "done",
+        body=f"Review producer `{producer_id}` at immutable commit `{old_revision}`.",
+        created_at=10,
+    )
+    con.execute(
+        "INSERT INTO task_runs (id, task_id, started_at, summary, metadata) VALUES (1, 't_ec266263', 11, 'changes requested', ?)",
+        (json.dumps({"approved": False, "producer_id": producer_id, "revision": old_revision}),),
+    )
+
+    route = watchdog.classify(con)[0]
+
+    assert route.reviewer_id is None
+    assert route.routed_by == "missing"
+    assert watchdog.review_idempotency_key(route.producer, new_revision).endswith(new_revision)
+
+
+def test_manual_changes_requested_comment_suppresses_same_stale_handoff() -> None:
+    con = make_con()
+    producer_id = "t_1cdcf211"
+    revision = "8a85542f2a948abc50203bfcff530383772c389d"
+    insert_task(con, producer_id, "dev", "blocked", body="review-required", created_at=1)
+    con.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dev', ?, 10)",
+        (producer_id, f"review-required at immutable commit `{revision}`"),
+    )
+    con.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'reviewer', ?, 20)",
+        (producer_id, f"review-result: changes-requested for immutable revision `{revision}`"),
+    )
+    insert_task(
+        con,
+        "t_ec266263",
+        "reviewer",
+        "done",
+        body=f"Review producer `{producer_id}` at immutable commit `{revision}`.",
+        created_at=11,
+    )
+    con.execute(
+        "INSERT INTO task_runs (id, task_id, started_at, summary, metadata) VALUES (1, 't_ec266263', 12, 'changes requested', ?)",
+        (json.dumps({"approved": False, "verdict": "tofix"}),),
+    )
+
+    assert watchdog.classify(con) == []
+
+
+def test_three_rejected_revisions_stop_even_after_fresh_handoff() -> None:
+    con = make_con()
+    producer_id = "t_1cdcf211"
+    insert_task(con, producer_id, "dev", "blocked", body="review-required", created_at=1)
+    con.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'reviewer', ?, 20)",
+        (
+            producer_id,
+            "review-result: changes-requested for revision `11111111`; review_fail_count: 3/3",
+        ),
+    )
+    con.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dev', ?, 30)",
+        (producer_id, "review-required fixed at immutable commit `22222222`"),
+    )
+
+    assert watchdog.classify(con) == []
+
+
+def test_tester_for_same_revision_is_not_canonical_reviewer_coverage() -> None:
+    con = make_con()
+    producer_id = "t_1cdcf211"
+    revision = "8a85542f2a948abc50203bfcff530383772c389d"
+    insert_task(con, producer_id, "dev", "blocked", body="review-required", created_at=1)
+    con.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dev', ?, 2)",
+        (producer_id, f"review-required commit `{revision}`"),
+    )
+    insert_task(
+        con,
+        "t_deadbeef",
+        "tester",
+        "running",
+        body=f"Review producer `{producer_id}` at commit `{revision}`.",
+        created_at=3,
+    )
+
+    route = watchdog.classify(con)[0]
+
+    assert route.reviewer_id is None
+    assert route.routed_by == "missing"
+
+
+def test_concurrent_creates_share_one_deterministic_idempotency_key(monkeypatch) -> None:
+    con = make_con()
+    producer_id = "t_1cdcf211"
+    revision = "8a85542f2a948abc50203bfcff530383772c389d"
+    insert_task(con, producer_id, "dev", "blocked", body="review-required", created_at=1)
+    route = watchdog.Route(
+        watchdog.fetch_tasks(con)[0], None, "missing", "create ungated reviewer"
+    )
+    created_by_key: dict[str, str] = {}
+    lock = threading.Lock()
+
+    def fake_run_hermes(args, board=None):
+        if args[0] == "create":
+            assert "--parent" not in args
+            assert args[args.index("--assignee") + 1] == "reviewer"
+            key = args[args.index("--idempotency-key") + 1]
+            with lock:
+                created_by_key.setdefault(key, "t_ec266263")
+            return json.dumps({"task_id": created_by_key[key]})
+        return "ok"
+
+    monkeypatch.setattr(watchdog, "run_hermes", fake_run_hermes)
+    results: list[str] = []
+
+    def create() -> None:
+        results.append(watchdog.apply_missing(route, "txgnn", revision=revision))
+
+    threads = [threading.Thread(target=create), threading.Thread(target=create)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert results == ["t_ec266263", "t_ec266263"]
+    assert list(created_by_key) == [watchdog.review_idempotency_key(route.producer, revision)]
+
+
+def test_apply_rechecks_authoritative_board_before_mutation(tmp_path, monkeypatch) -> None:
+    db = tmp_path / "board.db"
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    fixture = make_con()
+    fixture.backup(con)
+    fixture.close()
+    producer_id = "t_1cdcf211"
+    revision = "8a85542f2a948abc50203bfcff530383772c389d"
+    insert_task(con, producer_id, "dev", "blocked", body="review-required", created_at=1)
+    con.execute(
+        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dev', ?, 2)",
+        (producer_id, f"review-required commit `{revision}`"),
+    )
+    con.commit()
+    stale_route = watchdog.classify(con)[0]
+    insert_task(
+        con,
+        "t_ec266263",
+        "reviewer",
+        "running",
+        body=f"Review producer `{producer_id}` at commit `{revision}`.",
+        created_at=3,
+    )
+    con.commit()
+    con.close()
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("mutation attempted despite authoritative reviewer coverage")
+
+    monkeypatch.setattr(watchdog, "run_hermes", fail_if_called)
+
+    assert watchdog.apply_missing_authoritative(stale_route, "txgnn", db) is None

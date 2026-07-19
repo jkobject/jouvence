@@ -5,8 +5,9 @@ Default behavior is read-only dry-run. It scans the active Jouvence board for bl
 producer cards that contain a `review-required` handoff and verifies that each has
 one of:
 
-1. a linked child assigned to `reviewer` or `tester`, or
-2. a comment that explicitly says it was routed to an ungated reviewer/tester card.
+1. a canonical `reviewer` card for the same producer and immutable revision,
+2. a dispatchable linked `reviewer` child, or
+3. a comment that explicitly says it was routed to an ungated reviewer card.
 
 The script intentionally does not mutate the board unless `--apply` is passed.
 In apply mode it uses the Hermes CLI, not raw SQLite writes, so task creation,
@@ -21,7 +22,7 @@ import os
 import re
 import sqlite3
 import subprocess
-import sys
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -36,6 +37,11 @@ TOFIX_RE = re.compile(
     re.IGNORECASE,
 )
 REVIEW_REQUIRED_RE = re.compile(r"\breview[- ]required\b", re.IGNORECASE)
+REVISION_RE = re.compile(
+    r"(?:\b(?:commit|revision|head|git[-_ ]sha)\b[^\n]{0,48}?|@\s*)"
+    r"(?P<revision>(?<![0-9A-Za-z_])[0-9a-fA-F]{7,40}(?![0-9a-fA-F]))",
+    re.IGNORECASE,
+)
 NON_REVIEW_HANDOFF_RE = re.compile(
     r"\b(?:run[- ]in[- ]progress|blocked\s+by\s+active\s+duplicate|"
     r"superseded[- ]duplicate|superseded\s+until|long[- ]run[- ]in[- ]progress|"
@@ -47,7 +53,7 @@ NON_REVIEW_HANDOFF_RE = re.compile(
 )
 
 PRODUCER_ASSIGNEES = {"dev", "worker", "builder"}
-REVIEW_ASSIGNEES = {"reviewer", "tester", "cto"}
+REVIEW_ASSIGNEES = {"reviewer"}
 TERMINAL_STATUSES = {"done", "archived"}
 DISPATCHABLE_REVIEW_STATUSES = {"ready", "running"}
 
@@ -150,7 +156,7 @@ def linked_review_children(con: sqlite3.Connection, task_id: str) -> list[sqlite
         FROM task_links l
         JOIN tasks c ON c.id = l.child_id
         WHERE l.parent_id = ?
-          AND c.assignee IN ('reviewer', 'tester', 'cto')
+          AND c.assignee = 'reviewer'
           AND c.status NOT IN ('archived')
         ORDER BY c.created_at ASC
         """,
@@ -158,7 +164,13 @@ def linked_review_children(con: sqlite3.Connection, task_id: str) -> list[sqlite
     ).fetchall()
 
 
-def accepted_review_for(con: sqlite3.Connection, reviewer_id: str, producer_id: str) -> bool:
+def accepted_review_for(
+    con: sqlite3.Connection,
+    reviewer_id: str,
+    producer_id: str,
+    *,
+    identity_verified: bool = False,
+) -> bool:
     row = con.execute(
         """
         SELECT COALESCE(r.summary, '') AS summary, COALESCE(r.metadata, '') AS metadata,
@@ -171,7 +183,11 @@ def accepted_review_for(con: sqlite3.Connection, reviewer_id: str, producer_id: 
         """,
         (reviewer_id,),
     ).fetchone()
-    if not row or row["assignee"] not in REVIEW_ASSIGNEES or row["status"] != "done":
+    if (
+        not row
+        or row["assignee"] not in REVIEW_ASSIGNEES
+        or row["status"] not in TERMINAL_STATUSES
+    ):
         return False
 
     summary = row["summary"] or ""
@@ -198,6 +214,8 @@ def accepted_review_for(con: sqlite3.Connection, reviewer_id: str, producer_id: 
         if metadata.get(key) is True:
             return True
         if metadata.get("approved") is True:
+            if identity_verified:
+                return True
             encoded = json.dumps(metadata).lower()
             if f"accept_close_{producer_id}" in encoded or producer_id in encoded:
                 return True
@@ -230,6 +248,135 @@ def routed_comment_target(con: sqlite3.Connection, comments: Iterable[Comment], 
             return card, False
         if accepted_review_for(con, card, producer_id):
             return card, True
+    return None
+
+
+def revisions_in(text: str) -> list[str]:
+    """Return immutable git-style revisions without mistaking task ids for SHAs."""
+    return [match.group("revision").lower() for match in REVISION_RE.finditer(text or "")]
+
+
+def revisions_match(left: str, right: str) -> bool:
+    """Treat an unambiguous short SHA and its full SHA as the same revision."""
+    left = left.lower()
+    right = right.lower()
+    return len(left) >= 7 and len(right) >= 7 and (
+        left.startswith(right) or right.startswith(left)
+    )
+
+
+def producer_revision_identity(
+    con: sqlite3.Connection,
+    task: Task,
+    comments: Iterable[Comment] | None = None,
+) -> str | None:
+    """Return the newest immutable revision asserted by the producer handoff."""
+    candidates: list[tuple[int, str]] = [
+        (task.created_at, task.body),
+        (task.created_at, task.result),
+    ]
+    run_text, run_started_at = current_run_summary(con, task)
+    if run_text:
+        candidates.append((run_started_at, run_text))
+    for comment in comments if comments is not None else comments_for(con, task.id):
+        if comment.author in PRODUCER_ASSIGNEES:
+            candidates.append((comment.created_at, comment.body))
+
+    found: list[tuple[int, int, str]] = []
+    for created_at, text in candidates:
+        for revision in revisions_in(text):
+            found.append((created_at, len(revision), revision))
+    if not found:
+        return None
+    return max(found)[2]
+
+
+def references_producer(text: str, producer_id: str) -> bool:
+    """Recognize explicit producer fields/phrases, independent of title prefix."""
+    escaped = re.escape(producer_id)
+    patterns = (
+        rf'"(?:producer_id|parent_producer)"\s*:\s*"{escaped}"',
+        rf"\b(?:parent\s+)?producer(?:_id)?\b[^\n]{{0,120}}\b{escaped}\b",
+        rf"\breview(?:er)?\s+(?:for\s+)?`?{escaped}`?\b",
+    )
+    return any(re.search(pattern, text or "", re.IGNORECASE) for pattern in patterns)
+
+
+def reviewer_evidence_text(con: sqlite3.Connection, reviewer_id: str) -> str:
+    row = con.execute(
+        """
+        SELECT COALESCE(t.title, '') AS title, COALESCE(t.body, '') AS body,
+               COALESCE(t.result, '') AS result,
+               COALESCE(r.summary, '') AS summary, COALESCE(r.metadata, '') AS metadata
+        FROM tasks t
+        LEFT JOIN task_runs r ON r.id = (
+            SELECT id FROM task_runs WHERE task_id = t.id
+            ORDER BY started_at DESC, id DESC LIMIT 1
+        )
+        WHERE t.id = ?
+        """,
+        (reviewer_id,),
+    ).fetchone()
+    if not row:
+        return ""
+    comment_rows = con.execute(
+        "SELECT COALESCE(body, '') AS body FROM task_comments "
+        "WHERE task_id = ? ORDER BY created_at ASC, id ASC",
+        (reviewer_id,),
+    ).fetchall()
+    return "\n".join(
+        [
+            *(str(row[key] or "") for key in row.keys()),
+            *(comment["body"] for comment in comment_rows),
+        ]
+    )
+
+
+def producer_revision_route(
+    con: sqlite3.Connection,
+    task: Task,
+    comments: Iterable[Comment],
+) -> Route | None:
+    """Find any canonical reviewer covering this exact producer revision."""
+    revision = producer_revision_identity(con, task, comments)
+    if not revision:
+        return None
+    rows = con.execute(
+        """
+        SELECT id, status FROM tasks
+        WHERE assignee = 'reviewer'
+          AND status IN ('ready', 'running', 'done', 'archived')
+        ORDER BY created_at ASC
+        """
+    ).fetchall()
+    for row in rows:
+        text = reviewer_evidence_text(con, row["id"])
+        if not references_producer(text, task.id):
+            continue
+        if not any(
+            revisions_match(revision, candidate) for candidate in revisions_in(text)
+        ):
+            continue
+        if row["status"] in DISPATCHABLE_REVIEW_STATUSES:
+            return Route(
+                task,
+                row["id"],
+                "producer-revision",
+                f"ok: reviewer {row['id']} covers immutable revision {revision}",
+            )
+        if accepted_review_for(
+            con,
+            row["id"],
+            task.id,
+            identity_verified=True,
+        ):
+            return Route(
+                task,
+                row["id"],
+                "accepted-review",
+                f"ok: reviewer {row['id']} accepted immutable revision {revision}",
+                closeable=True,
+            )
     return None
 
 
@@ -341,6 +488,15 @@ def has_review_required_handoff(text: str) -> bool:
 
 def latest_rejected_review_at(con: sqlite3.Connection, task: Task, comments: Iterable[Comment]) -> int:
     reviewer_ids: set[str] = set()
+    latest = 0
+    rejected_comment_re = re.compile(
+        r"\b(?:review[-_ ]result\s*:\s*changes[-_ ]requested|"
+        r"verdict\s*:\s*(?:tofix|needs[-_ ]fix|rejected)|needs[-_ ]fix)\b",
+        re.IGNORECASE,
+    )
+    for comment in comments:
+        if comment.author in REVIEW_ASSIGNEES and rejected_comment_re.search(comment.body):
+            latest = max(latest, comment.created_at)
     for child in linked_review_children(con, task.id):
         reviewer_ids.add(child["id"])
     for comment in comments:
@@ -348,7 +504,6 @@ def latest_rejected_review_at(con: sqlite3.Connection, task: Task, comments: Ite
         if match:
             reviewer_ids.add(match.group(2))
 
-    latest = 0
     for reviewer_id in reviewer_ids:
         row = con.execute(
             """
@@ -441,6 +596,18 @@ def latest_non_review_blocker_at(
     return latest
 
 
+def review_rejection_limit_reached(comments: Iterable[Comment]) -> bool:
+    """Stop automatic routing after the explicit third rejected revision."""
+    fail_count_re = re.compile(r"\breview_fail_count\s*:\s*(\d+)\s*/\s*3\b", re.IGNORECASE)
+    for comment in comments:
+        if comment.author not in REVIEW_ASSIGNEES:
+            continue
+        match = fail_count_re.search(comment.body)
+        if match and int(match.group(1)) >= 3:
+            return True
+    return False
+
+
 def classify(con: sqlite3.Connection) -> list[Route]:
     routes: list[Route] = []
     for task in fetch_tasks(con):
@@ -449,6 +616,8 @@ def classify(con: sqlite3.Connection) -> list[Route]:
         if task.assignee not in PRODUCER_ASSIGNEES:
             continue
         if not is_txgnn_task(task):
+            continue
+        if review_rejection_limit_reached(comments):
             continue
 
         rejected_at = max(
@@ -469,6 +638,11 @@ def classify(con: sqlite3.Connection) -> list[Route]:
                         f"ok: rejected review/guard already routed follow-up fix card {tofix_id}",
                     )
                 )
+            continue
+
+        revision_route = producer_revision_route(con, task, comments)
+        if revision_route:
+            routes.append(revision_route)
             continue
 
         routed = routed_comment_target(con, comments, task.id)
@@ -512,12 +686,27 @@ def run_hermes(args: list[str], board: str | None = None) -> str:
     return proc.stdout.strip()
 
 
-def apply_missing(route: Route, board: str | None) -> str:
+def review_idempotency_key(producer: Task, revision: str | None) -> str:
+    identity = revision or (
+        f"run-{producer.current_run_id}" if producer.current_run_id else f"created-{producer.created_at}"
+    )
+    return f"jouvence:review:{producer.id}:revision:{identity.lower()}"
+
+
+def apply_missing(
+    route: Route,
+    board: str | None,
+    *,
+    revision: str | None = None,
+) -> str:
     producer = route.producer
-    title = f"REVIEW {producer.id}: {producer.title[:72]}"
+    revision_label = revision or "unavailable"
+    title = f"REVIEW {producer.id} @ {revision_label[:12]}: {producer.title[:58]}"
     body = (
         "Automatic reviewer card created by scripts/txgnn_kanban_watchdog.py.\n\n"
-        f"Parent producer: `{producer.id}` — {producer.title}\n"
+        f"Producer id: `{producer.id}`\n"
+        f"Immutable revision: `{revision_label}`\n"
+        f"Producer title: {producer.title}\n"
         "Review the producer's `review-required` handoff and verify artifacts/tests.\n\n"
         "Build→review→build policy:\n"
         "- If accepted, comment on the producer with `review-result: accepted`, evidence, "
@@ -527,19 +716,59 @@ def apply_missing(route: Route, board: str | None) -> str:
         "This reviewer is intentionally not parent-linked when the producer is already blocked; "
         "linking a blocked parent can deadlock reviewer dispatch on this board."
     )
-    cmd = ["create", title, "--assignee", "reviewer", "--body", body, "--priority", str(max(producer.priority, 80))]
+    cmd = [
+        "create",
+        title,
+        "--assignee",
+        "reviewer",
+        "--body",
+        body,
+        "--priority",
+        str(max(producer.priority, 80)),
+        "--idempotency-key",
+        review_idempotency_key(producer, revision),
+    ]
     out = run_hermes(cmd, board=board)
-    match = REVIEW_CARD_RE.search(out)
-    if not match:
-        raise RuntimeError(f"Could not parse created reviewer id from: {out}")
-    reviewer_id = match.group(0)
+    try:
+        parsed = json.loads(out)
+    except json.JSONDecodeError:
+        parsed = {}
+    reviewer_id = parsed.get("task_id") if isinstance(parsed, dict) else None
+    if not reviewer_id:
+        match = REVIEW_CARD_RE.search(out)
+        if not match:
+            raise RuntimeError(f"Could not parse created reviewer id from: {out}")
+        reviewer_id = match.group(0)
     comment = (
-        f"Orchestration: routed the `review-required` handoff to ungated reviewer card `{reviewer_id}` "
-        "(no parent edge on blocked producer, to avoid deadlock)."
+        f"Orchestration: routed producer revision `{revision_label}` to ungated reviewer card "
+        f"`{reviewer_id}` (no parent edge on blocked producer, to avoid deadlock)."
     )
-    ccmd = ["comment", producer.id, comment]
-    run_hermes(ccmd, board=board)
+    run_hermes(["comment", producer.id, comment], board=board)
     return reviewer_id
+
+
+def apply_missing_authoritative(
+    stale_route: Route,
+    board: str | None,
+    db_path: Path,
+) -> str | None:
+    """Re-read board state immediately before the idempotent create mutation."""
+    con = connect(db_path)
+    try:
+        current = next(
+            (route for route in classify(con) if route.producer.id == stale_route.producer.id),
+            None,
+        )
+        if current is None or current.reviewer_id is not None:
+            return None
+        revision = producer_revision_identity(
+            con,
+            current.producer,
+            comments_for(con, current.producer.id),
+        )
+    finally:
+        con.close()
+    return apply_missing(current, board, revision=revision)
 
 
 def apply_close(route: Route, board: str | None) -> None:
@@ -569,15 +798,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     con = connect(args.db)
-    routes = classify(con)
+    try:
+        routes = classify(con)
+    finally:
+        con.close()
     missing = [r for r in routes if r.reviewer_id is None]
     closeable = [r for r in routes if r.closeable]
 
     applied: list[dict[str, str]] = []
     if args.apply:
         for route in missing:
-            reviewer_id = apply_missing(route, args.board)
-            applied.append({"producer_id": route.producer.id, "reviewer_id": reviewer_id})
+            reviewer_id = apply_missing_authoritative(route, args.board, args.db)
+            if reviewer_id:
+                applied.append({"producer_id": route.producer.id, "reviewer_id": reviewer_id})
         for route in closeable:
             apply_close(route, args.board)
             applied.append({"producer_id": route.producer.id, "closed_after_review": route.reviewer_id or ""})
