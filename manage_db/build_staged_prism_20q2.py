@@ -176,26 +176,66 @@ def build_crosswalk(treatment: pd.DataFrame, molecule_nodes: pd.DataFrame) -> pd
 
 
 def _pool_lookup(pool_path: Path | None) -> pd.DataFrame:
-    columns = ["depmap_id", "screen_id", "pool_id", "minipool_id", "detection_pool", "culture"]
+    columns = ["row_name", "screen_id", "pool_id", "minipool_id", "detection_pool", "culture"]
     if pool_path is None:
         return pd.DataFrame(columns=columns)
     pool = pd.read_csv(pool_path, low_memory=False)
+    missing_keys = {"row_name", "screen_id"} - set(pool.columns)
+    if missing_keys:
+        raise ValueError(f"pool metadata lacks source-grain keys: {sorted(missing_keys)}")
     for column in columns:
         if column not in pool:
             pool[column] = ""
-    return pool[columns].sort_values(columns, kind="stable").drop_duplicates(["depmap_id", "screen_id"], keep="first")
+        pool[column] = pool[column].map(_clean)
+    context_columns = ["pool_id", "minipool_id", "detection_pool", "culture"]
+    context_counts = pool.groupby(["row_name", "screen_id"], dropna=False)[context_columns].nunique(dropna=False)
+    if bool((context_counts > 1).any(axis=None)):
+        raise ValueError("pool metadata has conflicting context for a source row_name/screen_id key")
+    return pool[columns].sort_values(columns, kind="stable").drop_duplicates(["row_name", "screen_id"], keep="first")
+
+
+def _readback_pool_context(
+    feature_path: Path,
+    pool: dict[tuple[str, str], dict[str, Any]],
+) -> dict[str, Any]:
+    """Stream the completed feature Parquet and compare every pool field to source."""
+    context_columns = ["pool_id", "minipool_id", "detection_pool", "culture"]
+    joined_rows = 0
+    missing_join_count = 0
+    mismatch_counts = {column: 0 for column in context_columns}
+    columns = ["source_row_name", "screen_id", *context_columns]
+    for batch in pq.ParquetFile(feature_path).iter_batches(columns=columns):
+        values = batch.to_pydict()
+        for index, (row_name, screen_id) in enumerate(
+            zip(values["source_row_name"], values["screen_id"], strict=True)
+        ):
+            source_context = pool.get((_clean(row_name), _clean(screen_id)))
+            if source_context is None:
+                missing_join_count += 1
+                continue
+            joined_rows += 1
+            for column in context_columns:
+                if _clean(values[column][index]) != _clean(source_context.get(column)):
+                    mismatch_counts[column] += 1
+    return {
+        "pool_context_joined_feature_rows": joined_rows,
+        "pool_context_missing_join_count": missing_join_count,
+        "pool_context_mismatch_counts": mismatch_counts,
+    }
 
 
 def _base_feature(row: pd.Series, crosswalk: dict[str, dict[str, Any]], pool: dict[tuple[str, str], dict[str, Any]]) -> dict[str, Any]:
     broad_id = _clean(row.get("broad_id"))
     mapping = crosswalk[broad_id]
     depmap_id = _clean(row.get("depmap_id"))
+    source_row_name = _clean(row.get("row_name"))
     screen_id = _clean(row.get("screen_id"))
-    context = pool.get((depmap_id, screen_id), {})
+    context = pool.get((source_row_name, screen_id), {})
     return {
         "cell_line_id": depmap_id,
         "molecule_id": mapping["molecule_id"],
         "depmap_id": depmap_id,
+        "source_row_name": source_row_name,
         "broad_id": broad_id,
         "source_molecule_name": _clean(row.get("name")) or mapping["source_name"],
         "source_smiles": _clean(row.get("smiles")) or mapping["source_smiles"],
@@ -240,7 +280,7 @@ def build_prism_20q2(
     crosswalk_records = crosswalk.set_index("broad_id").to_dict("index")
     mapped_broad_ids = set(mapped_crosswalk["broad_id"])
     pool_frame = _pool_lookup(pool_path)
-    pool_records = pool_frame.set_index(["depmap_id", "screen_id"]).to_dict("index") if not pool_frame.empty else {}
+    pool_records = pool_frame.set_index(["row_name", "screen_id"]).to_dict("index") if not pool_frame.empty else {}
 
     _write_parquet(crosswalk, output_dir / "mapping" / "broad_id_to_molecule.parquet", list(crosswalk.columns))
     quarantine = crosswalk[crosswalk["mapping_status"] != "mapped_unique_inchikey"].copy()
@@ -253,7 +293,6 @@ def build_prism_20q2(
         feature = _base_feature(row, crosswalk_records, pool_records)
         feature.update({
             "record_type": "curve_fit", "dose_um": None, "exposure_time_hours": None,
-            "source_row_name": _clean(row.get("row_name")),
             "assay": "pooled cell-line dose-response viability; four-parameter log-logistic fit",
             "passed_str_profiling": _bool(row.get("passed_str_profiling")),
             "upper_limit": pd.to_numeric(row.get("upper_limit"), errors="coerce"),
@@ -321,7 +360,7 @@ def build_prism_20q2(
                 broad_ids = metadata["broad_id"].map(_clean)
                 screens = metadata["screen_id"].map(_clean)
                 molecule_id_values = broad_ids.map(lambda value: crosswalk_records[value]["molecule_id"])
-                contexts = [pool_records.get((depmap_id, screen), {}) for screen in screens]
+                contexts = [pool_records.get((source_row_name, screen), {}) for screen in screens]
                 names = metadata["name"].map(_clean) if "name" in metadata else pd.Series("", index=metadata.index)
                 smiles = metadata["smiles"].map(_clean) if "smiles" in metadata else pd.Series("", index=metadata.index)
                 feature_batch = pd.DataFrame({
@@ -365,24 +404,45 @@ def build_prism_20q2(
     finally:
         feature_writer.close()
 
+    pool_readback = _readback_pool_context(feature_path, pool_records) if pool_path else {
+        "pool_context_joined_feature_rows": 0,
+        "pool_context_missing_join_count": 0,
+        "pool_context_mismatch_counts": {
+            "pool_id": 0, "minipool_id": 0, "detection_pool": 0, "culture": 0,
+        },
+    }
+    pool_context_pass = (
+        not pool_path
+        or (
+            pool_readback["pool_context_joined_feature_rows"] == feature_rows
+            and pool_readback["pool_context_missing_join_count"] == 0
+            and not any(pool_readback["pool_context_mismatch_counts"].values())
+        )
+    )
+
     selected = curve_features[
         curve_features["is_preferred_screen"]
         & curve_features["passed_str_profiling"]
         & (pd.to_numeric(curve_features["auc"], errors="coerce") <= config.auc_threshold)
         & (pd.to_numeric(curve_features["r2"], errors="coerce") >= config.min_r2)
-    ].sort_values(["cell_line_id", "molecule_id", "screen_id", "broad_id"], kind="stable")
-    selected = selected.drop_duplicates(["cell_line_id", "molecule_id"], keep="first")
+    ].sort_values(
+        ["cell_line_id", "molecule_id", "screen_id", "broad_id", "source_row_name", "record_id"],
+        kind="stable",
+    )
     edges: list[dict[str, Any]] = []
     evidence: list[dict[str, Any]] = []
     threshold_rule = f"preferred screen (MTS010 when available), passed STR, AUC <= {config.auc_threshold}, R2 >= {config.min_r2}"
-    for _, row in selected.iterrows():
+    selected_pairs = selected.drop_duplicates(["cell_line_id", "molecule_id"], keep="first")
+    for _, row in selected_pairs.iterrows():
         x_id, y_id = str(row["cell_line_id"]), str(row["molecule_id"])
-        edge_key = f"{RELATION}|{x_id}|{y_id}"
         edges.append({
             "x_id": x_id, "x_type": "cell_line", "y_id": y_id, "y_type": "molecule",
             "relation": RELATION, "display_relation": "responds to molecule",
             "source": SOURCE, "credibility": 3,
         })
+    for _, row in selected.iterrows():
+        x_id, y_id = str(row["cell_line_id"]), str(row["molecule_id"])
+        edge_key = f"{RELATION}|{x_id}|{y_id}"
         evidence.append({
             "edge_key": edge_key, "relation": RELATION, "x_id": x_id, "x_type": "cell_line",
             "y_id": y_id, "y_type": "molecule", "evidence_type": "experiment", "source": SOURCE,
@@ -414,6 +474,11 @@ def build_prism_20q2(
     endpoint_pass = set(edge_frame.get("x_id", pd.Series(dtype=str))).issubset(cells) and set(edge_frame.get("y_id", pd.Series(dtype=str))).issubset(molecule_ids)
     duplicate_edge_count = int(edge_frame.duplicated(["x_id", "y_id", "relation"]).sum())
     duplicate_evidence_record_count = int(evidence_frame.duplicated(["source_record_id"]).sum())
+    eligible_pair_sizes = selected.groupby(["cell_line_id", "molecule_id"], sort=False).size()
+    eligible_multi_record_pair_count = int((eligible_pair_sizes > 1).sum())
+    selected_record_ids = set(selected["record_id"].astype(str))
+    evidence_record_ids = set(evidence_frame.get("source_record_id", pd.Series(dtype=str)).astype(str))
+    qualifying_evidence_parity = selected_record_ids == evidence_record_ids and len(evidence_frame) == len(selected)
     unsupported_edge_count = len(candidate_edge_keys - evidence_edge_keys)
     evidence_without_edge_count = len(evidence_edge_keys - candidate_edge_keys)
     curve_feature_parity = len(curve_features) == len(curve)
@@ -424,13 +489,19 @@ def build_prism_20q2(
             and duplicate_feature_record_count == 0
             and duplicate_edge_count == 0 and duplicate_evidence_record_count == 0
             and unsupported_edge_count == 0 and evidence_without_edge_count == 0
-            and curve_feature_parity
+            and curve_feature_parity and qualifying_evidence_parity and pool_context_pass
         ),
         "endpoint_antijoin_count": 0 if endpoint_pass else 1,
         "edge_rows": len(edge_frame), "evidence_rows": len(evidence_frame),
         "duplicate_feature_record_count": duplicate_feature_record_count,
         "duplicate_edge_count": duplicate_edge_count,
         "duplicate_evidence_record_count": duplicate_evidence_record_count,
+        "eligible_curve_record_count": len(selected),
+        "eligible_multi_record_pair_count": eligible_multi_record_pair_count,
+        "qualifying_evidence_parity": qualifying_evidence_parity,
+        "pool_context_gate_applied": pool_path is not None,
+        "pool_context_pass": pool_context_pass,
+        **pool_readback,
         "unsupported_edge_count": unsupported_edge_count,
         "evidence_without_edge_count": evidence_without_edge_count,
         "feature_endpoint_antijoin_count": feature_endpoint_antijoin_count,
@@ -446,7 +517,10 @@ def build_prism_20q2(
         "mapped_curve_rows": len(curve_features), "feature_rows": feature_rows,
         "mapped_broad_ids": len(mapped_crosswalk), "quarantined_broad_ids": len(quarantine),
         "edge_rows": len(edge_frame), "evidence_rows": len(evidence_frame),
-        "threshold_rule": threshold_rule, "validation": validation,
+        "threshold_rule": threshold_rule,
+        "pool_context_key": ["source_row_name", "screen_id"],
+        "evidence_multiplicity_policy": "one evidence row per qualifying source curve; canonical edges deduplicated by cell-line/molecule pair",
+        "validation": validation,
         "scope": "staged-only; no canonical KG or LaminDB write; independent of CRISPR essentiality",
         "source_limitations": ["20Q2 secondary only; 24Q2 mono-dose excluded", "source does not publish exposure time in these files", "convergence field is documented but absent from the published curve-parameter CSV", "viability is derived from published log2 fold change as documented by the release"],
     }
