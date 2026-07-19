@@ -429,7 +429,7 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
                 "mutation",
                 "G-C2",
                 "gene",
-                functional_support="conflicting",
+                functional_support="crispr",
             )
         ],
     )
@@ -443,8 +443,9 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
                 "mutation",
                 "D-C1",
                 "disease",
-                disease_support="pathogenic",
-                functional_support="conflicting",
+                disease_support="conflicting",
+                clinical_significance="pathogenic",
+                functional_support="clinvar",
                 isoform_id="I-C1",
             ),
             _edge(
@@ -476,6 +477,7 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
                 "M-C5",
                 "molecule",
                 response_direction="conflicting",
+                direction="increased_response",
                 response_category="efficacy",
             )
         ],
@@ -496,6 +498,33 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
                 "relation": target["relation"],
                 "evidence_key": "action-activate",
                 "action_sign": "activate",
+            },
+        ],
+        layer="evidence",
+    )
+    c2_endpoint = _edge(
+        "mutation_in_gene",
+        "V-C2",
+        "mutation",
+        "G-C2",
+        "gene",
+        functional_support="crispr",
+    )
+    _write_relation(
+        kg,
+        "mutation_in_gene",
+        [
+            {
+                "edge_key": c2_endpoint["edge_key"],
+                "relation": c2_endpoint["relation"],
+                "evidence_key": "functional-crispr",
+                "functional_support": "crispr",
+            },
+            {
+                "edge_key": c2_endpoint["edge_key"],
+                "relation": c2_endpoint["relation"],
+                "evidence_key": "functional-none",
+                "functional_support": "none",
             },
         ],
         layer="evidence",
