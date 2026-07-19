@@ -56,6 +56,7 @@ When creating Kanban cards, include: target relation/artifact, source files, all
 
 - Relation names must match source-native assertion and endpoint type.
 - Edges are deduplicated graph assertions; evidence rows carry source-specific predicates, scores, studies, assays, and provenance.
+- Causal mechanism, effect direction, pharmacological action, pathogenicity, and response polarity are typed features of existing broad edge tables, with row-level assertions and conflicts in the corresponding evidence tables; do not create GoF/LoF/inhibitor/risk relation-name variants. See `docs/causal_edge_feature_model.md`.
 - Do not create placeholder Parquets just to satisfy schema coverage.
 - Use precise status vocabulary: `design done`, `pilot accepted`, `staged-only`, `review-required`, `validated`, `canonical promoted`, `production/full done`.
 
