@@ -396,7 +396,14 @@ def test_c3_conflicting_evidence_context_is_retained_only_as_a_hypothesis(tmp_pa
 
 def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_path: Path) -> None:
     kg = tmp_path / "kg"
-    target = _edge("molecule_targets_gene", "M-H1", "molecule", "G-H1", "gene")
+    target = _edge(
+        "molecule_targets_gene",
+        "M-H1",
+        "molecule",
+        "G-H1",
+        "gene",
+        action_sign="inhibit",
+    )
     _write_relation(
         kg,
         "mutation_causes_protein_change",

@@ -354,18 +354,27 @@ def _is_conflicting(value: Any) -> bool:
 
 
 def _value(row: Mapping[str, Any], *names: str) -> str:
+    evidence_conflicts = row.get("support_evidence_conflicts", {})
+    if not isinstance(evidence_conflicts, Mapping):
+        evidence_conflicts = {}
+    values: set[str] = set()
     for name in names:
         value = row.get(name)
-        if _is_conflicting(value):
-            continue
+        if _is_conflicting(value) or name in evidence_conflicts:
+            return ""
         if isinstance(value, (list, tuple, set)):
-            values = [str(item).strip() for item in value if item is not None and str(item).strip()]
-            if len(values) == 1:
-                return values[0].lower()
+            items = {
+                str(item).strip().lower()
+                for item in value
+                if item is not None and str(item).strip()
+            }
+            if len(items) > 1:
+                return ""
+            values.update(items)
             continue
         if value is not None and str(value).strip():
-            return str(value).strip().lower()
-    return ""
+            values.add(str(value).strip().lower())
+    return next(iter(values)) if len(values) == 1 else ""
 
 
 def _is_true(value: Any) -> bool:
