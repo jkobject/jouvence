@@ -208,12 +208,10 @@ def transform_relation(
     affected = stats["ncbi_x_rows"] + stats["ncbi_y_rows"]
     target.parent.mkdir(parents=True, exist_ok=True)
     quarantine.parent.mkdir(parents=True, exist_ok=True)
-    if not affected:
-        if evidence:
-            shutil.copy2(source, target)
-            return {**stats, "after_rows": stats["rows"], "quarantine_rows": 0, "deduplicated_rows": 0}
-        src = quote(source)
-        duplicate_rows = int(
+    src = quote(source)
+    source_preexisting_duplicate_rows = 0
+    if not evidence:
+        source_preexisting_duplicate_rows = int(
             con.execute(
                 f"""
                 SELECT coalesce(sum(n - 1), 0) FROM (
@@ -223,31 +221,29 @@ def transform_relation(
                 """
             ).fetchone()[0]
         )
-        if not duplicate_rows:
-            shutil.copy2(source, target)
-            return {**stats, "after_rows": stats["rows"], "quarantine_rows": 0, "deduplicated_rows": 0}
-        order_cols = [name for name in ["credibility", "source", "display_relation"] if name in columns]
-        order = ", ".join(f'"{name}" DESC NULLS LAST' for name in order_cols) or "x_id"
-        con.execute(
-            f"""
-            COPY (
-              SELECT * EXCLUDE (_dedup_rank) FROM (
-                SELECT *, row_number() OVER (
-                  PARTITION BY relation, x_id, y_id ORDER BY {order}
-                ) AS _dedup_rank
-                FROM read_parquet('{src}')
-              ) WHERE _dedup_rank=1
-            ) TO '{quote(target)}' (FORMAT PARQUET, COMPRESSION ZSTD)
-            """
-        )
+    if not affected:
+        shutil.copy2(source, target)
+        copied_byte_for_byte = sha256(source) == sha256(target)
         return {
             **stats,
-            "after_rows": stats["rows"] - duplicate_rows,
+            "affected_rows": 0,
+            "after_rows": stats["rows"],
             "quarantine_rows": 0,
-            "deduplicated_rows": duplicate_rows,
+            "source_preexisting_duplicate_rows": source_preexisting_duplicate_rows,
+            "remap_collision_rows": 0,
+            "deduplicated_rows": 0,
+            "copied_byte_for_byte": copied_byte_for_byte,
+            "source_sha256": sha256(source),
+            "candidate_sha256": sha256(target),
+            "lineage_conservation_ok": copied_byte_for_byte,
         }
 
-    src = quote(source)
+    if source_preexisting_duplicate_rows:
+        raise RuntimeError(
+            f"pre-existing duplicate edge identities in affected relation {source}: "
+            f"{source_preexisting_duplicate_rows} excess rows"
+        )
+
     dst = quote(target)
     qpath = quote(quarantine)
     x_map, y_map, x_join, y_join = endpoint_expressions(columns)
@@ -275,7 +271,7 @@ def transform_relation(
     source_endpoint_cols = (
         ", i.x_id AS canonicalization_source_x_id, i.y_id AS canonicalization_source_y_id"
         if evidence
-        else ""
+        else ", i.x_id AS _canonicalization_source_x_id, i.y_id AS _canonicalization_source_y_id"
     )
     edge_key_expression = ""
     if "edge_key" in columns:
@@ -297,28 +293,26 @@ def transform_relation(
       WHERE NOT ({unresolved})
     """
     if evidence:
-        # Exact post-remap duplicate evidence is one support row; retain every
-        # source-native endpoint spelling in deterministic alias columns.
-        group_cols = [
-            "edge_key", "x_id", "y_id", *[
-                name for name in columns if name not in {"edge_key", "x_id", "y_id"}
-            ]
-        ]
-        select_cols = ", ".join(f'"{name}"' for name in group_cols)
-        grouped = f"""
-          SELECT {select_cols},
-            string_agg(DISTINCT canonicalization_source_x_id, '|' ORDER BY canonicalization_source_x_id) AS canonicalization_source_x_id,
-            string_agg(DISTINCT canonicalization_source_y_id, '|' ORDER BY canonicalization_source_y_id) AS canonicalization_source_y_id
-          FROM ({transformed}) GROUP BY ALL
-        """
-        con.execute(f"COPY ({grouped}) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)")
+        # Evidence rows are source assertions, not graph identities. Preserve
+        # every resolved row and retain its exact pre-remap endpoint lineage.
+        con.execute(f"COPY ({transformed}) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)")
     else:
         order_cols = [name for name in ["credibility", "source", "display_relation"] if name in columns]
-        order = ", ".join(f'"{name}" DESC NULLS LAST' for name in order_cols) or "x_id"
+        order = ", ".join(
+            [
+                *(f'"{name}" DESC NULLS LAST' for name in order_cols),
+                '"_canonicalization_source_x_id" ASC',
+                '"_canonicalization_source_y_id" ASC',
+            ]
+        )
         con.execute(
             f"""
             COPY (
-              SELECT * EXCLUDE (_dedup_rank) FROM (
+              SELECT * EXCLUDE (
+                _dedup_rank,
+                _canonicalization_source_x_id,
+                _canonicalization_source_y_id
+              ) FROM (
                 SELECT *, row_number() OVER (
                   PARTITION BY relation, x_id, y_id ORDER BY {order}
                 ) AS _dedup_rank
@@ -329,11 +323,21 @@ def transform_relation(
         )
     after = int(con.execute(f"SELECT count(*) FROM read_parquet('{dst}')").fetchone()[0])
     quarantined = int(con.execute(f"SELECT count(*) FROM read_parquet('{qpath}')").fetchone()[0])
+    remap_collision_rows = stats["rows"] - quarantined - after
+    lineage_conservation_ok = (
+        stats["rows"] == after + quarantined + remap_collision_rows
+        and remap_collision_rows >= 0
+    )
     return {
         **stats,
+        "affected_rows": affected,
         "after_rows": after,
         "quarantine_rows": quarantined,
-        "deduplicated_rows": stats["rows"] - quarantined - after,
+        "source_preexisting_duplicate_rows": source_preexisting_duplicate_rows,
+        "remap_collision_rows": remap_collision_rows,
+        "deduplicated_rows": remap_collision_rows,
+        "copied_byte_for_byte": False,
+        "lineage_conservation_ok": lineage_conservation_ok,
     }
 
 
@@ -357,6 +361,34 @@ def validate_candidate(
     for surface in ("edges", "evidence"):
         for path in sorted((output / surface).glob("*.parquet")):
             stats = relation_stats(con, path)
+            report = relation_reports[surface][path.stem]
+            row_conservation_ok = report.get("rows") == (
+                report.get("after_rows", -1)
+                + report.get("quarantine_rows", -1)
+                + report.get("remap_collision_rows", -1)
+            )
+            if not row_conservation_ok:
+                failures.append(f"{surface}/{path.name}: row_conservation_failed")
+            if stats["rows"] != report.get("after_rows"):
+                failures.append(f"{surface}/{path.name}: reported_after_rows_mismatch")
+            if report.get("deduplicated_rows") != report.get("remap_collision_rows"):
+                failures.append(f"{surface}/{path.name}: collision_count_mismatch")
+            if not report.get("lineage_conservation_ok", False):
+                failures.append(f"{surface}/{path.name}: lineage_conservation_failed")
+            if report.get("affected_rows") == 0:
+                byte_preserved = (
+                    report.get("copied_byte_for_byte", False)
+                    and report.get("source_sha256") == report.get("candidate_sha256")
+                    and report.get("after_rows") == report.get("rows")
+                    and report.get("quarantine_rows") == 0
+                    and report.get("remap_collision_rows") == 0
+                )
+                if not byte_preserved:
+                    failures.append(f"{surface}/{path.name}: unaffected_relation_not_byte_preserved")
+            elif report.get("source_preexisting_duplicate_rows", 0):
+                failures.append(f"{surface}/{path.name}: preexisting_duplicates_in_affected_relation")
+            if surface == "evidence" and report.get("remap_collision_rows"):
+                failures.append(f"{surface}/{path.name}: evidence_rows_not_preserved")
             bad = sum(stats[key] for key in ("ncbi_x_rows", "ncbi_y_rows", "nonhuman_x_rows", "nonhuman_y_rows"))
             if bad:
                 failures.append(f"{surface}/{path.name}: noncanonical_gene_endpoints={bad}")
@@ -408,7 +440,7 @@ def validate_candidate(
                             )
                 relation_reports["edges"][path.stem]["duplicate_edge_identities"] = duplicate_edges
                 relation_reports["edges"][path.stem]["endpoint_antijoins"] = endpoint_antijoins
-                if duplicate_edges:
+                if duplicate_edges and report.get("affected_rows", 0):
                     failures.append(f"edges/{path.name}: duplicate_identities={duplicate_edges}")
     for relation in sorted(set(p.stem for p in (output / "evidence").glob("*.parquet"))):
         edge = output / "edges" / f"{relation}.parquet"

@@ -296,7 +296,23 @@ def load_gene_id_map(path: Path) -> dict[str, str]:
     missing = sorted(required - set(frame.columns))
     if missing:
         raise ValueError(f"gene ID map missing columns: {missing}")
-    accepted = frame[frame["canonical_ensembl_gene_id"].notna()].copy()
+    accepted_statuses = {"accepted_1to1", "retired_replaced_1to1"}
+    is_accepted = frame["mapping_status"].isin(accepted_statuses)
+    inconsistent_rejected = ~is_accepted & frame["canonical_ensembl_gene_id"].notna()
+    if bool(inconsistent_rejected.any()):
+        statuses = sorted(frame.loc[inconsistent_rejected, "mapping_status"].astype(str).unique())
+        raise ValueError(
+            f"gene ID map has non-accepted statuses with canonical ENSG IDs: {statuses}"
+        )
+    accepted = frame.loc[is_accepted].copy()
+    strict_ensg = (
+        accepted["canonical_ensembl_gene_id"]
+        .astype("string")
+        .str.fullmatch(r"ENSG[0-9]+")
+        .fillna(False)
+    )
+    if not bool(strict_ensg.all()):
+        raise ValueError("accepted gene ID map rows must contain strict ENSG identifiers")
     if accepted["ncbi_gene_id"].astype(str).duplicated().any():
         raise ValueError("gene ID map contains duplicate accepted NCBI IDs")
     return dict(

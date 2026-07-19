@@ -41,7 +41,7 @@ Across every relation type, the source had 725,891 NCBI `x` endpoint occurrences
 | Edges | 101,744,668 | 99,903,239 | 40,513 | 1,639,241 | 161,675 |
 | Evidence | 76,565,213 | 76,401,411 | 2,127 | 0 | 161,675 |
 
-Deduplication retains one deterministic graph assertion for each exact `(relation, x_id, y_id)` identity. Source evidence multiplicity remains intact and is re-keyed to the canonical edge identity. Quarantine Parquets preserve every unresolved row plus `_quarantine_reason`.
+Deduplication retains one deterministic graph assertion for each exact `(relation, x_id, y_id)` identity. Source evidence multiplicity remains intact and is re-keyed to the canonical edge identity. Quarantine Parquets preserve every unresolved row plus `quarantine_reason`.
 
 ## Validation and rollback contract
 
