@@ -336,6 +336,266 @@ def test_fail_closed_gate_fields_can_be_supplied_by_derivation_evidence(tmp_path
     assert candidate.inference_strength == "strong"
 
 
+def test_c3_conflicting_evidence_context_is_retained_only_as_a_hypothesis(tmp_path: Path) -> None:
+    kg = tmp_path / "kg"
+    premises = (
+        _edge("mutation_overlaps_enhancer", "V", "mutation", "E", "enhancer"),
+        _edge(
+            "enhancer_regulates_gene",
+            "E",
+            "enhancer",
+            "G",
+            "gene",
+            regulatory_support="mpra",
+            alternative_targets="G",
+        ),
+        _edge(
+            "mutation_associated_disease",
+            "V",
+            "mutation",
+            "D",
+            "disease",
+            disease_support="fine_mapped",
+            functional_support="colocalization",
+        ),
+    )
+    for edge in premises:
+        relation = edge["relation"]
+        _write_relation(kg, relation, [edge])
+        _write_relation(
+            kg,
+            relation,
+            [
+                {
+                    "edge_key": edge["edge_key"],
+                    "relation": relation,
+                    "evidence_key": f"{relation}-conflicting-biosamples",
+                    "biosample": ["liver", "brain"],
+                },
+            ],
+            layer="evidence",
+        )
+
+    manifest = build_inferred_edges(
+        _config(kg, tmp_path / "out", "variant_enhancer_gene_disease_v1")
+    )
+    candidate = pd.read_parquet(
+        tmp_path
+        / "out"
+        / "edges_inferred"
+        / "disease_associated_gene"
+        / "variant_enhancer_gene_disease_v1.parquet"
+    ).iloc[0]
+    context = json.loads(candidate.context_intersection)
+
+    assert candidate.inference_strength == "hypothesis"
+    assert manifest["counts_by_rule"]["variant_enhancer_gene_disease_v1"]["strong_rows"] == 0
+    assert context["context_conflicts"]["biosample"] == ["brain", "liver"]
+    assert "conflicting" not in context.values()
+
+
+def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_path: Path) -> None:
+    kg = tmp_path / "kg"
+    target = _edge("molecule_targets_gene", "M-H1", "molecule", "G-H1", "gene")
+    _write_relation(
+        kg,
+        "mutation_causes_protein_change",
+        [
+            _edge(
+                "mutation_causes_protein_change",
+                "V-C1",
+                "mutation",
+                "P-C1",
+                "protein",
+                consequence="protein_change",
+                isoform_id="I-C1",
+            )
+        ],
+    )
+    _write_relation(
+        kg,
+        "mutation_in_gene",
+        [
+            _edge(
+                "mutation_in_gene",
+                "V-C2",
+                "mutation",
+                "G-C2",
+                "gene",
+                functional_support="conflicting",
+            )
+        ],
+    )
+    _write_relation(
+        kg,
+        "mutation_associated_disease",
+        [
+            _edge(
+                "mutation_associated_disease",
+                "V-C1",
+                "mutation",
+                "D-C1",
+                "disease",
+                disease_support="pathogenic",
+                functional_support="conflicting",
+                isoform_id="I-C1",
+            ),
+            _edge(
+                "mutation_associated_disease",
+                "V-C2",
+                "mutation",
+                "D-C2",
+                "disease",
+                disease_support="pathogenic",
+            ),
+            _edge(
+                "mutation_associated_disease",
+                "V-C5",
+                "mutation",
+                "D-C5",
+                "disease",
+                disease_support="pathogenic",
+            ),
+        ],
+    )
+    _write_relation(
+        kg,
+        "mutation_affects_molecule_response",
+        [
+            _edge(
+                "mutation_affects_molecule_response",
+                "V-C5",
+                "mutation",
+                "M-C5",
+                "molecule",
+                response_direction="conflicting",
+                response_category="efficacy",
+            )
+        ],
+    )
+    _write_relation(kg, "molecule_targets_gene", [target])
+    _write_relation(
+        kg,
+        "molecule_targets_gene",
+        [
+            {
+                "edge_key": target["edge_key"],
+                "relation": target["relation"],
+                "evidence_key": "action-inhibit",
+                "action_sign": "inhibit",
+            },
+            {
+                "edge_key": target["edge_key"],
+                "relation": target["relation"],
+                "evidence_key": "action-activate",
+                "action_sign": "activate",
+            },
+        ],
+        layer="evidence",
+    )
+    _write_relation(
+        kg,
+        "disease_associated_gene",
+        [
+            _edge(
+                "disease_associated_gene",
+                "G-H1",
+                "gene",
+                "D-H1",
+                "disease",
+                mechanism_sign="gain_of_function",
+                causal_support=True,
+            )
+        ],
+    )
+
+    manifest = build_inferred_edges(
+        _config(
+            kg,
+            tmp_path / "out",
+            "variant_protein_disease_v1",
+            "variant_gene_disease_v1",
+            "pharmacogenomic_variant_drug_disease_v1",
+            "signed_target_mechanism_gene_drug_disease_v1",
+        )
+    )
+    c1 = pd.read_parquet(
+        tmp_path
+        / "out"
+        / "edges_inferred"
+        / "disease_associated_protein"
+        / "variant_protein_disease_v1.parquet"
+    )
+    c2 = pd.read_parquet(
+        tmp_path
+        / "out"
+        / "edges_inferred"
+        / "disease_associated_gene"
+        / "variant_gene_disease_v1.parquet"
+    )
+
+    assert set(c1.inference_strength) == {"hypothesis"}
+    assert set(c2.inference_strength) == {"hypothesis"}
+    assert manifest["counts_by_rule"]["pharmacogenomic_variant_drug_disease_v1"]["candidate_rows"] == 0
+    assert manifest["counts_by_rule"]["signed_target_mechanism_gene_drug_disease_v1"]["candidate_rows"] == 0
+    assert "pharmacogenomic_variant_drug_disease_v1" not in manifest["artifacts"]
+    assert "signed_target_mechanism_gene_drug_disease_v1" not in manifest["artifacts"]
+
+
+def test_zero_candidate_rerun_removes_both_rule_owned_parquets_and_manifest_inventory(
+    tmp_path: Path,
+) -> None:
+    populated = tmp_path / "populated"
+    empty = tmp_path / "empty"
+    output = tmp_path / "out"
+    _write_relation(
+        populated,
+        "mutation_in_gene",
+        [_edge("mutation_in_gene", "V", "mutation", "G", "gene")],
+    )
+    _write_relation(
+        populated,
+        "mutation_associated_disease",
+        [_edge("mutation_associated_disease", "V", "mutation", "D", "disease")],
+    )
+    _write_relation(
+        empty,
+        "mutation_in_gene",
+        [_edge("mutation_in_gene", "V1", "mutation", "G", "gene")],
+    )
+    _write_relation(
+        empty,
+        "mutation_associated_disease",
+        [_edge("mutation_associated_disease", "V2", "mutation", "D", "disease")],
+    )
+    edge_path = (
+        output
+        / "edges_inferred"
+        / "disease_associated_gene"
+        / "variant_gene_disease_v1.parquet"
+    )
+    evidence_path = (
+        output
+        / "evidence_inferred"
+        / "disease_associated_gene"
+        / "variant_gene_disease_v1.parquet"
+    )
+
+    first = build_inferred_edges(_config(populated, output, "variant_gene_disease_v1"))
+    assert first["counts_by_rule"]["variant_gene_disease_v1"]["candidate_rows"] == 1
+    assert edge_path.exists()
+    assert evidence_path.exists()
+
+    second = build_inferred_edges(_config(empty, output, "variant_gene_disease_v1"))
+
+    assert second["counts_by_rule"]["variant_gene_disease_v1"]["candidate_rows"] == 0
+    assert second["artifacts"] == {}
+    assert not edge_path.exists()
+    assert not evidence_path.exists()
+    assert not list((output / "edges_inferred").rglob("variant_gene_disease_v1.parquet"))
+    assert not list((output / "evidence_inferred").rglob("variant_gene_disease_v1.parquet"))
+
+
 def test_build_rejects_unbounded_input_snapshot_before_loading_rows(tmp_path: Path) -> None:
     kg = tmp_path / "kg"
     _write_relation(

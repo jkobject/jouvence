@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -227,6 +229,12 @@ def _clean(value: Any) -> Any:
             value = value.item()
         except (AttributeError, ValueError):
             pass
+    to_list = getattr(value, "tolist", None)
+    if callable(to_list):
+        try:
+            value = to_list()
+        except (AttributeError, ValueError):
+            pass
     if isinstance(value, (list, tuple)):
         return [_clean(item) for item in value]
     if isinstance(value, dict):
@@ -299,15 +307,27 @@ def _evidence_index(root: Path, relation: str, *, max_rows: int | None = None) -
             "treatment_context",
         ):
             value = row.get(field)
-            if value is not None and str(value).strip():
-                field_values.setdefault(edge_key, {}).setdefault(field, set()).add(str(value))
+            values = value if isinstance(value, (list, tuple, set)) else (value,)
+            for item in values:
+                if item is not None and str(item).strip():
+                    field_values.setdefault(edge_key, {}).setdefault(field, set()).add(str(item))
     result: dict[str, dict[str, Any]] = {}
     for edge_key, ids in identifiers.items():
         fields = {
-            field: next(iter(values)) if len(values) == 1 else "conflicting"
+            field: next(iter(values))
             for field, values in field_values.get(edge_key, {}).items()
+            if len(values) == 1
         }
-        result[edge_key] = {"ids": tuple(sorted(ids)), "fields": fields}
+        conflicts = {
+            field: tuple(sorted(values))
+            for field, values in field_values.get(edge_key, {}).items()
+            if len(values) > 1
+        }
+        result[edge_key] = {
+            "ids": tuple(sorted(ids)),
+            "fields": fields,
+            "conflicts": conflicts,
+        }
     return result
 
 
@@ -318,9 +338,31 @@ def _by(rows: Iterable[dict[str, Any]], key: str) -> Mapping[str, list[dict[str,
     return result
 
 
+def _is_conflicting(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() == SignStatus.CONFLICTING.value
+    if isinstance(value, Mapping):
+        return str(value.get("status", "")).strip().lower() == SignStatus.CONFLICTING.value
+    if isinstance(value, (list, tuple, set)):
+        values = {
+            str(item).strip().lower()
+            for item in value
+            if item is not None and str(item).strip()
+        }
+        return SignStatus.CONFLICTING.value in values or len(values) > 1
+    return False
+
+
 def _value(row: Mapping[str, Any], *names: str) -> str:
     for name in names:
         value = row.get(name)
+        if _is_conflicting(value):
+            continue
+        if isinstance(value, (list, tuple, set)):
+            values = [str(item).strip() for item in value if item is not None and str(item).strip()]
+            if len(values) == 1:
+                return values[0].lower()
+            continue
         if value is not None and str(value).strip():
             return str(value).strip().lower()
     return ""
@@ -331,7 +373,14 @@ def _is_true(value: Any) -> bool:
 
 
 def _compatible(rows: Iterable[Mapping[str, Any]], keys: Iterable[str] = _CONTEXT_KEYS) -> bool:
+    rows = tuple(rows)
     for key in keys:
+        if any(
+            _is_conflicting(row.get(key))
+            or key in row.get("support_evidence_conflicts", {})
+            for row in rows
+        ):
+            return False
         values = {str(row[key]) for row in rows if row.get(key) is not None and str(row.get(key)).strip()}
         if len(values) > 1:
             return False
@@ -341,10 +390,26 @@ def _compatible(rows: Iterable[Mapping[str, Any]], keys: Iterable[str] = _CONTEX
 def _context(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     rows = tuple(rows)
     result: dict[str, Any] = {}
+    conflicts: dict[str, set[str]] = {}
     for key in _CONTEXT_KEYS:
-        values = sorted({str(row[key]) for row in rows if row.get(key) is not None and str(row.get(key)).strip()})
-        if values:
-            result[key] = values[0] if len(values) == 1 else values
+        values: set[str] = set()
+        for row in rows:
+            value = row.get(key)
+            if _is_conflicting(value):
+                conflicts.setdefault(key, set())
+            elif value is not None and str(value).strip():
+                values.add(str(value))
+            evidence_conflicts = row.get("support_evidence_conflicts", {}).get(key, ())
+            if evidence_conflicts:
+                conflicts.setdefault(key, set()).update(str(item) for item in evidence_conflicts)
+        sorted_values = sorted(values)
+        if sorted_values:
+            result[key] = sorted_values[0] if len(sorted_values) == 1 else sorted_values
+    if conflicts:
+        result["context_conflicts"] = {
+            key: sorted(values)
+            for key, values in sorted(conflicts.items())
+        }
     return result
 
 
@@ -576,6 +641,50 @@ def _registry_json() -> list[dict[str, Any]]:
     ]
 
 
+def _replace_parquet_pair(
+    edge_path: Path,
+    edge_rows: list[dict[str, Any]],
+    evidence_path: Path,
+    evidence_rows: list[dict[str, Any]],
+) -> None:
+    """Replace or remove a rule-owned edge/evidence pair with rollback on failure."""
+    paths_and_rows = ((edge_path, edge_rows), (evidence_path, evidence_rows))
+    transaction_id = uuid.uuid4().hex
+    temporary: dict[Path, Path] = {}
+    backups: dict[Path, Path] = {}
+    installed: set[Path] = set()
+    try:
+        for path, rows in paths_and_rows:
+            if not rows:
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary_path = path.with_name(f".{path.name}.{transaction_id}.tmp")
+            pd.DataFrame(rows).to_parquet(temporary_path, index=False)
+            temporary[path] = temporary_path
+        for path, _rows in paths_and_rows:
+            if path.exists():
+                backup_path = path.with_name(f".{path.name}.{transaction_id}.bak")
+                os.replace(path, backup_path)
+                backups[path] = backup_path
+        for path, _rows in paths_and_rows:
+            if path in temporary:
+                os.replace(temporary[path], path)
+                installed.add(path)
+    except Exception:
+        for path in installed:
+            path.unlink(missing_ok=True)
+        for path, backup_path in backups.items():
+            if backup_path.exists():
+                os.replace(backup_path, path)
+        raise
+    else:
+        for backup_path in backups.values():
+            backup_path.unlink(missing_ok=True)
+    finally:
+        for temporary_path in temporary.values():
+            temporary_path.unlink(missing_ok=True)
+
+
 def build_inferred_edges(config: BuildConfig) -> dict[str, Any]:
     """Build a bounded, deterministic staged inferred layer from an immutable snapshot."""
     if not config.kg_snapshot_id or "immutable" not in config.kg_snapshot_id.lower() and not config.kg_generations:
@@ -615,6 +724,10 @@ def build_inferred_edges(config: BuildConfig) -> dict[str, Any]:
             evidence = evidence_by_relation[relation].get(str(row["edge_key"]), {})
             row["support_evidence_ids"] = list(evidence.get("ids", ()))
             row["support_evidence_fields"] = dict(evidence.get("fields", {}))
+            row["support_evidence_conflicts"] = {
+                field: list(values)
+                for field, values in evidence.get("conflicts", {}).items()
+            }
             for field, value in evidence.get("fields", {}).items():
                 row.setdefault(field, value)
     counts_by_rule: dict[str, dict[str, int]] = {}
@@ -638,32 +751,29 @@ def build_inferred_edges(config: BuildConfig) -> dict[str, Any]:
             {key: row[key] for key in ("x_id", "y_id", "inference_strength", "canonical_observed_overlap", "derivation_hash")}
             for row in sorted(finalized, key=lambda item: (item["x_id"], item["y_id"], item["derivation_hash"]))[: config.sample_limit]
         ]
+        edge_path = config.output_root / "edges_inferred" / rule.conclusion.relation / f"{rule_id}.parquet"
+        evidence_path = config.output_root / "evidence_inferred" / rule.conclusion.relation / f"{rule_id}.parquet"
+        evidence_rows = [
+            {
+                "inferred_edge_key": row["edge_key"],
+                "derivation_hash": row["derivation_hash"],
+                "relation": row["relation"],
+                "x_id": row["x_id"],
+                "y_id": row["y_id"],
+                "inference_rule_id": row["inference_rule_id"],
+                "support_edge_ids_or_hashes": row["support_edge_ids_or_hashes"],
+                "support_evidence_ids_or_hashes": row["support_evidence_ids_or_hashes"],
+                "full_path": row["full_path"],
+                "kg_snapshot_id": row["kg_snapshot_id"],
+                "kg_generations": row["kg_generations"],
+                "context_intersection": row["context_intersection"],
+                "sign_status": row["sign_status"],
+                "inference_strength": row["inference_strength"],
+            }
+            for row in finalized
+        ]
+        _replace_parquet_pair(edge_path, finalized, evidence_path, evidence_rows)
         if finalized:
-            edge_path = config.output_root / "edges_inferred" / rule.conclusion.relation / f"{rule_id}.parquet"
-            evidence_path = config.output_root / "evidence_inferred" / rule.conclusion.relation / f"{rule_id}.parquet"
-            edge_path.parent.mkdir(parents=True, exist_ok=True)
-            evidence_path.parent.mkdir(parents=True, exist_ok=True)
-            pd.DataFrame(finalized).to_parquet(edge_path, index=False)
-            evidence_rows = [
-                {
-                    "inferred_edge_key": row["edge_key"],
-                    "derivation_hash": row["derivation_hash"],
-                    "relation": row["relation"],
-                    "x_id": row["x_id"],
-                    "y_id": row["y_id"],
-                    "inference_rule_id": row["inference_rule_id"],
-                    "support_edge_ids_or_hashes": row["support_edge_ids_or_hashes"],
-                    "support_evidence_ids_or_hashes": row["support_evidence_ids_or_hashes"],
-                    "full_path": row["full_path"],
-                    "kg_snapshot_id": row["kg_snapshot_id"],
-                    "kg_generations": row["kg_generations"],
-                    "context_intersection": row["context_intersection"],
-                    "sign_status": row["sign_status"],
-                    "inference_strength": row["inference_strength"],
-                }
-                for row in finalized
-            ]
-            pd.DataFrame(evidence_rows).to_parquet(evidence_path, index=False)
             artifacts[rule_id] = {"edges_inferred": str(edge_path), "evidence_inferred": str(evidence_path)}
 
     manifest = {

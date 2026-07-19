@@ -15,7 +15,9 @@ Every registry entry declares typed/directed premises and conclusion, epistemic 
 
 The final approved allowlist explicitly excludes all former structural controls: D1 ontology closure, D2 HPO generalization, D3 gene→transcript→protein product, and Reactome closure. C4 TF→enhancer→gene, H3 cell-line response→disease, H4 synthetic-rescue/interaction, and PRISM are also excluded. PRISM remains a separate observed cell-line→molecule dataset.
 
-The engine refuses unknown rules, canonical `edges/` or `evidence/` output roots, output inside the immutable input snapshot, and input files above the configured row bound. Empty rules produce no placeholder Parquet. Evidence metadata can satisfy gates only when values are non-conflicting; conflicts remain fail-closed.
+The engine refuses unknown rules, canonical `edges/` or `evidence/` output roots, output inside the immutable input snapshot, and input files above the configured row bound. Each requested rule transactionally replaces its owned edge/evidence pair on every run. Empty rules produce no placeholder Parquet and remove any pair left by an earlier snapshot, so the manifest inventory cannot retain stale rule output.
+
+Evidence metadata can satisfy gates only when values are non-conflicting. Internally multi-valued evidence is represented separately as `support_evidence_conflicts`, never collapsed into an ordinary gate value. Literal `conflicting` values and structured conflicts fail closed in context, compatibility, sign, and strong-inference consumers. A C3 path whose three premises each contain incompatible liver/brain biosample evidence is retained only as a weak `hypothesis`, with the conflict values preserved under `context_conflicts`; it cannot become `strong`.
 
 ## Output contract
 
@@ -62,6 +64,6 @@ This pilot is a deterministic producer/control run, not novelty validation. The 
 - zero missing full paths or snapshot IDs;
 - no canonical `edges/` or `evidence/` output.
 
-Automated coverage includes an exact six-rule allowlist with D1/D2/D3 absence, isoform/context mismatch, LD/intronic-only strong-gate rejection, C3 alternative-target uncertainty, pharmacogenomic resistance, missing/conflicting signs, H2 non-generation, RNA-not-protein reinforcement, excluded C4/H3/H4/PRISM/pathway motifs, metadata-only support, observed anti-join/absence semantics, immutable-input protection, bounded input enforcement, deterministic hashes, output pairing, and CLI behavior.
+Automated coverage includes an exact six-rule allowlist with D1/D2/D3 absence, isoform/context mismatch, LD/intronic-only strong-gate rejection, C3 alternative-target uncertainty and internally conflicting biosamples, pharmacogenomic resistance, missing/conflicting signs, H2 non-generation, RNA-not-protein reinforcement, excluded C4/H3/H4/PRISM/pathway motifs, metadata-only support, observed anti-join/absence semantics, immutable-input protection, bounded input enforcement, deterministic hashes, transactional same-root nonzero→zero edge/evidence replacement, output pairing, and CLI behavior.
 
 Independent review must judge biological rule semantics and false-positive guards before acceptance. No artifact is authorized for canonical promotion.
