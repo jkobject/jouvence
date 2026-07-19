@@ -47,15 +47,15 @@ Pilot output: `artifacts/staged/t_eb1c393b/pilot_output/`
 | Rule/family | Candidates | Strong | Conditional/hypothesis | Observed overlap | Fail-closed paths |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | C1 `variant_protein_disease_v1` | 681 | 0 | 681 hypothesis | 0 | 0 |
-| C2 `coding_pathogenic` | 409 | 0 | 409 conditional | included below | included below |
-| C2 `splice` | 88 | 0 | 88 conditional | included below | included below |
+| C2 `coding_pathogenic` | 400 | 0 | 400 conditional | included below | included below |
+| C2 `splice` | 129 | 0 | 129 conditional | included below | included below |
 | C2 `colocalized_eqtl` | 0 | 0 | 0 | 0 | included below |
 | C2 `l2g` | 0 | 0 | 0 | 0 | included below |
-| C2 total `variant_gene_disease_v1` | 497 | 0 | 497 conditional | 1 | 3,400 |
+| C2 total `variant_gene_disease_v1` | 529 | 0 | 529 conditional | 1 | 3,219 |
 | C5 `pharmacogenomic_variant_drug_disease_v1` | 0 | 0 | 0 | 0 | 1,426 |
 | H1/H2 gene `signed_target_mechanism_gene_drug_disease_v1` | 0 | 0 | 0 | 0 | 1,690 |
 
-The bounded snapshot contains qualifying coding and splice consequences, so C2 emits those families. It contains no complete colocalized-eQTL method/study/tissue attribution and no explicit L2G model/source/score attribution in the selected `mutation_in_gene` slice, so those families honestly report zero rather than weakening their gates. The 3,400 rejected C2 paths cover containment/generic non-qualifying consequence or otherwise missing/conflicting attribution. C5 produced no positive-efficacy candidate because response evidence was missing, conflicting, or not sensitivity/benefit-compatible in this bounded tranche. H1/H2 produced none because H1 lacked a complete opposite-known-sign causal mechanism path; expression did not generate candidates independently. Protein H1 was not run because the pinned canonical snapshot has no observed `molecule_targets_protein` or `disease_associated_protein` premise file; its semantics remain implemented and tested.
+The bounded snapshot contains qualifying coding and splice consequences, so C2 emits those families. It contains no complete colocalized-eQTL method/study/tissue attribution and no explicit L2G model/source/score attribution in the selected `mutation_in_gene` slice, so those families honestly report zero rather than weakening their gates. The 3,219 rejected C2 paths cover containment/generic non-qualifying consequence or otherwise missing/conflicting attribution. C5 produced no positive-efficacy candidate because response evidence was missing, conflicting, or not sensitivity/benefit-compatible in this bounded tranche. H1/H2 produced none because H1 lacked a complete opposite-known-sign causal mechanism path; expression did not generate candidates independently. Protein H1 was not run because the pinned canonical snapshot has no observed `molecule_targets_protein` or `disease_associated_protein` premise file; its semantics remain implemented and tested.
 
 This pilot is a deterministic producer/control run, not novelty validation. The top samples in `pilot_output/manifest/pilot_report.json` are deterministic and include endpoints, hashes, typed C2 support details where applicable, and complete derivation paths.
 
@@ -63,7 +63,7 @@ This pilot is a deterministic producer/control run, not novelty validation. The 
 
 `pilot_output/manifest/validation.json` records:
 
-- 1,178 inferred edges and 1,178 corresponding derivation evidence rows;
+- 1,210 inferred edges and 1,210 corresponding derivation evidence rows;
 - zero duplicate `(x_id, y_id, relation, rule_id)` rows;
 - zero edge/evidence derivation-hash mismatches;
 - zero missing full paths or snapshot IDs;
