@@ -2,6 +2,8 @@
 
 Kanban board `txgnn` remains the dispatch/source-of-truth. This file is a compact human overview; detailed phase mirrors live in `todo.d/`.
 
+_Status snapshot: 2026-07-19 CEST._
+
 ## Operating rule
 
 Do **not** use `.omoc` for new work. It is a legacy scratch/cache location from older runs. New outputs should go to:
@@ -30,22 +32,25 @@ Avoid bare “done” except as a Kanban state. Use:
 - `staged-only`
 - `review-required`
 - `validated`
+- `canonical candidate`
 - `canonical promoted`
+- `stopped-by-user`
 - `production/full done`
 
-## Review snapshot — 2026-07-15
+## Review snapshot — 2026-07-19
 
-This snapshot supersedes the older June execution notes below. Detailed denominators and evidence are in `todo.d/01_lamindb.md`, `todo.d/02_pyg_gnn.md`, and `todo.d/03_embeddings.md`.
+This snapshot supersedes the older June/July execution notes below. Detailed denominators and evidence are in `todo.d/01_lamindb.md`, `todo.d/02_pyg_gnn.md`, and `todo.d/03_embeddings.md`.
 
-1. **LaminDB ingestion is partial and under recovery.** Strict accepted ledger: **11,641,485 / 230,874,162 rows (5.04%)**, checkpoint **13,880,000**. A copy-only rollback/parity recovery is determining whether one additional 5k edge + 5k evidence prefix survived. No product writer is active during recovery.
-2. **Node source features are not universally complete.** Canonical protein/transcript sequences exist; gene genomic sequence is staged and partial; enhancer/mutation sequence modalities remain absent; text descriptions cover nine node types with partial row coverage. See the explicit per-type matrix in `todo.d/03_embeddings.md`.
-3. **Real embeddings exist, but not one source-backed vector per physical node.** Full staged protein ESM2 is accepted at **112,051/112,051** and full staged transcript NT at **187,268/187,268**. Other real text/molecule/edge modalities and learned fallback wiring have bounded reviewed evidence. Most are staged-only, and enhancer/mutation-heavy rows require model-side fallback.
-4. **PyG/GNN has a real reviewed runtime smoke, not full-KG training.** A real `HeteroData` plus heterogeneous GraphSAGE link-prediction smoke passed and was independently rerun. The sidecar/mmap architecture is training-ready; full multi-relation model-quality training has not run.
-5. **16 GB is enough only for the sampled sidecar/mmap design.** Bounded measured RSS was about 0.5 GB. A monolithic dense vector for all 55.5M nodes would require ~53 GiB even at 256 float32 dimensions, so full training must remain sharded/mmap-backed and sampled.
+1. **The human Gene identity migration is staged-only and review-required.** `t_8b9cdabc` produced a validated staged candidate targeting 81,715 human ENSG nodes at commit `8714378`; its PR and independent review remain outstanding. The 27,610 NCBI IDs are aliases/endpoints that require authoritative remap or explicit quarantine; 158,505 non-human homologue nodes and `gene_ortholog_gene` are excluded from the human canonical candidate. No canonical promotion is claimed.
+2. **LaminDB ingestion is partial, and accepted counters differ from physical counters.** The latest durable accepted ledger (2026-07-18 evidence) is 11,671,485 / 230,874,162 rows. The latest sealed physical readback from the same date is 12,011,512 rows, with +170,027 edges and +170,000 evidence still uncredited. No newer mismatch-0 readback is claimed; the denominator also awaits reviewed ENSG-only rebasing.
+3. **The corrected immutable public embeddings v2 candidate is validated.** Producer `t_2d54477b` published 808,269 rows across 12 logical leaves; independent reviewer `t_2e6b355f` passed the exact 51-object candidate at generation `1784460889447648`. This is a validated immutable candidate, not a mutable latest-pointer or blanket source-backed vector for every node. Rejected v1 remains historical and unaccepted.
+4. **Gene Nucleotide Transformer is stopped-by-user.** `t_d3b876b3` stopped at 6,912 / 78,164 scratch rows. Those rows are non-canonical; do not auto-resume, publish, or count them as accepted coverage.
+5. **DepMap revision 2 is code/test ready but not fully rebuilt.** PR #11 is pushed at `e40e2508b8f061f70fc7a4fcbf05b0f4a1accfaf`; `t_3c7766fa` waits behind the ENSG heavy-worker lane before the required dual full build and fresh immutable staged artifact. The prior candidate remains rejected.
+6. **PyG/GNN has a real reviewed runtime smoke, not full-KG training.** The sidecar/mmap architecture remains the bounded path; full multi-relation model-quality training has not run.
 
 ## Current phase mirrors
 
-Use `docs/current_state_20260623.md` plus the phase files below as the current-state anchor.
+Use the live board plus the dated phase files below as the current-state anchor. `docs/current_state_20260623.md` is historical context, not live dispatch state.
 
 - `todo.d/01_lamindb.md`
 - `todo.d/02_pyg_gnn.md`
@@ -81,16 +86,13 @@ Accepted snapshot:
 
 ### 1. LaminDB / `lnschema_txgnn`
 
-`lnschema_txgnn` is locally activated and artifact registry sync is implemented/reviewed. Bounded live KGEdge/KGEdgeEvidence syncs now populate/query-validate 130,050 KGEdge rows and 95,025 KGEdgeEvidence rows after Wave-2 (`t_cf755270`, `bounded live sync wave2 accepted`), but full exact-ID schema/query coverage is not finished and this is not production/full done.
+`lnschema_txgnn` activation and bounded loaders are validated, but global ingestion remains partial. Current durable counter and Gene-identity boundaries are in `todo.d/01_lamindb.md`.
 
-- `t_c51d9a5b` — activation/config revision producer: `review-required`; local self-managed config now includes `lnschema_txgnn`.
-- `t_f6b334c7` — controlled live KGEdge/KGEdgeEvidence Wave-1: `bounded live sync wave1 accepted`; not production/full done.
-- `t_cf755270` — bounded live KGEdge/KGEdgeEvidence Wave-2: `bounded live sync wave2 accepted` producer handoff pending review; batch loader proof with 100,000 additional KGEdge rows and 70,000 additional KGEdgeEvidence rows; not production/full done.
-- `t_edb59ab8` — validate activation/exact-ID registry.
-- `t_59139647` — review activation/exact-ID registry.
-- `t_3d4fa114` — audit/design full node/edge/evidence/feature schema/query API coverage after activation.
+- `t_8b9cdabc` — human ENSG-only migration: `staged-only` / `review-required` handoff at `8714378`; canonical KG and LaminDB unchanged, PR/review outstanding.
+- `t_ce839966` and `t_075f5353` — superseded historical +158,505 non-human Gene sync plans; remain inert and must not run.
+- Accepted-versus-physical drift remains explicit; physical rows are not product credit without accepted readback evidence.
 
-Done means `lnschema_txgnn` is configured and usable for `jkobject/jouvencekb`, exact-ID node/edge/evidence/feature sync probes pass, and validator/reviewer accept. Local activation alone is not production/full done.
+Production/full done requires reviewed ENSG-only denominators, exact-ID row parity, mismatch 0, and independent acceptance. Schema activation alone is not production/full done.
 
 ### 2. PyG / GNN
 
@@ -104,22 +106,13 @@ Done means an actual PyG/HeteroData object exists and a GNN run executes on it.
 
 ### 3. Embeddings
 
-Existing embedding work is policy + surrogate pilot, not production embeddings.
+Four source-backed embedding families now have one independently validated immutable v2 candidate, while model-side fallback remains required for uncovered nodes/modalities.
 
-Corrections to encode:
-
-- full UniProt `protein_textual_summary.parquet` is validated/promoted and should be used as text signal;
-- edge values/evidence should be encoded through an MLP/value encoder;
-- edge input should concatenate/aggregate all edges/evidence between the same node pair where relevant;
-- nodes/edges without source info get learned embeddings;
-- HashingVectorizer is schema-only pilot, not production.
-
-Cards:
-
-- `t_6b3c1294` — update embedding policy with corrections.
-- `t_f8bae791` — create real node/edge embeddings.
-- `t_34836f1c` — validate real embeddings.
-- `t_384b9594` — review real embeddings.
+- `t_2d54477b` — published immutable v2 candidate: 808,269 rows, 12 logical leaves, 51 objects; producer card is historical/triage after handoff.
+- `t_2e6b355f` — independent v2 reviewer: `validated` PASS on 2026-07-19. No latest-pointer mutation or universal-coverage claim.
+- Rejected v1 remains historical and unaccepted.
+- `t_d3b876b3` — gene NT: `stopped-by-user` at 6,912 / 78,164 scratch rows; non-canonical and no auto-resume.
+- Learned fallback is still required where reviewed source vectors are absent; it is not biological evidence.
 
 ### 4. ReMap
 
