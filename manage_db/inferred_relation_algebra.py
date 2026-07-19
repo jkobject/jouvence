@@ -394,6 +394,9 @@ def _normalized_values(value: Any) -> set[str]:
 
 
 def _resolve_value(row: Mapping[str, Any], *names: str) -> EvidenceValue:
+    evidence_fields = row.get("support_evidence_fields", {})
+    if not isinstance(evidence_fields, Mapping):
+        evidence_fields = {}
     evidence_conflicts = row.get("support_evidence_conflicts", {})
     if not isinstance(evidence_conflicts, Mapping):
         evidence_conflicts = {}
@@ -405,6 +408,11 @@ def _resolve_value(row: Mapping[str, Any], *names: str) -> EvidenceValue:
         if _is_conflicting(value) or len(direct_values) > 1:
             conflicting = True
         values.update(direct_values)
+        evidence_value = evidence_fields.get(name)
+        evidence_values = _normalized_values(evidence_value)
+        if _is_conflicting(evidence_value) or len(evidence_values) > 1:
+            conflicting = True
+        values.update(evidence_values)
         if name in evidence_conflicts:
             conflicting = True
             values.update(_normalized_values(evidence_conflicts[name]))
@@ -783,8 +791,6 @@ def build_inferred_edges(config: BuildConfig) -> dict[str, Any]:
                 field: list(values)
                 for field, values in evidence.get("conflicts", {}).items()
             }
-            for field, value in evidence.get("fields", {}).items():
-                row.setdefault(field, value)
     counts_by_rule: dict[str, dict[str, int]] = {}
     samples_by_rule: dict[str, list[dict[str, Any]]] = {}
     artifacts: dict[str, dict[str, str]] = {}

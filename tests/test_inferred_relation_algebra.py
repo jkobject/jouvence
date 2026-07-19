@@ -394,6 +394,208 @@ def test_c3_conflicting_evidence_context_is_retained_only_as_a_hypothesis(tmp_pa
     assert "conflicting" not in context.values()
 
 
+def test_direct_values_conflicting_with_single_evidence_fail_closed_for_c3_and_h1(
+    tmp_path: Path,
+) -> None:
+    kg = tmp_path / "kg"
+    overlap = _edge(
+        "mutation_overlaps_enhancer",
+        "V-C3",
+        "mutation",
+        "E-C3",
+        "enhancer",
+        biosample="liver",
+    )
+    target = _edge(
+        "molecule_targets_gene",
+        "M-H1",
+        "molecule",
+        "G-H1",
+        "gene",
+        action_sign="inhibit",
+    )
+    _write_relation(kg, "mutation_overlaps_enhancer", [overlap])
+    _write_relation(
+        kg,
+        "enhancer_regulates_gene",
+        [
+            _edge(
+                "enhancer_regulates_gene",
+                "E-C3",
+                "enhancer",
+                "G-C3",
+                "gene",
+                biosample="liver",
+                regulatory_support="mpra",
+                alternative_targets="G-C3",
+            )
+        ],
+    )
+    _write_relation(
+        kg,
+        "mutation_associated_disease",
+        [
+            _edge(
+                "mutation_associated_disease",
+                "V-C3",
+                "mutation",
+                "D-C3",
+                "disease",
+                biosample="liver",
+                disease_support="fine_mapped",
+                functional_support="colocalization",
+            )
+        ],
+    )
+    _write_relation(kg, "molecule_targets_gene", [target])
+    _write_relation(
+        kg,
+        "disease_associated_gene",
+        [
+            _edge(
+                "disease_associated_gene",
+                "G-H1",
+                "gene",
+                "D-H1",
+                "disease",
+                mechanism_sign="gain_of_function",
+                causal_support=True,
+            )
+        ],
+    )
+    _write_relation(
+        kg,
+        "mutation_overlaps_enhancer",
+        [{"edge_key": overlap["edge_key"], "evidence_key": "brain-only", "biosample": "brain"}],
+        layer="evidence",
+    )
+    _write_relation(
+        kg,
+        "molecule_targets_gene",
+        [{"edge_key": target["edge_key"], "evidence_key": "activate-only", "action_sign": "activate"}],
+        layer="evidence",
+    )
+
+    manifest = build_inferred_edges(
+        _config(
+            kg,
+            tmp_path / "out",
+            "variant_enhancer_gene_disease_v1",
+            "signed_target_mechanism_gene_drug_disease_v1",
+        )
+    )
+    c3 = pd.read_parquet(
+        tmp_path
+        / "out"
+        / "edges_inferred"
+        / "disease_associated_gene"
+        / "variant_enhancer_gene_disease_v1.parquet"
+    ).iloc[0]
+    context = json.loads(c3.context_intersection)
+
+    assert c3.inference_strength == "hypothesis"
+    assert context["context_conflicts"]["biosample"] == ["brain", "liver"]
+    assert manifest["counts_by_rule"]["variant_enhancer_gene_disease_v1"]["strong_rows"] == 0
+    assert manifest["counts_by_rule"]["signed_target_mechanism_gene_drug_disease_v1"]["candidate_rows"] == 0
+
+
+def test_direct_alias_values_conflicting_with_single_evidence_fail_closed_for_c1_c2_c5(
+    tmp_path: Path,
+) -> None:
+    kg = tmp_path / "kg"
+    protein = _edge(
+        "mutation_causes_protein_change",
+        "V-C1",
+        "mutation",
+        "P-C1",
+        "protein",
+        predicate="protein_change",
+        isoform_id="I-C1",
+    )
+    c2_disease = _edge(
+        "mutation_associated_disease",
+        "V-C2",
+        "mutation",
+        "D-C2",
+        "disease",
+        clinical_significance="pathogenic",
+        functional_support="clinvar",
+    )
+    response = _edge(
+        "mutation_affects_molecule_response",
+        "V-C5",
+        "mutation",
+        "M-C5",
+        "molecule",
+        direction="increased_response",
+        response_category="efficacy",
+    )
+    _write_relation(kg, "mutation_causes_protein_change", [protein])
+    _write_relation(
+        kg,
+        "mutation_in_gene",
+        [_edge("mutation_in_gene", "V-C2", "mutation", "G-C2", "gene", functional_support="crispr")],
+    )
+    _write_relation(
+        kg,
+        "mutation_associated_disease",
+        [
+            _edge(
+                "mutation_associated_disease",
+                "V-C1",
+                "mutation",
+                "D-C1",
+                "disease",
+                disease_support="pathogenic",
+                functional_support="clinvar",
+                isoform_id="I-C1",
+            ),
+            c2_disease,
+            _edge(
+                "mutation_associated_disease",
+                "V-C5",
+                "mutation",
+                "D-C5",
+                "disease",
+                disease_support="pathogenic",
+            ),
+        ],
+    )
+    _write_relation(kg, "mutation_affects_molecule_response", [response])
+    _write_relation(
+        kg,
+        "mutation_causes_protein_change",
+        [{"edge_key": protein["edge_key"], "evidence_key": "intronic-only", "predicate": "intronic_variant"}],
+        layer="evidence",
+    )
+    _write_relation(
+        kg,
+        "mutation_associated_disease",
+        [{"edge_key": c2_disease["edge_key"], "evidence_key": "benign-only", "clinical_significance": "benign"}],
+        layer="evidence",
+    )
+    _write_relation(
+        kg,
+        "mutation_affects_molecule_response",
+        [{"edge_key": response["edge_key"], "evidence_key": "resistance-only", "direction": "resistance"}],
+        layer="evidence",
+    )
+
+    manifest = build_inferred_edges(
+        _config(
+            kg,
+            tmp_path / "out",
+            "variant_protein_disease_v1",
+            "variant_gene_disease_v1",
+            "pharmacogenomic_variant_drug_disease_v1",
+        )
+    )
+
+    assert manifest["counts_by_rule"]["variant_protein_disease_v1"]["candidate_rows"] == 0
+    assert manifest["counts_by_rule"]["variant_gene_disease_v1"]["strong_rows"] == 0
+    assert manifest["counts_by_rule"]["pharmacogenomic_variant_drug_disease_v1"]["candidate_rows"] == 0
+
+
 def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_path: Path) -> None:
     kg = tmp_path / "kg"
     target = _edge(
