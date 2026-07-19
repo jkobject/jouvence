@@ -33,6 +33,24 @@ class SignStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+class EvidenceValueStatus(str, Enum):
+    MISSING = "missing"
+    SINGLE = "single"
+    CONFLICTING = "conflicting"
+
+
+@dataclass(frozen=True)
+class EvidenceValue:
+    """Normalized gate value that cannot conflate missing and conflicting data."""
+
+    status: EvidenceValueStatus
+    values: tuple[str, ...] = ()
+
+    @property
+    def value(self) -> str:
+        return self.values[0] if self.status is EvidenceValueStatus.SINGLE else ""
+
+
 @dataclass(frozen=True)
 class TypedRelation:
     relation: str
@@ -290,16 +308,23 @@ def _evidence_index(root: Path, relation: str, *, max_rows: int | None = None) -
         for field in (
             "action_sign",
             "action_type",
+            "alternative_targets",
             "association_basis",
             "biosample",
+            "causal_support",
             "clinical_significance",
+            "consequence",
             "direction",
+            "directionality",
             "disease_support",
             "functional_support",
             "isoform_id",
             "mechanism_sign",
+            "pathological_mechanism_sign",
+            "pgx_category",
             "population",
             "predicate",
+            "protein_isoform",
             "regulatory_support",
             "response_category",
             "response_direction",
@@ -353,28 +378,46 @@ def _is_conflicting(value: Any) -> bool:
     return False
 
 
-def _value(row: Mapping[str, Any], *names: str) -> str:
+def _normalized_values(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, Mapping):
+        value = value.get("values", ())
+    values = value if isinstance(value, (list, tuple, set)) else (value,)
+    return {
+        str(item).strip().lower()
+        for item in values
+        if item is not None
+        and str(item).strip()
+        and str(item).strip().lower() != EvidenceValueStatus.CONFLICTING.value
+    }
+
+
+def _resolve_value(row: Mapping[str, Any], *names: str) -> EvidenceValue:
     evidence_conflicts = row.get("support_evidence_conflicts", {})
     if not isinstance(evidence_conflicts, Mapping):
         evidence_conflicts = {}
     values: set[str] = set()
+    conflicting = False
     for name in names:
         value = row.get(name)
-        if _is_conflicting(value) or name in evidence_conflicts:
-            return ""
-        if isinstance(value, (list, tuple, set)):
-            items = {
-                str(item).strip().lower()
-                for item in value
-                if item is not None and str(item).strip()
-            }
-            if len(items) > 1:
-                return ""
-            values.update(items)
-            continue
-        if value is not None and str(value).strip():
-            values.add(str(value).strip().lower())
-    return next(iter(values)) if len(values) == 1 else ""
+        direct_values = _normalized_values(value)
+        if _is_conflicting(value) or len(direct_values) > 1:
+            conflicting = True
+        values.update(direct_values)
+        if name in evidence_conflicts:
+            conflicting = True
+            values.update(_normalized_values(evidence_conflicts[name]))
+    ordered = tuple(sorted(values))
+    if conflicting or len(ordered) > 1:
+        return EvidenceValue(EvidenceValueStatus.CONFLICTING, ordered)
+    if ordered:
+        return EvidenceValue(EvidenceValueStatus.SINGLE, ordered)
+    return EvidenceValue(EvidenceValueStatus.MISSING)
+
+
+def _value(row: Mapping[str, Any], *names: str) -> str:
+    return _resolve_value(row, *names).value
 
 
 def _is_true(value: Any) -> bool:
@@ -384,13 +427,10 @@ def _is_true(value: Any) -> bool:
 def _compatible(rows: Iterable[Mapping[str, Any]], keys: Iterable[str] = _CONTEXT_KEYS) -> bool:
     rows = tuple(rows)
     for key in keys:
-        if any(
-            _is_conflicting(row.get(key))
-            or key in row.get("support_evidence_conflicts", {})
-            for row in rows
-        ):
+        resolved = tuple(_resolve_value(row, key) for row in rows)
+        if any(value.status is EvidenceValueStatus.CONFLICTING for value in resolved):
             return False
-        values = {str(row[key]) for row in rows if row.get(key) is not None and str(row.get(key)).strip()}
+        values = {value.value for value in resolved if value.status is EvidenceValueStatus.SINGLE}
         if len(values) > 1:
             return False
     return True
@@ -403,14 +443,11 @@ def _context(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     for key in _CONTEXT_KEYS:
         values: set[str] = set()
         for row in rows:
-            value = row.get(key)
-            if _is_conflicting(value):
-                conflicts.setdefault(key, set())
-            elif value is not None and str(value).strip():
-                values.add(str(value))
-            evidence_conflicts = row.get("support_evidence_conflicts", {}).get(key, ())
-            if evidence_conflicts:
-                conflicts.setdefault(key, set()).update(str(item) for item in evidence_conflicts)
+            resolved = _resolve_value(row, key)
+            if resolved.status is EvidenceValueStatus.CONFLICTING:
+                conflicts.setdefault(key, set()).update(resolved.values)
+            elif resolved.status is EvidenceValueStatus.SINGLE:
+                values.add(resolved.value)
         sorted_values = sorted(values)
         if sorted_values:
             result[key] = sorted_values[0] if len(sorted_values) == 1 else sorted_values
@@ -538,7 +575,16 @@ def _generate(rule: InferenceRule, relation_rows: Mapping[str, list[dict[str, An
             for mechanism in mechanisms_by_target.get(str(target["y_id"]), []):
                 action = _SIGN.get(_value(target, "action_sign", "action_type"))
                 pathological = _SIGN.get(_value(mechanism, "mechanism_sign", "pathological_mechanism_sign"))
-                causal = _is_true(mechanism.get("causal_support")) or _value(mechanism, "disease_support") in _CAUSAL_DISEASE_SUPPORT
+                causal_flag = _resolve_value(mechanism, "causal_support")
+                disease_support = _resolve_value(mechanism, "disease_support")
+                causal_conflict = (
+                    causal_flag.status is EvidenceValueStatus.CONFLICTING
+                    or disease_support.status is EvidenceValueStatus.CONFLICTING
+                )
+                causal = not causal_conflict and (
+                    _is_true(causal_flag.value)
+                    or disease_support.value in _CAUSAL_DISEASE_SUPPORT
+                )
                 if action is None or pathological is None or action == pathological or not causal or not _compatible((target, mechanism)):
                     rejected += 1
                     continue

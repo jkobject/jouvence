@@ -404,6 +404,14 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
         "gene",
         action_sign="inhibit",
     )
+    mechanism_target = _edge(
+        "molecule_targets_gene",
+        "M-H1-MECH",
+        "molecule",
+        "G-H1-MECH",
+        "gene",
+        action_sign="inhibit",
+    )
     _write_relation(
         kg,
         "mutation_causes_protein_change",
@@ -482,7 +490,7 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
             )
         ],
     )
-    _write_relation(kg, "molecule_targets_gene", [target])
+    _write_relation(kg, "molecule_targets_gene", [target, mechanism_target])
     _write_relation(
         kg,
         "molecule_targets_gene",
@@ -541,8 +549,37 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
                 "disease",
                 mechanism_sign="gain_of_function",
                 causal_support=True,
-            )
+            ),
+            _edge(
+                "disease_associated_gene",
+                "G-H1-MECH",
+                "gene",
+                "D-H1-MECH",
+                "disease",
+                mechanism_sign="gain_of_function",
+                causal_support=True,
+            ),
         ],
+    )
+    mechanism_edge_key = "disease_associated_gene|G-H1-MECH|D-H1-MECH"
+    _write_relation(
+        kg,
+        "disease_associated_gene",
+        [
+            {
+                "edge_key": mechanism_edge_key,
+                "relation": "disease_associated_gene",
+                "evidence_key": "mechanism-gain",
+                "pathological_mechanism_sign": "gain_of_function",
+            },
+            {
+                "edge_key": mechanism_edge_key,
+                "relation": "disease_associated_gene",
+                "evidence_key": "mechanism-loss",
+                "pathological_mechanism_sign": "loss_of_function",
+            },
+        ],
+        layer="evidence",
     )
 
     manifest = build_inferred_edges(
