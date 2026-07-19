@@ -14,15 +14,14 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .kg_evidence import EVIDENCE_PARQUET_COLUMNS
-from .kg_schema import EDGE_PARQUET_COLUMNS
+from .kg_evidence import evidence_schema
+from .kg_storage import edge_schema
 
 ESSENTIALITY = "cell_line_gene_essentiality"
 EXPRESSION = "cell_line_expresses_gene"
-EDGE_COLUMNS = [name for name, _ in EDGE_PARQUET_COLUMNS]
-EVIDENCE_COLUMNS = [name for name, _ in EVIDENCE_PARQUET_COLUMNS]
 _REQUIRED_SOURCE_COLUMNS = {
     "x_id",
     "x_type",
@@ -58,6 +57,24 @@ def _copy_query(connection: duckdb.DuckDBPyConnection, query: str, path: Path) -
         f"COPY ({query}) TO {_sql_string(path)} "
         "(FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 100000)"
     )
+
+
+def _apply_arrow_schema(path: Path, schema: pa.Schema) -> None:
+    """Rewrite a DuckDB-produced Parquet with the authoritative Arrow fields."""
+    temporary = path.with_name(f".{path.name}.schema.tmp")
+    writer = pq.ParquetWriter(temporary, schema, compression="zstd")
+    try:
+        for batch in pq.ParquetFile(path).iter_batches(batch_size=100_000):
+            writer.write_batch(batch.cast(schema))
+    finally:
+        writer.close()
+    temporary.replace(path)
+
+
+def _require_arrow_schema(path: Path, expected: pa.Schema, *, artifact: str) -> None:
+    observed = pq.read_schema(path)
+    if observed != expected:
+        raise RuntimeError(f"{artifact} Arrow schema mismatch: expected={expected} observed={observed}")
 
 
 def _validate_relation_artifacts(
@@ -317,10 +334,12 @@ def build_depmap_repair_candidate(
                 raise ValueError(f"source endpoint validation failed: {missing_endpoints}")
 
         for relation, explicit_expression in ((ESSENTIALITY, False), (EXPRESSION, True)):
+            edge_path = output / "edges" / f"{relation}.parquet"
+            evidence_path = output / "evidence" / f"{relation}.parquet"
             _copy_query(
                 connection,
                 _edge_query(source_sql, relation, explicit_expression=explicit_expression),
-                output / "edges" / f"{relation}.parquet",
+                edge_path,
             )
             _copy_query(
                 connection,
@@ -331,8 +350,9 @@ def build_depmap_repair_candidate(
                     created_at,
                     explicit_expression=explicit_expression,
                 ),
-                output / "evidence" / f"{relation}.parquet",
+                evidence_path,
             )
+            _apply_arrow_schema(edge_path, edge_schema())
     finally:
         connection.close()
 
@@ -352,12 +372,8 @@ def build_depmap_repair_candidate(
             raise RuntimeError(
                 f"{relation} parity failed: expected={expected} edges={edge_rows} evidence={evidence_rows}"
             )
-        edge_schema = pq.read_schema(edge_path).names
-        evidence_schema = pq.read_schema(evidence_path).names
-        if edge_schema != EDGE_COLUMNS:
-            raise RuntimeError(f"{relation} edge schema mismatch: {edge_schema}")
-        if evidence_schema != EVIDENCE_COLUMNS:
-            raise RuntimeError(f"{relation} evidence schema mismatch: {evidence_schema}")
+        _require_arrow_schema(edge_path, edge_schema(), artifact=f"{relation} edges")
+        _require_arrow_schema(evidence_path, evidence_schema(), artifact=f"{relation} evidence")
         validation = _validate_relation_artifacts(
             edge_path,
             evidence_path,

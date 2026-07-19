@@ -3,9 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 
 from manage_db.build_depmap_repair_candidate import build_depmap_repair_candidate
+from manage_db.kg_evidence import evidence_schema
+from manage_db.kg_storage import edge_schema
 
 
 def _write_endpoint_nodes(tmp_path: Path, *, genes: list[str] | None = None) -> tuple[Path, Path]:
@@ -147,6 +150,37 @@ def test_build_depmap_repair_candidate_splits_topology_and_evidence_idempotently
     assert expression_evidence["evidence_score"].tolist() == [0.0, 4.5]
     assert not (tmp_path / "first" / "edges" / "cell_line_expresses_protein.parquet").exists()
     assert not (tmp_path / "first" / "evidence" / "cell_line_expresses_protein.parquet").exists()
+
+
+def test_build_depmap_repair_candidate_uses_authoritative_arrow_schemas(tmp_path: Path) -> None:
+    source = tmp_path / "source.parquet"
+    pd.DataFrame(
+        [
+            {
+                "x_id": "ACH-000001",
+                "x_type": "cell_line",
+                "y_id": "ENSG000001",
+                "y_type": "gene",
+                "source": "OpenTargets/DepMap",
+                "credibility": 3,
+                "gene_effect": -1.0,
+                "expression": 0.0,
+                "is_essential": True,
+            }
+        ]
+    ).to_parquet(source, index=False)
+
+    output = tmp_path / "out"
+    build_depmap_repair_candidate(
+        source,
+        output,
+        source_generation="123456789",
+        created_at="2026-07-18T08:00:00+00:00",
+    )
+
+    for relation in ("cell_line_gene_essentiality", "cell_line_expresses_gene"):
+        assert pq.read_schema(output / "edges" / f"{relation}.parquet") == edge_schema()
+        assert pq.read_schema(output / "evidence" / f"{relation}.parquet") == evidence_schema()
 
 
 def test_build_depmap_repair_candidate_fails_closed_on_changed_source_counts(
