@@ -117,9 +117,10 @@ mutation_associated_gene(mutation, gene)
 
 Policy:
 
-- Default label: `inferred_weak`.
-- Upgrade toward `inferred_obvious` only if the gene support is direct genomic containment or mechanistic consequence (`mutation_in_gene`, high-quality consequence, or direct protein change linked back to gene) and the disease support is strong clinical/GWAS evidence with compatible source semantics.
-- Keep as `inferred_weak` when `mutation_associated_gene` is L2G/statistical locus-to-gene because both sides may be association-level and LD/confounding-heavy.
+- Emit only when exact variant→gene attribution has one of three reviewed support families: direct coding/pathogenic evidence, direct splice evidence, or colocalized-eQTL/explicit OpenTargets L2G evidence assigned to that exact gene.
+- Label the support family explicitly (`coding_pathogenic`, `splice`, `colocalized_eqtl`, or `l2g`) and preserve consequence/transcript/clinical provenance or colocalization/L2G method, study, tissue, model, source, and score.
+- Keep colocalized-eQTL and L2G rows statistical/conditional unless separate causal evidence exists; never describe statistical attribution as direct causality.
+- Emit nothing for simple containment, generic transcript consequence plus target-location containment without a qualifying coding/pathogenic/splice consequence, LD alone, nearest-gene assignment, ambiguous multi-gene attribution without explicit qualifying colocalization/L2G, or missing/conflicting attribution.
 - `do_not_infer` for canonical promotion into `disease_associated_gene`; use as a candidate queue only unless independent gene-disease evidence is later found.
 
 Evidence requirements:

@@ -74,6 +74,7 @@ class InferenceRule:
 
 
 EXCLUDED_MOTIFS: Mapping[str, str] = {
+    "c3_variant_enhancer_gene_disease": "Variant→enhancer→gene→disease was explicitly removed from v1.",
     "c4_tf_enhancer_gene": "TF→enhancer→gene is outside the approved v1 batch.",
     "h3_cell_line_response_disease": "Cell-line response cannot generate disease treatment candidates.",
     "h4_synthetic_rescue_interaction": "Synthetic-rescue/interaction chains are too tenuous for v1.",
@@ -97,10 +98,11 @@ def _rule(
     sign: str = "not_applicable",
     quantifier: str = "exists compatible support path",
     fail_closed: tuple[str, ...],
+    version: str = "1.0.0",
 ) -> InferenceRule:
     return InferenceRule(
         rule_id=rule_id,
-        version="1.0.0",
+        version=version,
         premises=tuple(TypedRelation(*premise) for premise in premises),
         conclusion=TypedRelation(*conclusion),
         epistemic_class=epistemic_class,
@@ -136,23 +138,18 @@ _RULES = (
         ("disease_associated_gene", "gene", "disease"),
         EpistemicClass.CONDITIONAL,
         required=("exact_variant", "functional_or_causal_support", "disease_support"),
-        forbidden=("intragenic_containment_only", "ld_only", "metadata_only"),
-        context=("variant_id", "tissue", "population"),
-        fail_closed=("variant_mismatch", "context_mismatch"),
-    ),
-    _rule(
-        "variant_enhancer_gene_disease_v1",
-        (
-            ("mutation_overlaps_enhancer", "mutation", "enhancer"),
-            ("enhancer_regulates_gene", "enhancer", "gene"),
-            ("mutation_associated_disease", "mutation", "disease"),
+        forbidden=(
+            "intragenic_containment_only",
+            "generic_transcript_consequence_containment",
+            "ld_only",
+            "nearest_gene",
+            "ambiguous_gene_attribution",
+            "missing_or_conflicting_attribution",
+            "metadata_only",
         ),
-        ("disease_associated_gene", "gene", "disease"),
-        EpistemicClass.CONDITIONAL,
-        required=("exact_variant", "compatible_biosample", "functional_regulatory_support"),
-        forbidden=("coordinate_overlap_only", "alternative_target_ignored", "metadata_only"),
-        context=("variant_id", "enhancer_id", "tissue", "biosample", "population"),
-        fail_closed=("context_mismatch", "variant_mismatch", "alternative_target_uncertainty_missing"),
+        context=("variant_id", "tissue", "population"),
+        fail_closed=("variant_mismatch", "context_mismatch", "attribution_conflict"),
+        version="1.1.0",
     ),
     _rule(
         "pharmacogenomic_variant_drug_disease_v1",
@@ -210,6 +207,7 @@ class BuildConfig:
     output_root: Path
     kg_snapshot_id: str
     kg_generations: Mapping[str, str]
+    producer_revision: str
     rule_ids: tuple[str, ...]
     max_anchors: int = 1000
     sample_limit: int = 10
@@ -219,6 +217,42 @@ class BuildConfig:
 _CONTEXT_KEYS = ("isoform_id", "tissue", "biosample", "population", "organism", "treatment_context")
 _FUNCTIONAL_SUPPORT = {"allele_specific", "colocalization", "crispr", "eqtl_colocalization", "mpra"}
 _CAUSAL_DISEASE_SUPPORT = {"causal", "fine_mapped", "likely_pathogenic", "pathogenic"}
+_PATHOGENIC_SUPPORT = {"likely_pathogenic", "pathogenic"}
+_CODING_CONSEQUENCES = {
+    "coding_sequence_variant",
+    "frameshift_variant",
+    "inframe_deletion",
+    "inframe_insertion",
+    "missense_variant",
+    "protein_altering_variant",
+    "start_lost",
+    "stop_gained",
+    "stop_lost",
+    "synonymous_variant",
+    "so_0001578",
+    "so_0001580",
+    "so_0001583",
+    "so_0001587",
+    "so_0001589",
+    "so_0001818",
+    "so_0001819",
+    "so_0001821",
+    "so_0001822",
+    "so_0002012",
+}
+_SPLICE_CONSEQUENCES = {
+    "splice_acceptor_variant",
+    "splice_donor_variant",
+    "splice_region_variant",
+    "so_0001574",
+    "so_0001575",
+    "so_0001630",
+}
+_EQTL_SUPPORT = {"colocalized_eqtl", "eqtl_colocalization"}
+_L2G_SUPPORT = {"l2g", "opentargets_l2g", "open_targets_l2g"}
+_DEPRECATED_RULE_ARTIFACTS = {
+    "variant_enhancer_gene_disease_v1": "disease_associated_gene",
+}
 _POSITIVE_RESPONSE = {"benefit", "increased_response", "sensitivity", "therapeutic_benefit"}
 _FORBIDDEN_RESPONSE = {"adverse_effect", "decreased_response", "resistance", "toxicity", "unknown", "unknown_direction"}
 _SIGN = {
@@ -300,25 +334,58 @@ def _evidence_index(root: Path, relation: str, *, max_rows: int | None = None) -
         raise ValueError(f"{path} has {row_count} rows and exceeds bounded input limit {max_rows}")
     identifiers: dict[str, set[str]] = {}
     field_values: dict[str, dict[str, set[str]]] = {}
+    records: dict[str, list[dict[str, Any]]] = {}
     for raw in pd.read_parquet(path).to_dict(orient="records"):
         row = _clean(raw)
         edge_key = str(row.get("edge_key") or f"{relation}|{row.get('x_id')}|{row.get('y_id')}")
         evidence_id = str(row.get("evidence_key") or row.get("source_record_id") or _sha(row))
         identifiers.setdefault(edge_key, set()).add(evidence_id)
+        records.setdefault(edge_key, []).append(row)
+        structured = row.get("text_span")
+        if isinstance(structured, str) and structured.strip().startswith("{"):
+            try:
+                parsed = json.loads(structured)
+            except json.JSONDecodeError:
+                parsed = {}
+            if isinstance(parsed, Mapping):
+                for key in (
+                    "clinical_significance",
+                    "colocalization_method",
+                    "consequence",
+                    "consequence_ids",
+                    "impact",
+                    "l2g_model",
+                    "l2g_score",
+                    "study_id",
+                    "tissue",
+                    "transcript_id",
+                    "transcript_ids",
+                ):
+                    if not _normalized_values(row.get(key)) and key in parsed:
+                        row[key] = parsed[key]
         for field in (
             "action_sign",
             "action_type",
             "alternative_targets",
             "association_basis",
+            "attribution_method",
             "biosample",
             "causal_support",
+            "clinical_source",
             "clinical_significance",
+            "colocalization_method",
             "consequence",
+            "consequence_ids",
+            "consequence_source",
             "direction",
             "directionality",
             "disease_support",
+            "evidence_score",
             "functional_support",
+            "impact",
             "isoform_id",
+            "l2g_model",
+            "l2g_score",
             "mechanism_sign",
             "pathological_mechanism_sign",
             "pgx_category",
@@ -328,8 +395,14 @@ def _evidence_index(root: Path, relation: str, *, max_rows: int | None = None) -
             "regulatory_support",
             "response_category",
             "response_direction",
+            "source",
+            "source_dataset",
+            "source_record_id",
+            "study_id",
             "tissue",
             "treatment_context",
+            "transcript_id",
+            "transcript_ids",
         ):
             value = row.get(field)
             values = value if isinstance(value, (list, tuple, set)) else (value,)
@@ -352,6 +425,9 @@ def _evidence_index(root: Path, relation: str, *, max_rows: int | None = None) -
             "ids": tuple(sorted(ids)),
             "fields": fields,
             "conflicts": conflicts,
+            "records": tuple(
+                sorted(records.get(edge_key, ()), key=lambda row: _json(row))
+            ),
         }
     return result
 
@@ -501,6 +577,132 @@ def _candidate(
     }
 
 
+def _single_detail(row: Mapping[str, Any], *names: str) -> str:
+    value = _resolve_value(row, *names)
+    return value.value if value.status is EvidenceValueStatus.SINGLE else ""
+
+
+def _joined_detail(row: Mapping[str, Any], *names: str) -> str:
+    values: set[str] = set()
+    evidence_fields = row.get("support_evidence_fields", {})
+    evidence_conflicts = row.get("support_evidence_conflicts", {})
+    for name in names:
+        values.update(_normalized_values(row.get(name)))
+        if isinstance(evidence_fields, Mapping):
+            values.update(_normalized_values(evidence_fields.get(name)))
+        if isinstance(evidence_conflicts, Mapping):
+            values.update(_normalized_values(evidence_conflicts.get(name)))
+    return "|".join(sorted(values))
+
+
+def _c2_consequence_family(endpoint: Mapping[str, Any]) -> tuple[str, str] | None:
+    evidence_fields = endpoint.get("support_evidence_fields", {})
+    consequence_names = ("consequence", "consequence_id", "consequence_ids")
+    if any(_is_conflicting(endpoint.get(name)) for name in consequence_names) or (
+        isinstance(evidence_fields, Mapping)
+        and any(_is_conflicting(evidence_fields.get(name)) for name in consequence_names)
+    ):
+        return None
+    detail = _joined_detail(
+        endpoint,
+        *consequence_names,
+    )
+    values = {value for value in detail.split("|") if value}
+    if not values:
+        return "", ""
+    if values & _SPLICE_CONSEQUENCES:
+        return "splice", detail
+    if values & _CODING_CONSEQUENCES:
+        return "coding_pathogenic", detail
+    return "", detail
+
+
+def _classify_c2_support(endpoint: Mapping[str, Any]) -> tuple[str, dict[str, str]] | None:
+    """Classify an exact variant→gene attribution into the approved C2 families."""
+    consequence_support = _c2_consequence_family(endpoint)
+    if consequence_support is None:
+        return None
+    consequence_family, consequence = consequence_support
+    clinical_value = _resolve_value(endpoint, "clinical_significance")
+    support_value = _resolve_value(
+        endpoint,
+        "functional_support",
+        "regulatory_support",
+        "attribution_method",
+    )
+    if support_value.status is EvidenceValueStatus.MISSING:
+        support_value = _resolve_value(endpoint, "predicate")
+    if any(
+        value.status is EvidenceValueStatus.CONFLICTING
+        for value in (clinical_value, support_value)
+    ):
+        return None
+    support = support_value.value
+    if support in {"nearest", "nearest_gene"}:
+        return None
+    alternative_targets = _joined_detail(endpoint, "alternative_targets")
+    alternatives = {
+        target.strip().lower()
+        for value in alternative_targets.split("|")
+        for target in value.replace(",", "|").split("|")
+        if target.strip()
+    }
+    if len(alternatives) > 1 and support not in _EQTL_SUPPORT | _L2G_SUPPORT:
+        return None
+
+    clinical = clinical_value.value
+    transcript_id = _single_detail(
+        endpoint,
+        "transcript_id",
+        "transcript_ids",
+        "transcript",
+    )
+    common = {
+        "clinical_significance": clinical,
+        "clinical_source": _single_detail(endpoint, "clinical_source"),
+        "consequence": consequence,
+        "consequence_source": _single_detail(endpoint, "consequence_source"),
+        "impact": _single_detail(endpoint, "impact"),
+        "source": _joined_detail(endpoint, "source", "source_dataset"),
+        "source_record_id": _single_detail(endpoint, "source_record_id"),
+        "transcript_id": transcript_id,
+        "transcript_provenance": transcript_id
+        or _single_detail(endpoint, "source_record_id"),
+    }
+    if consequence_family == "splice":
+        return "splice", {key: value for key, value in common.items() if value}
+    if consequence_family == "coding_pathogenic" or clinical in _PATHOGENIC_SUPPORT:
+        return "coding_pathogenic", {
+            key: value for key, value in common.items() if value
+        }
+
+    study_id = _single_detail(endpoint, "study_id")
+    source = _joined_detail(endpoint, "source", "source_dataset")
+    if support in _EQTL_SUPPORT:
+        method = _single_detail(endpoint, "colocalization_method")
+        tissue = _single_detail(endpoint, "tissue", "biosample")
+        if not method or not study_id or not tissue:
+            return None
+        return "colocalized_eqtl", {
+            "colocalization_method": method,
+            "source": source,
+            "study_id": study_id,
+            "tissue": tissue,
+        }
+    if support in _L2G_SUPPORT:
+        model = _single_detail(endpoint, "l2g_model")
+        score = _single_detail(endpoint, "l2g_score", "evidence_score")
+        if not model or not score or not source:
+            return None
+        return "l2g", {
+            "l2g_model": model,
+            "l2g_score": score,
+            "source": source,
+            "study_id": study_id,
+        }
+    return None
+
+
 def _generate(rule: InferenceRule, relation_rows: Mapping[str, list[dict[str, Any]]], config: BuildConfig) -> tuple[list[dict[str, Any]], int]:
     rule_id = rule.rule_id
     premise = [relation_rows[item.relation] for item in rule.premises]
@@ -508,54 +710,64 @@ def _generate(rule: InferenceRule, relation_rows: Mapping[str, list[dict[str, An
     rejected = 0
 
 
-    if rule_id in {"variant_protein_disease_v1", "variant_gene_disease_v1"}:
+    if rule_id == "variant_protein_disease_v1":
         disease_by_variant = _by(premise[1], "x_id")
         for endpoint in premise[0][: config.max_anchors]:
             for disease in disease_by_variant.get(str(endpoint["x_id"]), []):
                 if not _compatible((endpoint, disease)):
                     rejected += 1
                     continue
-                if rule_id == "variant_protein_disease_v1":
-                    direct = _value(endpoint, "consequence", "predicate") in {"amino_acid_change", "direct_protein_consequence", "protein_change"}
-                    causal = _value(disease, "disease_support", "clinical_significance") in _CAUSAL_DISEASE_SUPPORT
-                    functional = _value(disease, "functional_support") not in {"", "none"}
-                    isoform = _value(endpoint, "isoform_id", "protein_isoform")
-                    compatible_isoform = bool(isoform) and isoform == _value(disease, "isoform_id", "protein_isoform")
-                    strength = "strong" if direct and causal and functional and compatible_isoform else "hypothesis"
-                    if not direct:
-                        rejected += 1
-                        continue
-                else:
-                    endpoint_support = _value(endpoint, "functional_support")
-                    disease_support = _value(disease, "functional_support")
-                    causal = _value(disease, "disease_support", "clinical_significance") in _CAUSAL_DISEASE_SUPPORT
-                    strong = causal and (endpoint_support in _FUNCTIONAL_SUPPORT or disease_support in _FUNCTIONAL_SUPPORT or disease_support in {"clinvar", "functional"})
-                    strength = "strong" if strong else "hypothesis"
+                direct = _value(endpoint, "consequence", "predicate") in {"amino_acid_change", "direct_protein_consequence", "protein_change"}
+                causal = _value(disease, "disease_support", "clinical_significance") in _CAUSAL_DISEASE_SUPPORT
+                functional = _value(disease, "functional_support") not in {"", "none"}
+                isoform = _value(endpoint, "isoform_id", "protein_isoform")
+                compatible_isoform = bool(isoform) and isoform == _value(disease, "isoform_id", "protein_isoform")
+                strength = "strong" if direct and causal and functional and compatible_isoform else "hypothesis"
+                if not direct:
+                    rejected += 1
+                    continue
                 candidates.append(_candidate(rule, endpoint["y_id"], disease["y_id"], (endpoint, disease), strength))
         return candidates, rejected
 
-    if rule_id == "variant_enhancer_gene_disease_v1":
-        genes_by_enhancer = _by(premise[1], "x_id")
-        diseases_by_variant = _by(premise[2], "x_id")
-        for overlap in premise[0][: config.max_anchors]:
-            for regulation in genes_by_enhancer.get(str(overlap["y_id"]), []):
-                for disease in diseases_by_variant.get(str(overlap["x_id"]), []):
-                    compatible = _compatible((overlap, regulation, disease), ("tissue", "biosample", "population"))
-                    functional = (
-                        _value(regulation, "regulatory_support", "predicate") in _FUNCTIONAL_SUPPORT
-                        or _value(disease, "functional_support") in _FUNCTIONAL_SUPPORT
+    if rule_id == "variant_gene_disease_v1":
+        disease_by_variant = _by(premise[1], "x_id")
+        for endpoint in premise[0][: config.max_anchors]:
+            classified = _classify_c2_support(endpoint)
+            matching_diseases = disease_by_variant.get(str(endpoint["x_id"]), [])
+            if classified is None:
+                rejected += len(matching_diseases)
+                continue
+            support_family, support_details = classified
+            for disease in matching_diseases:
+                if not _compatible((endpoint, disease)):
+                    rejected += 1
+                    continue
+                causal = _value(
+                    disease,
+                    "disease_support",
+                    "clinical_significance",
+                ) in _CAUSAL_DISEASE_SUPPORT
+                endpoint_pathogenic = _value(
+                    endpoint,
+                    "clinical_significance",
+                ) in _PATHOGENIC_SUPPORT
+                if support_family in {"colocalized_eqtl", "l2g"}:
+                    strength = "strong" if causal else "statistical_conditional"
+                else:
+                    strength = "strong" if causal or endpoint_pathogenic else "conditional"
+                candidates.append(
+                    _candidate(
+                        rule,
+                        endpoint["y_id"],
+                        disease["y_id"],
+                        (endpoint, disease),
+                        strength,
+                        extra={
+                            "c2_support_family": support_family,
+                            "c2_support_details": _json(support_details),
+                        },
                     )
-                    alternatives = _value(regulation, "alternative_targets")
-                    unique_target = alternatives == str(regulation["y_id"]).lower()
-                    explicit_context = any(
-                        _value(overlap, key) and _value(regulation, key) and _value(disease, key)
-                        for key in ("tissue", "biosample")
-                    )
-                    causal = _value(disease, "disease_support") in _CAUSAL_DISEASE_SUPPORT
-                    strength = "strong" if compatible and explicit_context and functional and unique_target and causal else "hypothesis"
-                    context = _context((overlap, regulation, disease))
-                    context["alternative_targets"] = regulation.get("alternative_targets")
-                    candidates.append(_candidate(rule, regulation["y_id"], disease["y_id"], (overlap, regulation, disease), strength, context=context))
+                )
         return candidates, rejected
 
     if rule_id == "pharmacogenomic_variant_drug_disease_v1":
@@ -635,7 +847,14 @@ def _finalize_candidates(
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for candidate in candidates:
         grouped.setdefault((candidate["x_id"], candidate["y_id"]), []).append(candidate)
-    strength_rank = {"derived": 1, "hypothesis": 1, "strong": 2, "strong_reinforced": 3}
+    strength_rank = {
+        "derived": 1,
+        "hypothesis": 1,
+        "statistical_conditional": 2,
+        "conditional": 2,
+        "strong": 3,
+        "strong_reinforced": 4,
+    }
     result: list[dict[str, Any]] = []
     for pair, paths in sorted(grouped.items()):
         chosen = max(paths, key=lambda item: strength_rank[item["inference_strength"]])
@@ -664,6 +883,8 @@ def _finalize_candidates(
             "context": chosen["context"],
             "sign_status": chosen["sign_status"],
             "inference_strength": chosen["inference_strength"],
+            "c2_support_family": chosen.get("c2_support_family"),
+            "c2_support_details": chosen.get("c2_support_details"),
         }
         row = {key: value for key, value in chosen.items() if key not in {"support_edge_ids", "support_rows", "context"}}
         row.update(
@@ -791,6 +1012,7 @@ def build_inferred_edges(config: BuildConfig) -> dict[str, Any]:
                 field: list(values)
                 for field, values in evidence.get("conflicts", {}).items()
             }
+            row["support_evidence_records"] = list(evidence.get("records", ()))
     counts_by_rule: dict[str, dict[str, int]] = {}
     samples_by_rule: dict[str, list[dict[str, Any]]] = {}
     artifacts: dict[str, dict[str, str]] = {}
@@ -808,8 +1030,37 @@ def build_inferred_edges(config: BuildConfig) -> dict[str, Any]:
             "missing_from_observed_rows": len(finalized) - overlap_count,
             "fail_closed_paths": fail_closed,
         }
+        if rule_id == "variant_gene_disease_v1":
+            counts_by_rule[rule_id]["support_family_rows"] = {
+                family: sum(
+                    row.get("c2_support_family") == family
+                    for row in finalized
+                )
+                for family in sorted(
+                    {
+                        str(row["c2_support_family"])
+                        for row in finalized
+                        if row.get("c2_support_family")
+                    }
+                )
+            }
         samples_by_rule[rule_id] = [
-            {key: row[key] for key in ("x_id", "y_id", "inference_strength", "canonical_observed_overlap", "derivation_hash")}
+            {
+                key: row[key]
+                for key in (
+                    "x_id",
+                    "y_id",
+                    "inference_strength",
+                    "canonical_observed_overlap",
+                    "derivation_hash",
+                    "full_path",
+                )
+            }
+            | {
+                key: row[key]
+                for key in ("c2_support_family", "c2_support_details")
+                if key in row
+            }
             for row in sorted(finalized, key=lambda item: (item["x_id"], item["y_id"], item["derivation_hash"]))[: config.sample_limit]
         ]
         edge_path = config.output_root / "edges_inferred" / rule.conclusion.relation / f"{rule_id}.parquet"
@@ -837,11 +1088,26 @@ def build_inferred_edges(config: BuildConfig) -> dict[str, Any]:
         if finalized:
             artifacts[rule_id] = {"edges_inferred": str(edge_path), "evidence_inferred": str(evidence_path)}
 
+    for deprecated_rule_id, relation in _DEPRECATED_RULE_ARTIFACTS.items():
+        _replace_parquet_pair(
+            config.output_root
+            / "edges_inferred"
+            / relation
+            / f"{deprecated_rule_id}.parquet",
+            [],
+            config.output_root
+            / "evidence_inferred"
+            / relation
+            / f"{deprecated_rule_id}.parquet",
+            [],
+        )
+
     manifest = {
         "status": "staged-only/review-required",
-        "registry_version": "1.0.0",
+        "registry_version": "1.1.0",
         "kg_snapshot_id": config.kg_snapshot_id,
         "kg_generations": dict(config.kg_generations),
+        "producer_revision": config.producer_revision,
         "bounds": {
             "max_anchors": config.max_anchors,
             "max_input_rows_per_file": config.max_input_rows,

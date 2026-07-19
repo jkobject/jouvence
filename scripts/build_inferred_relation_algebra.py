@@ -17,6 +17,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--kg-snapshot-id", required=True)
     parser.add_argument("--kg-generations-json", default="{}")
+    parser.add_argument("--producer-revision", required=True)
     parser.add_argument("--rule", action="append", choices=sorted(RULES_BY_ID), required=True)
     parser.add_argument("--max-anchors", type=int, default=1000)
     parser.add_argument("--max-input-rows", type=int, default=100_000)
@@ -32,6 +33,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_root=args.output_root,
             kg_snapshot_id=args.kg_snapshot_id,
             kg_generations={str(key): str(value) for key, value in generations.items()},
+            producer_revision=args.producer_revision,
             rule_ids=tuple(args.rule),
             max_anchors=args.max_anchors,
             max_input_rows=args.max_input_rows,

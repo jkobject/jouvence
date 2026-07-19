@@ -41,6 +41,7 @@ def _config(kg: Path, output: Path, *rule_ids: str) -> BuildConfig:
         output_root=output,
         kg_snapshot_id="sha256:immutable-unit-snapshot",
         kg_generations={"fixture": "1"},
+        producer_revision="test-revision",
         rule_ids=tuple(rule_ids),
         max_anchors=100,
         sample_limit=5,
@@ -51,7 +52,6 @@ def test_v1_registry_is_typed_versioned_and_excludes_unapproved_generators() -> 
     priority_rules = {
         "variant_protein_disease_v1",
         "variant_gene_disease_v1",
-        "variant_enhancer_gene_disease_v1",
         "pharmacogenomic_variant_drug_disease_v1",
         "signed_target_mechanism_gene_drug_disease_v1",
         "signed_target_mechanism_protein_drug_disease_v1",
@@ -67,7 +67,12 @@ def test_v1_registry_is_typed_versioned_and_excludes_unapproved_generators() -> 
 
     assert set(RULES_BY_ID) == priority_rules
     assert removed_structural_rules.isdisjoint(RULES_BY_ID)
-    assert {rule.version for rule in RULES_BY_ID.values()} == {"1.0.0"}
+    assert RULES_BY_ID["variant_gene_disease_v1"].version == "1.1.0"
+    assert {
+        rule.version
+        for rule_id, rule in RULES_BY_ID.items()
+        if rule_id != "variant_gene_disease_v1"
+    } == {"1.0.0"}
     assert {rule.epistemic_class for rule in RULES_BY_ID.values()} == {
         EpistemicClass.CONDITIONAL,
         EpistemicClass.ABDUCTIVE,
@@ -83,6 +88,7 @@ def test_v1_registry_is_typed_versioned_and_excludes_unapproved_generators() -> 
         assert rule.fail_closed_conditions
 
     assert set(EXCLUDED_MOTIFS) == {
+        "c3_variant_enhancer_gene_disease",
         "c4_tf_enhancer_gene",
         "h3_cell_line_response_disease",
         "h4_synthetic_rescue_interaction",
@@ -118,26 +124,16 @@ def test_conditional_rules_apply_strong_gates_and_fail_closed_adversarial_cases(
         kg,
         "mutation_in_gene",
         [
-            _edge("mutation_in_gene", "V1", "mutation", "G1", "gene", functional_support="crispr"),
+            _edge(
+                "mutation_in_gene",
+                "V1",
+                "mutation",
+                "G1",
+                "gene",
+                consequence="missense_variant",
+                transcript_id="ENST1",
+            ),
             _edge("mutation_in_gene", "V3", "mutation", "G3", "gene", functional_support="none", association_basis="ld_only"),
-        ],
-    )
-    _write_relation(
-        kg,
-        "mutation_overlaps_enhancer",
-        [
-            _edge("mutation_overlaps_enhancer", "V4", "mutation", "E4", "enhancer", biosample="liver"),
-            _edge("mutation_overlaps_enhancer", "V5", "mutation", "E5", "enhancer", biosample="liver"),
-            _edge("mutation_overlaps_enhancer", "V8", "mutation", "E8", "enhancer", biosample="liver"),
-        ],
-    )
-    _write_relation(
-        kg,
-        "enhancer_regulates_gene",
-        [
-            _edge("enhancer_regulates_gene", "E4", "enhancer", "G4", "gene", biosample="liver", regulatory_support="mpra", alternative_targets="G4"),
-            _edge("enhancer_regulates_gene", "E5", "enhancer", "G5", "gene", biosample="brain", regulatory_support="mpra", alternative_targets="G5|G6"),
-            _edge("enhancer_regulates_gene", "E8", "enhancer", "G8", "gene", biosample="liver", regulatory_support="mpra"),
         ],
     )
     _write_relation(
@@ -147,11 +143,8 @@ def test_conditional_rules_apply_strong_gates_and_fail_closed_adversarial_cases(
             _edge("mutation_associated_disease", "V1", "mutation", "D1", "disease", disease_support="pathogenic", functional_support="clinvar", isoform_id="I1"),
             _edge("mutation_associated_disease", "V2", "mutation", "D2", "disease", disease_support="pathogenic", functional_support="clinvar", isoform_id="OTHER"),
             _edge("mutation_associated_disease", "V3", "mutation", "D3", "disease", disease_support="gwas", functional_support="none", association_basis="ld_only"),
-            _edge("mutation_associated_disease", "V4", "mutation", "D4", "disease", disease_support="fine_mapped", functional_support="colocalization", biosample="liver"),
-            _edge("mutation_associated_disease", "V5", "mutation", "D5", "disease", disease_support="fine_mapped", functional_support="colocalization", biosample="blood"),
             _edge("mutation_associated_disease", "V6", "mutation", "D6", "disease", disease_support="pathogenic", population="EUR"),
             _edge("mutation_associated_disease", "V7", "mutation", "D7", "disease", disease_support="pathogenic", population="EUR"),
-            _edge("mutation_associated_disease", "V8", "mutation", "D8", "disease", disease_support="fine_mapped", functional_support="colocalization", biosample="liver"),
             _edge("mutation_associated_disease", "V9", "mutation", "D9", "disease", disease_support="pathogenic", functional_support="clinvar"),
         ],
     )
@@ -171,32 +164,265 @@ def test_conditional_rules_apply_strong_gates_and_fail_closed_adversarial_cases(
             tmp_path / "out",
             "variant_protein_disease_v1",
             "variant_gene_disease_v1",
-            "variant_enhancer_gene_disease_v1",
             "pharmacogenomic_variant_drug_disease_v1",
         )
     )
 
     protein = pd.read_parquet(tmp_path / "out" / "edges_inferred" / "disease_associated_protein" / "variant_protein_disease_v1.parquet")
     genes_c2 = pd.read_parquet(tmp_path / "out" / "edges_inferred" / "disease_associated_gene" / "variant_gene_disease_v1.parquet")
-    genes_c3 = pd.read_parquet(tmp_path / "out" / "edges_inferred" / "disease_associated_gene" / "variant_enhancer_gene_disease_v1.parquet")
     drugs = pd.read_parquet(tmp_path / "out" / "edges_inferred" / "molecule_treats_disease" / "pharmacogenomic_variant_drug_disease_v1.parquet")
 
     assert set(zip(protein.x_id, protein.y_id, protein.inference_strength)) == {
         ("P1", "D1", "strong"),
         ("P9", "D9", "hypothesis"),
     }
-    assert set(zip(genes_c2.x_id, genes_c2.y_id, genes_c2.inference_strength)) == {
-        ("G1", "D1", "strong"),
-        ("G3", "D3", "hypothesis"),
+    assert set(zip(genes_c2.x_id, genes_c2.y_id, genes_c2.c2_support_family)) == {
+        ("G1", "D1", "coding_pathogenic"),
     }
     assert bool(genes_c2.loc[genes_c2.x_id == "G1", "canonical_observed_overlap"].iloc[0])
-    assert set(zip(genes_c3.x_id, genes_c3.y_id, genes_c3.inference_strength)) == {
-        ("G4", "D4", "strong"),
-        ("G5", "D5", "hypothesis"),
-        ("G8", "D8", "hypothesis"),
-    }
     assert set(zip(drugs.x_id, drugs.y_id)) == {("M6", "D6")}
     assert manifest["counts_by_rule"]["pharmacogenomic_variant_drug_disease_v1"]["fail_closed_paths"] == 1
+
+
+def test_c2_emits_only_typed_coding_pathogenic_splice_colocalized_eqtl_or_l2g_support(
+    tmp_path: Path,
+) -> None:
+    kg = tmp_path / "kg"
+    accepted = [
+        _edge(
+            "mutation_in_gene",
+            "V-CODING",
+            "mutation",
+            "G-CODING",
+            "gene",
+            consequence="missense_variant",
+            transcript_id="ENST-CODING",
+            consequence_source="OpenTargets/VEP",
+        ),
+        _edge(
+            "mutation_in_gene",
+            "V-PATH",
+            "mutation",
+            "G-PATH",
+            "gene",
+            consequence="intron_variant",
+            clinical_significance="likely_pathogenic",
+            clinical_source="ClinVar",
+        ),
+        _edge(
+            "mutation_in_gene",
+            "V-SPLICE",
+            "mutation",
+            "G-SPLICE",
+            "gene",
+            consequence="splice_acceptor_variant",
+            transcript_id="ENST-SPLICE",
+            consequence_source="OpenTargets/VEP",
+        ),
+        _edge(
+            "mutation_in_gene",
+            "V-EQTL",
+            "mutation",
+            "G-EQTL",
+            "gene",
+            functional_support="eqtl_colocalization",
+            colocalization_method="coloc",
+            study_id="GCST-EQTL",
+            tissue="liver",
+            source="OpenTargets",
+        ),
+        _edge(
+            "mutation_in_gene",
+            "V-L2G",
+            "mutation",
+            "G-L2G",
+            "gene",
+            attribution_method="opentargets_l2g",
+            l2g_model="v2.1",
+            l2g_score=0.82,
+            study_id="GCST-L2G",
+            source="OpenTargets",
+            alternative_targets="G-L2G|G-OTHER",
+        ),
+        _edge(
+            "mutation_in_gene",
+            "V-JSON",
+            "mutation",
+            "G-JSON",
+            "gene",
+        ),
+    ]
+    accepted[4].pop("source")
+    forbidden = [
+        _edge("mutation_in_gene", "V-CONTAIN", "mutation", "G-CONTAIN", "gene", association_basis="genomic_containment"),
+        _edge(
+            "mutation_in_gene",
+            "V-GENERIC-TX",
+            "mutation",
+            "G-GENERIC-TX",
+            "gene",
+            consequence="intron_variant",
+            transcript_id="ENST-INTRON",
+            association_basis="genomic_containment",
+        ),
+        _edge("mutation_in_gene", "V-LD", "mutation", "G-LD", "gene", association_basis="ld_only"),
+        _edge(
+            "mutation_in_gene",
+            "V-NEAREST",
+            "mutation",
+            "G-NEAREST",
+            "gene",
+            attribution_method="nearest_gene",
+            consequence="missense_variant",
+        ),
+        _edge(
+            "mutation_in_gene",
+            "V-AMBIG",
+            "mutation",
+            "G-AMBIG",
+            "gene",
+            alternative_targets="G-AMBIG|G-OTHER",
+            consequence="missense_variant",
+        ),
+        _edge("mutation_in_gene", "V-MISSING", "mutation", "G-MISSING", "gene"),
+    ]
+    _write_relation(kg, "mutation_in_gene", accepted + forbidden)
+    _write_relation(
+        kg,
+        "mutation_in_gene",
+        [
+            {
+                "edge_key": accepted[0]["edge_key"],
+                "evidence_key": "equivalent-so-consequence",
+                "consequence_ids": ["SO_0001583"],
+                "source": "OpenTargets",
+            },
+            {
+                "edge_key": accepted[3]["edge_key"],
+                "evidence_key": "eqtl-source-native-record",
+                "predicate": "source_native_variant_gene_attribution",
+                "source": "OpenTargets",
+            },
+            {
+                "edge_key": accepted[4]["edge_key"],
+                "evidence_key": "l2g-source-record",
+                "source_dataset": "OpenTargets/L2G",
+            },
+            {
+                "edge_key": accepted[5]["edge_key"],
+                "evidence_key": "structured-consequence-record",
+                "consequence_ids": [],
+                "source": "OpenTargets",
+                "source_record_id": "variant:json:tc:7:gene:G-JSON",
+                "text_span": json.dumps(
+                    {
+                        "consequence_ids": ["SO_0001583", "SO_0001627"],
+                        "transcript_id": "ENST-JSON",
+                    }
+                ),
+            },
+        ],
+        layer="evidence",
+    )
+    _write_relation(
+        kg,
+        "mutation_associated_disease",
+        [
+            _edge(
+                "mutation_associated_disease",
+                edge["x_id"],
+                "mutation",
+                f"D-{edge['x_id']}",
+                "disease",
+                disease_support="gwas",
+            )
+            for edge in accepted + forbidden
+        ],
+    )
+
+    report = build_inferred_edges(_config(kg, tmp_path / "out", "variant_gene_disease_v1"))
+    candidates = pd.read_parquet(
+        tmp_path / "out" / "edges_inferred" / "disease_associated_gene" / "variant_gene_disease_v1.parquet"
+    )
+
+    assert set(zip(candidates.x_id, candidates.c2_support_family)) == {
+        ("G-CODING", "coding_pathogenic"),
+        ("G-PATH", "coding_pathogenic"),
+        ("G-SPLICE", "splice"),
+        ("G-EQTL", "colocalized_eqtl"),
+        ("G-L2G", "l2g"),
+        ("G-JSON", "coding_pathogenic"),
+    }
+    assert set(candidates.loc[candidates.c2_support_family.isin({"colocalized_eqtl", "l2g"}), "inference_strength"]) == {
+        "statistical_conditional"
+    }
+    assert report["counts_by_rule"]["variant_gene_disease_v1"]["support_family_rows"] == {
+        "coding_pathogenic": 3,
+        "colocalized_eqtl": 1,
+        "l2g": 1,
+        "splice": 1,
+    }
+    assert report["counts_by_rule"]["variant_gene_disease_v1"]["fail_closed_paths"] == len(forbidden)
+    assert all(
+        sample["c2_support_family"] and sample["full_path"]
+        for sample in report["top_candidate_samples"]["variant_gene_disease_v1"]
+    )
+    details = {row.x_id: json.loads(row.c2_support_details) for row in candidates.itertuples()}
+    assert set(details["G-CODING"]["consequence"].split("|")) == {
+        "missense_variant",
+        "so_0001583",
+    }
+    assert details["G-CODING"]["transcript_provenance"] == "enst-coding"
+    assert details["G-SPLICE"]["transcript_id"] == "enst-splice"
+    assert details["G-EQTL"]["colocalization_method"] == "coloc"
+    assert details["G-L2G"]["l2g_model"] == "v2.1"
+    assert details["G-L2G"]["l2g_score"] == "0.82"
+    assert "opentargets" in details["G-L2G"]["source"]
+    assert set(details["G-JSON"]["consequence"].split("|")) == {
+        "so_0001583",
+        "so_0001627",
+    }
+    assert details["G-JSON"]["transcript_id"] == "enst-json"
+
+
+def test_c2_missing_or_conflicting_attribution_evidence_emits_zero(tmp_path: Path) -> None:
+    kg = tmp_path / "kg"
+    endpoint = _edge(
+        "mutation_in_gene",
+        "V",
+        "mutation",
+        "G",
+        "gene",
+        consequence="missense_variant",
+        transcript_id="ENST",
+        attribution_method="coding_consequence",
+    )
+    _write_relation(kg, "mutation_in_gene", [endpoint])
+    _write_relation(
+        kg,
+        "mutation_in_gene",
+        [
+            {
+                "edge_key": endpoint["edge_key"],
+                "evidence_key": "contradictory-attribution",
+                "attribution_method": "nearest_gene",
+                "source": "OpenTargets",
+                "source_record_id": "record-1",
+            }
+        ],
+        layer="evidence",
+    )
+    _write_relation(
+        kg,
+        "mutation_associated_disease",
+        [_edge("mutation_associated_disease", "V", "mutation", "D", "disease", disease_support="pathogenic")],
+    )
+
+    report = build_inferred_edges(_config(kg, tmp_path / "out", "variant_gene_disease_v1"))
+
+    assert report["counts_by_rule"]["variant_gene_disease_v1"]["candidate_rows"] == 0
+    assert report["counts_by_rule"]["variant_gene_disease_v1"]["fail_closed_paths"] == 1
+    assert not list((tmp_path / "out").rglob("variant_gene_disease_v1.parquet"))
 
 
 def test_h1_requires_opposite_known_signs_and_h2_only_reinforces_existing_candidate(tmp_path: Path) -> None:
@@ -252,7 +478,11 @@ def test_h1_requires_opposite_known_signs_and_h2_only_reinforces_existing_candid
 
 def test_outputs_have_reproducible_derivation_contract_and_observed_absence_is_not_negation(tmp_path: Path) -> None:
     kg = tmp_path / "kg"
-    _write_relation(kg, "mutation_in_gene", [_edge("mutation_in_gene", "V", "mutation", "G", "gene", functional_support="none")])
+    _write_relation(
+        kg,
+        "mutation_in_gene",
+        [_edge("mutation_in_gene", "V", "mutation", "G", "gene", consequence="missense_variant", transcript_id="ENST")],
+    )
     _write_relation(kg, "mutation_associated_disease", [_edge("mutation_associated_disease", "V", "mutation", "D", "disease", disease_support="gwas")])
 
     for name in ("out-a", "out-b"):
@@ -279,6 +509,10 @@ def test_outputs_have_reproducible_derivation_contract_and_observed_absence_is_n
     assert bool(first.loc[0, "absence_is_not_biological_negation"])
     evidence = pd.read_parquet(tmp_path / "out-a" / "evidence_inferred" / "disease_associated_gene" / "variant_gene_disease_v1.parquet")
     assert set(evidence.derivation_hash) == set(first.derivation_hash)
+    report = json.loads(
+        (tmp_path / "out-a" / "manifest" / "pilot_report.json").read_text()
+    )
+    assert report["producer_revision"] == "test-revision"
 
 
 def test_build_refuses_to_write_inside_immutable_input_snapshot(tmp_path: Path) -> None:
@@ -302,6 +536,47 @@ def test_excluded_generators_are_rejected_without_creating_placeholder_parquets(
         build_inferred_edges(_config(kg, tmp_path / "out", "c4_tf_enhancer_gene"))
 
     assert not list((tmp_path / "out").glob("**/*.parquet"))
+
+
+def test_removed_c3_is_unregistered_unmaterializable_and_cleaned_from_same_output_root(
+    tmp_path: Path,
+) -> None:
+    kg = tmp_path / "kg"
+    output = tmp_path / "out"
+    _write_relation(
+        kg,
+        "mutation_in_gene",
+        [_edge("mutation_in_gene", "V", "mutation", "G", "gene", consequence="missense_variant", transcript_id="ENST")],
+    )
+    _write_relation(
+        kg,
+        "mutation_associated_disease",
+        [_edge("mutation_associated_disease", "V", "mutation", "D", "disease", disease_support="pathogenic")],
+    )
+    stale_paths = [
+        output
+        / layer
+        / "disease_associated_gene"
+        / "variant_enhancer_gene_disease_v1.parquet"
+        for layer in ("edges_inferred", "evidence_inferred")
+    ]
+    for stale_path in stale_paths:
+        stale_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame([{"stale": True}]).to_parquet(stale_path, index=False)
+
+    with pytest.raises(ValueError, match="Unknown/unapproved rule IDs"):
+        build_inferred_edges(
+            _config(kg, output, "variant_enhancer_gene_disease_v1")
+        )
+
+    report = build_inferred_edges(_config(kg, output, "variant_gene_disease_v1"))
+
+    assert "variant_enhancer_gene_disease_v1" not in RULES_BY_ID
+    assert all(not path.exists() for path in stale_paths)
+    assert "variant_enhancer_gene_disease_v1" not in json.dumps(report, sort_keys=True)
+    assert "variant_enhancer_gene_disease_v1" not in (
+        output / "manifest" / "rule_registry_v1.json"
+    ).read_text()
 
 
 def test_fail_closed_gate_fields_can_be_supplied_by_derivation_evidence(tmp_path: Path) -> None:
@@ -336,76 +611,8 @@ def test_fail_closed_gate_fields_can_be_supplied_by_derivation_evidence(tmp_path
     assert candidate.inference_strength == "strong"
 
 
-def test_c3_conflicting_evidence_context_is_retained_only_as_a_hypothesis(tmp_path: Path) -> None:
+def test_direct_values_conflicting_with_single_evidence_fail_closed_for_h1(tmp_path: Path) -> None:
     kg = tmp_path / "kg"
-    premises = (
-        _edge("mutation_overlaps_enhancer", "V", "mutation", "E", "enhancer"),
-        _edge(
-            "enhancer_regulates_gene",
-            "E",
-            "enhancer",
-            "G",
-            "gene",
-            regulatory_support="mpra",
-            alternative_targets="G",
-        ),
-        _edge(
-            "mutation_associated_disease",
-            "V",
-            "mutation",
-            "D",
-            "disease",
-            disease_support="fine_mapped",
-            functional_support="colocalization",
-        ),
-    )
-    for edge in premises:
-        relation = edge["relation"]
-        _write_relation(kg, relation, [edge])
-        _write_relation(
-            kg,
-            relation,
-            [
-                {
-                    "edge_key": edge["edge_key"],
-                    "relation": relation,
-                    "evidence_key": f"{relation}-conflicting-biosamples",
-                    "biosample": ["liver", "brain"],
-                },
-            ],
-            layer="evidence",
-        )
-
-    manifest = build_inferred_edges(
-        _config(kg, tmp_path / "out", "variant_enhancer_gene_disease_v1")
-    )
-    candidate = pd.read_parquet(
-        tmp_path
-        / "out"
-        / "edges_inferred"
-        / "disease_associated_gene"
-        / "variant_enhancer_gene_disease_v1.parquet"
-    ).iloc[0]
-    context = json.loads(candidate.context_intersection)
-
-    assert candidate.inference_strength == "hypothesis"
-    assert manifest["counts_by_rule"]["variant_enhancer_gene_disease_v1"]["strong_rows"] == 0
-    assert context["context_conflicts"]["biosample"] == ["brain", "liver"]
-    assert "conflicting" not in context.values()
-
-
-def test_direct_values_conflicting_with_single_evidence_fail_closed_for_c3_and_h1(
-    tmp_path: Path,
-) -> None:
-    kg = tmp_path / "kg"
-    overlap = _edge(
-        "mutation_overlaps_enhancer",
-        "V-C3",
-        "mutation",
-        "E-C3",
-        "enhancer",
-        biosample="liver",
-    )
     target = _edge(
         "molecule_targets_gene",
         "M-H1",
@@ -413,39 +620,6 @@ def test_direct_values_conflicting_with_single_evidence_fail_closed_for_c3_and_h
         "G-H1",
         "gene",
         action_sign="inhibit",
-    )
-    _write_relation(kg, "mutation_overlaps_enhancer", [overlap])
-    _write_relation(
-        kg,
-        "enhancer_regulates_gene",
-        [
-            _edge(
-                "enhancer_regulates_gene",
-                "E-C3",
-                "enhancer",
-                "G-C3",
-                "gene",
-                biosample="liver",
-                regulatory_support="mpra",
-                alternative_targets="G-C3",
-            )
-        ],
-    )
-    _write_relation(
-        kg,
-        "mutation_associated_disease",
-        [
-            _edge(
-                "mutation_associated_disease",
-                "V-C3",
-                "mutation",
-                "D-C3",
-                "disease",
-                biosample="liver",
-                disease_support="fine_mapped",
-                functional_support="colocalization",
-            )
-        ],
     )
     _write_relation(kg, "molecule_targets_gene", [target])
     _write_relation(
@@ -465,37 +639,14 @@ def test_direct_values_conflicting_with_single_evidence_fail_closed_for_c3_and_h
     )
     _write_relation(
         kg,
-        "mutation_overlaps_enhancer",
-        [{"edge_key": overlap["edge_key"], "evidence_key": "brain-only", "biosample": "brain"}],
-        layer="evidence",
-    )
-    _write_relation(
-        kg,
         "molecule_targets_gene",
         [{"edge_key": target["edge_key"], "evidence_key": "activate-only", "action_sign": "activate"}],
         layer="evidence",
     )
 
     manifest = build_inferred_edges(
-        _config(
-            kg,
-            tmp_path / "out",
-            "variant_enhancer_gene_disease_v1",
-            "signed_target_mechanism_gene_drug_disease_v1",
-        )
+        _config(kg, tmp_path / "out", "signed_target_mechanism_gene_drug_disease_v1")
     )
-    c3 = pd.read_parquet(
-        tmp_path
-        / "out"
-        / "edges_inferred"
-        / "disease_associated_gene"
-        / "variant_enhancer_gene_disease_v1.parquet"
-    ).iloc[0]
-    context = json.loads(c3.context_intersection)
-
-    assert c3.inference_strength == "hypothesis"
-    assert context["context_conflicts"]["biosample"] == ["brain", "liver"]
-    assert manifest["counts_by_rule"]["variant_enhancer_gene_disease_v1"]["strong_rows"] == 0
     assert manifest["counts_by_rule"]["signed_target_mechanism_gene_drug_disease_v1"]["candidate_rows"] == 0
 
 
@@ -534,7 +685,17 @@ def test_direct_alias_values_conflicting_with_single_evidence_fail_closed_for_c1
     _write_relation(
         kg,
         "mutation_in_gene",
-        [_edge("mutation_in_gene", "V-C2", "mutation", "G-C2", "gene", functional_support="crispr")],
+        [
+            _edge(
+                "mutation_in_gene",
+                "V-C2",
+                "mutation",
+                "G-C2",
+                "gene",
+                consequence="missense_variant",
+                transcript_id="ENST-C2",
+            )
+        ],
     )
     _write_relation(
         kg,
@@ -639,7 +800,8 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
                 "mutation",
                 "G-C2",
                 "gene",
-                functional_support="crispr",
+                consequence="missense_variant",
+                transcript_id="ENST-C2",
             )
         ],
     )
@@ -718,7 +880,9 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
         "mutation",
         "G-C2",
         "gene",
-        functional_support="crispr",
+        consequence="missense_variant",
+        transcript_id="ENST-C2",
+        attribution_method="coding_consequence",
     )
     _write_relation(
         kg,
@@ -727,14 +891,14 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
             {
                 "edge_key": c2_endpoint["edge_key"],
                 "relation": c2_endpoint["relation"],
-                "evidence_key": "functional-crispr",
-                "functional_support": "crispr",
+                "evidence_key": "coding-attribution",
+                "attribution_method": "coding_consequence",
             },
             {
                 "edge_key": c2_endpoint["edge_key"],
                 "relation": c2_endpoint["relation"],
-                "evidence_key": "functional-none",
-                "functional_support": "none",
+                "evidence_key": "nearest-attribution",
+                "attribution_method": "nearest_gene",
             },
         ],
         layer="evidence",
@@ -801,16 +965,9 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
         / "disease_associated_protein"
         / "variant_protein_disease_v1.parquet"
     )
-    c2 = pd.read_parquet(
-        tmp_path
-        / "out"
-        / "edges_inferred"
-        / "disease_associated_gene"
-        / "variant_gene_disease_v1.parquet"
-    )
-
     assert set(c1.inference_strength) == {"hypothesis"}
-    assert set(c2.inference_strength) == {"hypothesis"}
+    assert manifest["counts_by_rule"]["variant_gene_disease_v1"]["candidate_rows"] == 0
+    assert not list((tmp_path / "out").rglob("variant_gene_disease_v1.parquet"))
     assert manifest["counts_by_rule"]["pharmacogenomic_variant_drug_disease_v1"]["candidate_rows"] == 0
     assert manifest["counts_by_rule"]["signed_target_mechanism_gene_drug_disease_v1"]["candidate_rows"] == 0
     assert "pharmacogenomic_variant_drug_disease_v1" not in manifest["artifacts"]
@@ -826,7 +983,7 @@ def test_zero_candidate_rerun_removes_both_rule_owned_parquets_and_manifest_inve
     _write_relation(
         populated,
         "mutation_in_gene",
-        [_edge("mutation_in_gene", "V", "mutation", "G", "gene")],
+        [_edge("mutation_in_gene", "V", "mutation", "G", "gene", consequence="missense_variant", transcript_id="ENST")],
     )
     _write_relation(
         populated,
@@ -894,7 +1051,11 @@ def test_cli_builds_only_requested_staged_inferred_rule(tmp_path: Path, capsys: 
     from scripts import build_inferred_relation_algebra
 
     kg = tmp_path / "kg"
-    _write_relation(kg, "mutation_in_gene", [_edge("mutation_in_gene", "V", "mutation", "G", "gene")])
+    _write_relation(
+        kg,
+        "mutation_in_gene",
+        [_edge("mutation_in_gene", "V", "mutation", "G", "gene", consequence="missense_variant", transcript_id="ENST")],
+    )
     _write_relation(kg, "mutation_associated_disease", [_edge("mutation_associated_disease", "V", "mutation", "D", "disease")])
     output = tmp_path / "staged"
 
@@ -908,7 +1069,9 @@ def test_cli_builds_only_requested_staged_inferred_rule(tmp_path: Path, capsys: 
                 "--kg-snapshot-id",
                 "sha256:immutable-cli-fixture",
                 "--kg-generations-json",
-                '{"fixture":"1"}',
+                '{"edges/mutation_in_gene":"9"}',
+                "--producer-revision",
+                "test-revision",
                 "--rule",
                 "variant_gene_disease_v1",
                 "--max-input-rows",
