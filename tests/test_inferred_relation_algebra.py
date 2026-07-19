@@ -316,7 +316,7 @@ def test_c2_emits_only_typed_coding_pathogenic_splice_colocalized_eqtl_or_l2g_su
                 "source_record_id": "variant:json:tc:7:gene:G-JSON",
                 "text_span": json.dumps(
                     {
-                        "consequence_ids": ["SO_0001583", "SO_0001627"],
+                        "consequence_ids": ["SO_0001583"],
                         "transcript_id": "ENST-JSON",
                     }
                 ),
@@ -378,10 +378,7 @@ def test_c2_emits_only_typed_coding_pathogenic_splice_colocalized_eqtl_or_l2g_su
     assert details["G-L2G"]["l2g_model"] == "v2.1"
     assert details["G-L2G"]["l2g_score"] == "0.82"
     assert "opentargets" in details["G-L2G"]["source"]
-    assert set(details["G-JSON"]["consequence"].split("|")) == {
-        "so_0001583",
-        "so_0001627",
-    }
+    assert details["G-JSON"]["consequence"] == "so_0001583"
     assert details["G-JSON"]["transcript_id"] == "enst-json"
 
 
@@ -509,6 +506,8 @@ def test_outputs_have_reproducible_derivation_contract_and_observed_absence_is_n
     assert bool(first.loc[0, "absence_is_not_biological_negation"])
     evidence = pd.read_parquet(tmp_path / "out-a" / "evidence_inferred" / "disease_associated_gene" / "variant_gene_disease_v1.parquet")
     assert set(evidence.derivation_hash) == set(first.derivation_hash)
+    assert evidence.loc[0, "c2_support_family"] == "coding_pathogenic"
+    assert evidence.loc[0, "c2_support_details"] == first.loc[0, "c2_support_details"]
     report = json.loads(
         (tmp_path / "out-a" / "manifest" / "pilot_report.json").read_text()
     )
@@ -882,7 +881,6 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
         "gene",
         consequence="missense_variant",
         transcript_id="ENST-C2",
-        attribution_method="coding_consequence",
     )
     _write_relation(
         kg,
@@ -891,14 +889,14 @@ def test_literal_and_multivalued_conflicts_fail_closed_across_strong_gates(tmp_p
             {
                 "edge_key": c2_endpoint["edge_key"],
                 "relation": c2_endpoint["relation"],
-                "evidence_key": "coding-attribution",
-                "attribution_method": "coding_consequence",
+                "evidence_key": "coding-missense",
+                "consequence": "missense_variant",
             },
             {
                 "edge_key": c2_endpoint["edge_key"],
                 "relation": c2_endpoint["relation"],
-                "evidence_key": "nearest-attribution",
-                "attribution_method": "nearest_gene",
+                "evidence_key": "coding-frameshift",
+                "consequence": "frameshift_variant",
             },
         ],
         layer="evidence",

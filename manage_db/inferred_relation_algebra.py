@@ -248,6 +248,21 @@ _SPLICE_CONSEQUENCES = {
     "so_0001575",
     "so_0001630",
 }
+_CONSEQUENCE_CANONICAL = {
+    "coding_sequence_variant": "so_0001580",
+    "frameshift_variant": "so_0001589",
+    "inframe_deletion": "so_0001822",
+    "inframe_insertion": "so_0001821",
+    "missense_variant": "so_0001583",
+    "protein_altering_variant": "so_0001818",
+    "splice_acceptor_variant": "so_0001574",
+    "splice_donor_variant": "so_0001575",
+    "splice_region_variant": "so_0001630",
+    "start_lost": "so_0002012",
+    "stop_gained": "so_0001587",
+    "stop_lost": "so_0001578",
+    "synonymous_variant": "so_0001819",
+}
 _EQTL_SUPPORT = {"colocalized_eqtl", "eqtl_colocalization"}
 _L2G_SUPPORT = {"l2g", "opentargets_l2g", "open_targets_l2g"}
 _DEPRECATED_RULE_ARTIFACTS = {
@@ -454,6 +469,17 @@ def _is_conflicting(value: Any) -> bool:
     return False
 
 
+def _is_explicit_conflict(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and value.strip().lower() == EvidenceValueStatus.CONFLICTING.value
+    ) or (
+        isinstance(value, Mapping)
+        and str(value.get("status", "")).strip().lower()
+        == EvidenceValueStatus.CONFLICTING.value
+    )
+
+
 def _normalized_values(value: Any) -> set[str]:
     if value is None:
         return set()
@@ -598,9 +624,12 @@ def _joined_detail(row: Mapping[str, Any], *names: str) -> str:
 def _c2_consequence_family(endpoint: Mapping[str, Any]) -> tuple[str, str] | None:
     evidence_fields = endpoint.get("support_evidence_fields", {})
     consequence_names = ("consequence", "consequence_id", "consequence_ids")
-    if any(_is_conflicting(endpoint.get(name)) for name in consequence_names) or (
+    if any(_is_explicit_conflict(endpoint.get(name)) for name in consequence_names) or (
         isinstance(evidence_fields, Mapping)
-        and any(_is_conflicting(evidence_fields.get(name)) for name in consequence_names)
+        and any(
+            _is_explicit_conflict(evidence_fields.get(name))
+            for name in consequence_names
+        )
     ):
         return None
     detail = _joined_detail(
@@ -610,9 +639,12 @@ def _c2_consequence_family(endpoint: Mapping[str, Any]) -> tuple[str, str] | Non
     values = {value for value in detail.split("|") if value}
     if not values:
         return "", ""
-    if values & _SPLICE_CONSEQUENCES:
+    canonical = {_CONSEQUENCE_CANONICAL.get(value, value) for value in values}
+    if len(canonical) > 1:
+        return None
+    if canonical & _SPLICE_CONSEQUENCES:
         return "splice", detail
-    if values & _CODING_CONSEQUENCES:
+    if canonical & _CODING_CONSEQUENCES:
         return "coding_pathogenic", detail
     return "", detail
 
@@ -1081,6 +1113,11 @@ def build_inferred_edges(config: BuildConfig) -> dict[str, Any]:
                 "context_intersection": row["context_intersection"],
                 "sign_status": row["sign_status"],
                 "inference_strength": row["inference_strength"],
+                **{
+                    key: row[key]
+                    for key in ("c2_support_family", "c2_support_details")
+                    if row.get(key)
+                },
             }
             for row in finalized
         ]
