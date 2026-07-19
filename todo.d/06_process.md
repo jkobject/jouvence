@@ -1,5 +1,7 @@
 # 06 — Process / board hygiene
 
+_Status snapshot: 2026-07-19 CEST._
+
 ## Problem
 
 The board has many complex, multi-card tasks. We must not call something `done` when it is only:
@@ -9,6 +11,8 @@ The board has many complex, multi-card tasks. We must not call something `done` 
 - `staged-only`,
 - `review-required`,
 - `validated` but not promoted,
+- `canonical candidate` but not promoted,
+- `stopped-by-user`,
 - or `canonical promoted` but not full production scope.
 
 ## Active card
@@ -16,6 +20,15 @@ The board has many complex, multi-card tasks. We must not call something `done` 
 - `t_caacd3d1` — process hygiene: `todo.d/` mirror, honest status labels, automatic review routing.
 - `t_859cbca4` — repo/workspace cleanup: active `.omoc` moved to `artifacts/legacy_omoc_20260624_t_859cbca4/`; git/worktree issue documented pending migration/review.
 - `t_4cab4a2f` — git-reviewability decision: use existing `jkobject/TxGNN` repo, migrate reviewable deltas into `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`, quarantine invalid sibling `.git` dirs only after manifest + review. Plan: `docs/git_reviewability_migration_t_4cab4a2f.md`.
+- `t_265da758` — current mirror synchronization and deterministic drift guard.
+
+## Current major routes
+
+- `t_8b9cdabc` — ENSG-only Gene producer: `staged-only` / `review-required` handoff at `8714378`; PR/review outstanding and no canonical promotion.
+- `t_2d54477b` → `t_2e6b355f` — immutable embeddings v2 producer/reviewer route: reviewer returned `validated` PASS; v1 remains historical/rejected.
+- `t_8b9cdabc` → `t_3c7766fa` — DepMap revision-2 dependency: PR #11 code/tests are ready at `e40e2508b8f061f70fc7a4fcbf05b0f4a1accfaf`, but the full staged artifact is not built until the ENSG heavy slot releases.
+- `t_d3b876b3` — gene NT is `stopped-by-user` at 6,912 / 78,164 non-canonical scratch rows; no auto-resume.
+- `t_ce839966` and `t_075f5353` — superseded historical +158,505 non-human Lamin Gene cards; inert and must not run.
 
 ## Process doc
 
@@ -46,9 +59,12 @@ The watchdog scans blocked TxGNN producer cards with `review-required` handoffs 
 
 1. Every producer that can block with `review-required` must have a reviewer/tester/CTO route before the worker stops.
 2. Reviewer cards must not be accidentally deadlocked behind an already-blocked producer; use an explicit routed-comment reviewer card when needed.
-3. Status summaries must say `design done`, `pilot accepted`, `staged-only`, `review-required`, `validated`, `canonical promoted`, or `production/full done` explicitly.
+3. Status summaries must say `design done`, `pilot accepted`, `staged-only`, `review-required`, `validated`, `canonical candidate`, `canonical promoted`, `stopped-by-user`, or `production/full done` explicitly.
 4. `todo.d/` mirrors major Kanban phases for human readability; Kanban remains dispatch source of truth.
 5. Do not recreate `.omoc` for new scratch reports/staged tranches. Use `artifacts/`, `docs/`, or GCS staging. During `t_859cbca4`, no active `.omoc` process was found and the legacy tree was moved to `artifacts/legacy_omoc_20260624_t_859cbca4/` with manifest `artifacts/reports/t_859cbca4_omoc_manifest.json`.
+6. Before merging a mirror update, run `uv run --group dev python scripts/check_status_mirror_drift.py --expected-date 2026-07-19`. Change the expected date together with all four maintained mirrors; superseded cards may appear only when explicitly marked historical/inert.
+
+`AGENTS.md` was reviewed for `t_265da758` and did not need a change: its operating rules remain short, status-free, and current.
 
 ## Definition of process done
 
@@ -58,3 +74,4 @@ This process phase is `validated` only when:
 2. `docs/kanban_status_hygiene.md` is present;
 3. `scripts/txgnn_kanban_watchdog.py --json` reports all current `review-required` producers routed; and
 4. `scripts/txgnn_kanban_watchdog.py --silent` is silent and exits `0` when all routes are healthy.
+5. `scripts/check_status_mirror_drift.py --expected-date <snapshot-date>` passes for `TODO.md` and the three maintained phase mirrors.
