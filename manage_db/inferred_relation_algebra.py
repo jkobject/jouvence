@@ -662,15 +662,16 @@ def _classify_c2_support(endpoint: Mapping[str, Any]) -> tuple[str, dict[str, st
         "regulatory_support",
         "attribution_method",
     )
+    predicate_value = _resolve_value(endpoint, "predicate")
     if support_value.status is EvidenceValueStatus.MISSING:
-        support_value = _resolve_value(endpoint, "predicate")
+        support_value = predicate_value
     if any(
         value.status is EvidenceValueStatus.CONFLICTING
-        for value in (clinical_value, support_value)
+        for value in (clinical_value, support_value, predicate_value)
     ):
         return None
     support = support_value.value
-    if support in {"nearest", "nearest_gene"}:
+    if {support, predicate_value.value} & {"ld", "ld_only", "nearest", "nearest_gene"}:
         return None
     alternative_targets = _joined_detail(endpoint, "alternative_targets")
     alternatives = {
@@ -679,7 +680,9 @@ def _classify_c2_support(endpoint: Mapping[str, Any]) -> tuple[str, dict[str, st
         for target in value.replace(",", "|").split("|")
         if target.strip()
     }
-    if len(alternatives) > 1 and support not in _EQTL_SUPPORT | _L2G_SUPPORT:
+    endpoint_target = str(endpoint.get("y_id") or "").strip().lower()
+    non_endpoint_alternatives = alternatives - {endpoint_target}
+    if non_endpoint_alternatives and support not in _EQTL_SUPPORT | _L2G_SUPPORT:
         return None
 
     clinical = clinical_value.value

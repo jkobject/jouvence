@@ -284,6 +284,27 @@ def test_c2_emits_only_typed_coding_pathogenic_splice_colocalized_eqtl_or_l2g_su
             alternative_targets="G-AMBIG|G-OTHER",
             consequence="missense_variant",
         ),
+        _edge(
+            "mutation_in_gene",
+            "V-ALT-ONE",
+            "mutation",
+            "G-ALT-ONE",
+            "gene",
+            alternative_targets="G-OTHER",
+            consequence="missense_variant",
+        ),
+        _edge(
+            "mutation_in_gene",
+            "V-L2G-NEAREST",
+            "mutation",
+            "G-L2G-NEAREST",
+            "gene",
+            attribution_method="opentargets_l2g",
+            l2g_model="v2.1",
+            l2g_score=0.9,
+            predicate="nearest_gene",
+            source="OpenTargets",
+        ),
         _edge("mutation_in_gene", "V-MISSING", "mutation", "G-MISSING", "gene"),
     ]
     _write_relation(kg, "mutation_in_gene", accepted + forbidden)
