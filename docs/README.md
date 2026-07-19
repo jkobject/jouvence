@@ -24,6 +24,7 @@ This directory is the single home for durable project knowledge. Start at the re
 - [`source_native_expansion_policy.md`](source_native_expansion_policy.md) — source and endpoint policy.
 - [`source_measure_edge_matrix.md`](source_measure_edge_matrix.md) — source/measurement/relation decisions.
 - [`inferred_edges_policy.md`](inferred_edges_policy.md) — inferred and contextual assertions.
+- [`human_ensg_gene_migration_t_8b9cdabc.md`](human_ensg_gene_migration_t_8b9cdabc.md) — staged human ENSG identifier audit, migration, validation, and rollback evidence.
 
 ### PyG, GNN, and embeddings
 

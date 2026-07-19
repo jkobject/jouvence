@@ -28,6 +28,14 @@ Keep source nuance in evidence:
 
 Never synthesize placeholder evidence merely to make edge/evidence parity pass. Unsupported assertions remain unsupported or are excluded.
 
+## Human gene identifier contract
+
+Canonical human `gene` node IDs and every human-gene edge endpoint use Ensembl stable gene IDs (`ENSG...`). NCBI Gene IDs, HGNC IDs, symbols, UniProt accessions, and source-native identifiers are aliases or provenance fields; they are not parallel canonical gene nodes. Endpoint normalization must retain the raw source identifier and the exact mapping source, release, and file hash needed to reproduce the lineage.
+
+Only an unambiguous human mapping may be rewritten automatically. Missing, one-to-many, conflicting, retired-without-replacement, and non-human identifiers are fail-closed: quarantine or exclude them with an explicit reason rather than guessing. Cross-species orthology is a separate source-native relation with organism-qualified endpoints and is excluded from the default human-only canonical graph until that policy and schema are reviewed explicitly.
+
+Identifier migrations are staged graph rewrites, not in-place string edits. They must cover `nodes/`, every relation endpoint, and corresponding evidence keys; deterministically merge post-map edge collisions; preserve evidence multiplicity; pass endpoint anti-joins, duplicate-identity checks, and edge/evidence parity; and carry source/candidate hashes plus a rollback manifest before promotion.
+
 ## Feature/context is a valid final representation
 
 Data does not need to become topology to be valuable. Use metadata, feature, evidence, or proof sidecars when the source is contextual, dense, or potentially leaky.

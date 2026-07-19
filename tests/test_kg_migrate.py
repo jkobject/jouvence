@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from manage_db.kg_migrate import migrate_edges, migrate_nodes
 
@@ -18,14 +19,31 @@ def test_migrate_nodes_emits_storage_schema_columns() -> None:
         ]
     )
 
-    migrated, index_to_id = migrate_nodes(nodes)
+    migrated, index_to_id = migrate_nodes(nodes, gene_id_map={"7157": "ENSG00000141510"})
 
-    assert index_to_id == {1: "NCBI:7157"}
+    assert index_to_id == {1: "ENSG00000141510"}
     row = migrated.iloc[0]
-    assert row["id"] == "NCBI:7157"
+    assert row["id"] == "ENSG00000141510"
     assert row["node_type"] == "gene"
     assert row["ncbi_gene_id"] == "7157"
     assert row["gene_name"] == "TP53"
+
+
+def test_migrate_nodes_fails_closed_without_authoritative_gene_map() -> None:
+    nodes = pd.DataFrame(
+        [
+            {
+                "node_index": 1,
+                "node_id": "7157",
+                "node_type": "gene/protein",
+                "node_name": "TP53",
+                "node_source": "NCBI",
+            }
+        ]
+    )
+
+    with pytest.raises(ValueError, match="requires a pinned"):
+        migrate_nodes(nodes)
 
 
 def test_migrate_edges_canonicalizes_bidirectional_txdata_relations() -> None:

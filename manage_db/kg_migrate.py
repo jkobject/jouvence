@@ -12,7 +12,7 @@ Node ID normalisation rules
 ---------------------------
 node_type          source ID              → new ontology ID
 ──────────────────────────────────────────────────────────────
-gene/protein       NCBI Gene int          → NCBI:{id}   (Ensembl mapping deferred)
+gene/protein       NCBI Gene int          → human ENSG via pinned authoritative map
 drug               DrugBank DB…           → keep as-is  (ChEMBL mapping deferred)
 effect/phenotype   HPO int                → HP:{id:07d}
 disease (MONDO)    MONDO int              → MONDO:{id:07d}
@@ -65,13 +65,24 @@ def _fmt_zero(prefix: str, raw_id: str, width: int = 7) -> str:
     return f"{prefix}:{int(raw_id):0{width}d}"
 
 
-def normalise_node_id(raw_id: str, txdata_type: str, source: str) -> str:
+def normalise_node_id(
+    raw_id: str,
+    txdata_type: str,
+    source: str,
+    *,
+    gene_id_map: dict[str, str] | None = None,
+) -> str:
     """Return a normalised ontology ID for a single node."""
     rid = str(raw_id).strip()
 
     match txdata_type:
         case "gene/protein":
-            return f"NCBI:{rid}"
+            if gene_id_map is None:
+                raise ValueError("gene/protein normalization requires a pinned NCBI Gene→human ENSG map")
+            canonical_id = gene_id_map.get(rid)
+            if canonical_id is None or not canonical_id.startswith("ENSG"):
+                raise ValueError(f"NCBI Gene {rid!r} has no accepted one-to-one human ENSG mapping")
+            return canonical_id
 
         case "drug":
             # DrugBank IDs are already in DB00001 format
@@ -110,7 +121,11 @@ def normalise_node_id(raw_id: str, txdata_type: str, source: str) -> str:
 # Node migration
 # ---------------------------------------------------------------------------
 
-def migrate_nodes(nodes_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, str]]:
+def migrate_nodes(
+    nodes_df: pd.DataFrame,
+    *,
+    gene_id_map: dict[str, str] | None = None,
+) -> tuple[pd.DataFrame, dict[int, str]]:
     """Normalise node IDs and return (new_nodes_df, index_to_new_id mapping).
 
     Returns
@@ -131,7 +146,12 @@ def migrate_nodes(nodes_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, str]]
         name = str(row["node_name"]).strip()
         idx = int(row["node_index"])
 
-        new_id = normalise_node_id(raw_id, txdata_type, source)
+        new_id = normalise_node_id(
+            raw_id,
+            txdata_type,
+            source,
+            gene_id_map=gene_id_map,
+        )
         new_type = TXDATA_NODE_TYPE_MAP.get(txdata_type)
         if new_type is None:
             log.warning("Unmapped legacy type %r (node_index=%d) — skipping", txdata_type, idx)
@@ -269,7 +289,26 @@ def save_edges(edges_df: pd.DataFrame, root: kg_storage.KGRoot, dry_run: bool) -
 # Main
 # ---------------------------------------------------------------------------
 
-def run(data_dir: Path, dry_run: bool = False) -> None:
+def load_gene_id_map(path: Path) -> dict[str, str]:
+    """Load accepted one-to-one NCBI→ENSG rows from a pinned migration manifest."""
+    frame = pd.read_parquet(path) if path.suffix == ".parquet" else pd.read_csv(path)
+    required = {"ncbi_gene_id", "canonical_ensembl_gene_id", "mapping_status"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(f"gene ID map missing columns: {missing}")
+    accepted = frame[frame["canonical_ensembl_gene_id"].notna()].copy()
+    if accepted["ncbi_gene_id"].astype(str).duplicated().any():
+        raise ValueError("gene ID map contains duplicate accepted NCBI IDs")
+    return dict(
+        zip(
+            accepted["ncbi_gene_id"].astype(str),
+            accepted["canonical_ensembl_gene_id"].astype(str),
+            strict=True,
+        )
+    )
+
+
+def run(data_dir: Path, *, gene_id_map_path: Path, dry_run: bool = False) -> None:
     nodes_path = data_dir / "txdata" / "nodes.tab"
     edges_path = data_dir / "txdata" / "edges.csv"
     out_dir    = data_dir / "kg"
@@ -285,7 +324,8 @@ def run(data_dir: Path, dry_run: bool = False) -> None:
 
     # ── Node migration ───────────────────────────────────────────────────────
     log.info("Migrating nodes…")
-    new_nodes, index_to_id = migrate_nodes(nodes_raw)
+    gene_id_map = load_gene_id_map(gene_id_map_path)
+    new_nodes, index_to_id = migrate_nodes(nodes_raw, gene_id_map=gene_id_map)
     log.info("  %d nodes mapped", len(new_nodes))
 
     # Stats per type
@@ -330,6 +370,12 @@ def run(data_dir: Path, dry_run: bool = False) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Migrate TxGNN KG to new Parquet schema")
     parser.add_argument("--data-dir", default="./data", help="Root data directory (default: ./data)")
+    parser.add_argument(
+        "--gene-id-map",
+        type=Path,
+        required=True,
+        help="Pinned Parquet/CSV crosswalk with accepted NCBI Gene→human ENSG mappings",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print stats without writing files")
     args = parser.parse_args(argv)
 
@@ -339,7 +385,7 @@ def main(argv: list[str] | None = None) -> None:
         stream=sys.stderr,
     )
 
-    run(Path(args.data_dir), dry_run=args.dry_run)
+    run(Path(args.data_dir), gene_id_map_path=args.gene_id_map, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

@@ -741,7 +741,13 @@ def ingest_targets(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> int:
     return len(gene_df)
 
 
-def ingest_orthology(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> dict[str, int]:
+def ingest_orthology(
+    ot_dir: Path,
+    out_dir: Path,
+    root: kg_storage.KGRoot,
+    *,
+    include_cross_species_staging: bool = False,
+) -> dict[str, int]:
     """Ingest exact OpenTargets target homologues as gene→gene orthology edges.
 
     Source mapping is intentionally narrow and auditable:
@@ -754,11 +760,15 @@ def ingest_orthology(ot_dir: Path, out_dir: Path, root: kg_storage.KGRoot) -> di
     * rejected rows: within-human paralogues, other paralogues, missing target
       gene IDs, self edges, and non-Ensembl-gene targets
 
-    The exporter also writes minimal endpoint gene stubs for accepted Ensembl
-    gene IDs so temp-root validation can anti-join edges exactly.  It is
-    not included in ``ALL_DATASETS``; run explicitly with ``--datasets orthology``
-    after reviewing the source policy for a canonical promotion.
+    Cross-species endpoints are raw/staging provenance, not canonical human KG
+    nodes.  The explicit staging opt-in prevents future canonical/default runs
+    from recreating non-human Gene stubs or ``gene_ortholog_gene``.
     """
+    if not include_cross_species_staging:
+        raise ValueError(
+            "OpenTargets homologues are excluded from the canonical human KG; "
+            "set include_cross_species_staging=True only for an explicit raw/staging export"
+        )
     target_path = ot_dir / "target"
     log.info("Loading target homologues from %s", target_path)
 
@@ -3319,6 +3329,7 @@ def run(
     release: str = "latest",
     download: bool = True,
     workers: int = 8,
+    include_cross_species_orthology_staging: bool = False,
 ) -> None:
     """Download (optionally) and ingest OpenTargets datasets.
 
@@ -3363,7 +3374,15 @@ def run(
             continue
         log.info("\n=== Ingesting %s ===", ds_name)
         try:
-            result = fn(ot_dir, out_dir, kg_root)
+            if fn is ingest_orthology:
+                result = fn(
+                    ot_dir,
+                    out_dir,
+                    kg_root,
+                    include_cross_species_staging=include_cross_species_orthology_staging,
+                )
+            else:
+                result = fn(ot_dir, out_dir, kg_root)
             summary[ds_name] = result
         except FileNotFoundError as exc:
             log.error("Dataset %r not found: %s", ds_name, exc)
@@ -3408,6 +3427,11 @@ def main(argv: list[str] | None = None) -> None:
         "--workers", type=int, default=8,
         help="Parallel download threads (default: 8)",
     )
+    parser.add_argument(
+        "--include-cross-species-orthology-staging",
+        action="store_true",
+        help="Explicitly export OpenTargets homologue stubs/edges for raw staging only",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -3422,6 +3446,7 @@ def main(argv: list[str] | None = None) -> None:
         release=args.release,
         download=not args.no_download,
         workers=args.workers,
+        include_cross_species_orthology_staging=args.include_cross_species_orthology_staging,
     )
 
 

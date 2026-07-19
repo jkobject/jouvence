@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from manage_db import kg_storage
 from manage_db.ingest_opentargets import (
@@ -149,7 +150,12 @@ def test_ingest_orthology_writes_only_high_confidence_target_homologues(tmp_path
     kg_dir = tmp_path / "kg"
     root = kg_storage.open_kg_root(str(kg_dir))
 
-    assert ingest_orthology(ot_dir, kg_dir, root) == {
+    assert ingest_orthology(
+        ot_dir,
+        kg_dir,
+        root,
+        include_cross_species_staging=True,
+    ) == {
         "gene": 2,
         "gene_ortholog_gene": 1,
     }
@@ -165,6 +171,13 @@ def test_ingest_orthology_writes_only_high_confidence_target_homologues(tmp_path
     assert edges.loc[0, "homology_type"] == "ortholog_one2one"
     assert edges.loc[0, "species_id"] == "10090"
     assert bool(edges.loc[0, "is_high_confidence"])
+
+
+def test_ingest_orthology_is_disabled_without_explicit_staging_opt_in(tmp_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+
+    with pytest.raises(ValueError, match="excluded from the canonical human KG"):
+        ingest_orthology(tmp_path / "opentargets", tmp_path / "kg", root)
 
 
 def test_ingest_targets_writes_ensp_protein_nodes(tmp_path: Path) -> None:
