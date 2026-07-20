@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Jouvence-Graph is a 100M+ edge, ML-ready biomedical knowledge graph built for agents, predictive graph ML and evidence-aware link inference.">
+  <meta name="description" content="Jouvence-Graph is a source-aware biomedical knowledge graph with 100M+ audited edge rows, built for agents, bounded predictive graph ML and evidence-aware link inference.">
   <meta name="theme-color" content="#10211d">
-  <meta property="og:title" content="Jouvence-Graph — 100M+ edges, ready for predictive ML">
-  <meta property="og:description" content="Open, agent-readable and structured for linked Parquet, PyG and formal relation composition.">
+  <meta property="og:title" content="Jouvence-Graph — 100M+ audited edge rows for graph ML">
+  <meta property="og:description" content="Open, agent-readable and structured for linked Parquet, bounded PyG workflows and explicit graph-path inference rules.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://www.jkobject.com/jouvence/">
   <link rel="canonical" href="https://www.jkobject.com/jouvence/">
@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="site.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2310211d'/%3E%3Ccircle cx='19' cy='34' r='6' fill='%23c8f66f'/%3E%3Ccircle cx='43' cy='18' r='5' fill='%23f4f1e8'/%3E%3Ccircle cx='45' cy='45' r='8' fill='%23ff8068'/%3E%3Cpath d='M24 31 38 21M25 37l12 5M43 23l2 14' stroke='%23f4f1e8' stroke-width='3'/%3E%3C/svg%3E">
   <script src="site.js" defer></script>
-  <title>Jouvence-Graph — ML-ready biomedical knowledge graph</title>
+  <title>Jouvence-Graph — biomedical knowledge graph designed for ML</title>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -46,14 +46,14 @@
     <section class="hero" id="top">
       <div class="hero-copy reveal">
         <p class="eyebrow"><span></span> Open biomedical infrastructure for agents + ML</p>
-        <h1>The 100M+ edge, ML-ready biomedical knowledge graph.</h1>
+        <h1>A 100M+ edge-row biomedical graph, designed for ML.</h1>
         <p class="hero-lede">Jouvence-Graph is built for agents and predictive graph ML. It combines an Open Targets-derived core with ontologies, molecular interactions, expression, regulatory genomics, pharmacology and clinical evidence — while keeping source identifiers and provenance attached.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="https://github.com/jkobject/jouvence/tree/main/notebooks">Explore the notebooks <span aria-hidden="true">→</span></a>
           <a class="button button-secondary" href="https://github.com/jkobject/jouvence">View the code</a>
         </div>
         <ul class="project-facts" aria-label="Project information">
-          <li>100M+ canonical edges</li>
+          <li>100M+ audited edge rows</li>
           <li>112 documented Parquet datasets</li>
           <li>15 node families</li>
           <li>Open code</li>
@@ -116,10 +116,10 @@
         <span>01</span><h3>Linked Parquet</h3><p>Stable entity IDs, accepted cross-references, source record IDs and evidence remain joinable.</p>
       </article>
       <article class="pipeline-step reveal">
-        <span>02</span><h3>PyG sidecars</h3><p>Relation-wise edge indices, node maps and manifests are designed for bounded graph-ML loading.</p>
+        <span>02</span><h3>PyG sidecars</h3><p>Relation-wise edge indices, node maps and manifests support bounded PyG loading and training smokes. Full-scale multi-relation training and biological performance are not yet claimed.</p>
       </article>
       <article class="pipeline-step reveal">
-        <span>03</span><h3>Formal composition</h3><p>Approved relation chains generate explicit inferred candidates, never disguised observations.</p>
+        <span>03</span><h3>Explicit path rules</h3><p>Versioned, approved relation chains generate candidates while retaining support paths and leakage constraints.</p>
       </article>
       <article class="pipeline-step reveal">
         <span>04</span><h3>Agent-readable</h3><p>Documentation, schemas and safety contracts tell agents what to query, train and never assume.</p>
@@ -165,7 +165,7 @@
       <div class="source-ledger">
         <article class="source-band source-live reveal"><div><span class="status-dot"></span><p class="feature-code">Canonical now</p><h3>Validated graph + sidecars</h3></div><p>Open Targets-derived variants, genetics, interactions, pharmacogenomics and drug–target/disease layers; GO, HPO and UBERON; BioGRID protein interactions; HPA tissue protein expression; Cellosaurus tissue/species provenance; ClinicalTrials.gov trial text and treatment-link metadata.</p></article>
         <article class="source-band source-staged reveal"><div><span class="status-dot"></span><p class="feature-code">Reviewed or staged</p><h3>Built, but not all default topology</h3></div><p>ReMap TF–enhancer support, Cell Ontology hierarchy and tissue placement, Reactome protein-native membership, ChEMBL protein-native targets, protein-native disease associations, DepMap essentiality, GDSC response, cell-line proteomics and additional Cellosaurus mappings.</p></article>
-        <article class="source-band source-future reveal"><div><span class="status-dot"></span><p class="feature-code">Not canonical yet</p><h3>Requires a source-native contract</h3></div><p>Direct miRBase/miRTarBase regulation, Complex Portal membership, structured UniProt/BioGRID PTM events and richer direct IntAct protein endpoints. These are not advertised as finished until endpoint, license, evidence and leakage gates pass.</p></article>
+        <article class="source-band source-future reveal"><div><span class="status-dot"></span><p class="feature-code">Not canonical yet</p><h3>Requires a source-native contract</h3></div><p>Direct miRBase/miRTarBase regulation, Complex Portal membership and structured UniProt/BioGRID PTM events. These are not advertised as finished until endpoint, license, evidence and leakage gates pass.</p></article>
       </div>
       <div class="exclusion-note reveal"><strong>What is deliberately excluded from default topology?</strong><span>Open Targets payloads that are metadata rather than biological adjacency; paper/dataset inventory edges; unsafe gene→protein projections; generic phenotype/pathway Cartesian joins; trial outcomes that leak treatment labels; and any inferred candidate without an approved composition rule.</span></div>
     </section>
@@ -260,7 +260,7 @@
       <div class="closing-mark" aria-hidden="true">J</div>
       <div class="reveal">
         <p class="section-kicker">Predict, but keep the derivation</p>
-        <h2>Graph ML and formal logic,<br>on the same evidence layer.</h2>
+        <h2>Graph ML and explicit path rules,<br>on the same evidence layer.</h2>
         <div class="hero-actions">
           <a class="button button-light" href="https://github.com/jkobject/jouvence">Open Jouvence-Graph on GitHub <span aria-hidden="true">↗</span></a>
           <a class="text-link" href="https://www.medrxiv.org/content/10.1101/2023.03.19.23287458v2">Read the TxGNN paper</a>
@@ -274,7 +274,7 @@
       <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><circle cx="10" cy="24" r="5"></circle><circle cx="30" cy="10" r="4"></circle><circle cx="32" cy="32" r="7"></circle><path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path></svg>
       <span>Jouvence-Graph</span>
     </a>
-    <p>100M+ canonical edges for agentic exploration, predictive ML and auditable link inference.</p>
+    <p>100M+ audited edge rows for agentic exploration, bounded predictive ML and auditable path-based inference.</p>
     <div class="footer-links">
       <a href="https://github.com/jkobject/jouvence">GitHub</a>
       <a href="https://github.com/jkobject/jouvence/blob/main/docs/README.md">Documentation</a>
