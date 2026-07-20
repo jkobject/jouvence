@@ -10,6 +10,11 @@ Decision date: 2026-07-19
 
 Jouvence preserves broad, stable biological relation identities. Causal mechanism, direction of effect, pharmacological action, pathogenicity, response polarity, and experimental context are **typed features of those existing edges**, supported by row-level evidence. They are not separate relation names.
 
+The deterministic machine-readable companion to this doctrine is
+[`causal_edge_feature_inventory.json`](causal_edge_feature_inventory.json). It is
+the sole current exact-count inventory for this contract; failed-lineage or
+task-local inventories are historical evidence, not alternative contracts.
+
 For example, Jouvence keeps:
 
 ```text
@@ -79,6 +84,23 @@ disease_associated_protein(protein, disease)
 
 The reverse gene-to-protein projection is not automatic because the causal transcript, isoform, or protein product may be unknown.
 
+## Source-native relation identity and direction
+
+Relation direction follows the source-native assertion and the canonical endpoint
+types; identifier mappings do not justify aliases or reversed duplicates. A
+protein-native disease assertion remains
+`disease_associated_protein(protein, disease)`, and an accepted one-way endpoint
+projection uses `disease_associated_gene(gene, disease)` while retaining the
+protein assertion as derivation evidence.
+
+RNA or gene-level expression uses `x_expresses_gene`; a direct protein or isoform
+measurement uses `x_expresses_protein`. A protein-to-gene biological projection
+must preserve `support_mode=protein_product_observed` and must not claim an RNA
+measurement. Response assertions remain `cell_type_responds_to_molecule` and
+`cell_line_responds_to_molecule`. Duplicate spellings or directions for the same
+source assertion must be normalized to one canonical relation, not introduced as
+aliases.
+
 ## Aggregation and conflict policy
 
 An edge may have several evidence rows. Each normalized edge feature must carry an explicit aggregation state:
@@ -88,6 +110,10 @@ An edge may have several evidence rows. Each normalized edge feature must carry 
 - `conflicting`: incompatible assertions exist;
 - `unknown`: no usable assertion is available.
 
+The aggregation enum is exactly `single|consensus|conflicting|unknown`. Null,
+empty, or otherwise unusable source values are inputs to aggregation, not a fifth
+state; zero usable assertions always maps to `unknown`.
+
 A conflict is data, not missingness. It must remain visible, for example:
 
 ```text
@@ -96,6 +122,24 @@ mechanism_status = conflicting
 ```
 
 Inference and downstream consumers must fail closed on `conflicting` or `unknown` whenever a known sign or mechanism is required. They must never select one source silently.
+
+## Authoritative reproduced inventory
+
+These exact local inventories were independently reproduced before this
+consolidation. This documentation-and-validation revision does not reread cloud,
+GCS, FUSE, LaminDB, or canonical data.
+
+| Source lane | Existing broad relation | Exact inventory | Causal-feature consequence |
+| --- | --- | ---: | --- |
+| ChEMBL target | `molecule_targets_protein` | 2,119 edges; 2,132 action-bearing assertions | Action multiplicity requires source-backed normalization; no silent sign selection. |
+| UniProt disease | `disease_associated_protein` | 3,243 edges; 35,839 evidence assertions | Category-to-mechanism/direction normalization remains review-required. |
+| Transcript consequence | `mutation_affects_transcript` | 2,599,922 rows | Consequence class alone does not establish LoF or GoF. |
+| Contained gene | `mutation_in_gene` | 2,599,525 rows | Structural containment supplies no C2 eligibility, sign, direction, or mechanism. |
+| Legacy contraindication | `molecule_contraindicates_disease` | 30,675 distinct pairs; 0 evidence assertions | Provenance-free pairs cannot support signed inference or anti-join completeness. |
+
+The JSON companion fixes these values as one authoritative contract. It also
+records the remaining unknowns instead of presenting absent source normalization
+or provenance as resolved.
 
 ## Normalized feature families
 
@@ -244,7 +288,7 @@ Any enrichment of existing edge/evidence tables must prove:
 1. relation names and endpoint identities are unchanged;
 2. edge row identity and edge/evidence pairing are conserved;
 3. normalized enums are versioned and source-backed;
-4. null, `single`, `consensus`, `conflicting`, and `unknown` counts are reported;
+4. every emitted aggregation status is one of `single`, `consensus`, `conflicting`, or `unknown`, with null/unusable inputs counted under `unknown`;
 5. evidence conflicts cannot be overwritten by direct or alias fields;
 6. graph loaders remain backward-compatible with optional feature columns;
 7. toxicity/PK does not become efficacy, and generic consequence does not become LoF/GoF;

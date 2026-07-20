@@ -1,0 +1,110 @@
+{
+  "aggregation": {
+    "states": [
+      "single",
+      "consensus",
+      "conflicting",
+      "unknown"
+    ],
+    "zero_usable_assertions": "unknown"
+  },
+  "contract_version": "causal-edge-features-v1",
+  "edge_model": {
+    "feature_families": [
+      "causal_mechanism",
+      "effect_direction",
+      "pharmacological_action",
+      "pathogenicity",
+      "risk_protection",
+      "response_polarity"
+    ],
+    "new_relation_name_variants": false,
+    "row_level_evidence_required": true,
+    "storage": "typed_features_on_existing_broad_edges"
+  },
+  "inference_policy": {
+    "c2": {
+      "containment_supplies_causal_mechanism": false,
+      "containment_supplies_effect_direction": false,
+      "containment_supplies_eligibility": false,
+      "containment_supplies_sign": false,
+      "relation": "mutation_in_gene"
+    },
+    "c3": {
+      "decision": "do_not_infer",
+      "template": "F",
+      "v1_included": false
+    }
+  },
+  "inventories": [
+    {
+      "action_bearing_assertion_count": 2132,
+      "edge_count": 2119,
+      "feature_surface": "pharmacological_action",
+      "lane": "chembl_target",
+      "provenance": "fresh_local_independently_reproduced",
+      "relation": "molecule_targets_protein",
+      "remaining_unknowns": [
+        "per-edge action agreement and source context require reviewed normalization"
+      ]
+    },
+    {
+      "edge_count": 3243,
+      "evidence_assertion_count": 35839,
+      "feature_surface": "causal_mechanism_and_disease_direction",
+      "lane": "uniprot_disease",
+      "provenance": "fresh_local_independently_reproduced",
+      "relation": "disease_associated_protein",
+      "remaining_unknowns": [
+        "exact source-category-to-causal-support normalization remains unreviewed"
+      ]
+    },
+    {
+      "feature_surface": "variant_consequence",
+      "lane": "transcript_consequence",
+      "provenance": "fresh_local_independently_reproduced",
+      "relation": "mutation_affects_transcript",
+      "row_count": 2599922,
+      "remaining_unknowns": [
+        "generic consequence classes do not establish loss- or gain-of-function"
+      ]
+    },
+    {
+      "causal_eligibility": false,
+      "feature_surface": "genomic_containment",
+      "lane": "contained_gene",
+      "provenance": "fresh_local_independently_reproduced",
+      "relation": "mutation_in_gene",
+      "row_count": 2599525,
+      "remaining_unknowns": [
+        "containment is structural context and supplies no causal sign or mechanism"
+      ]
+    },
+    {
+      "distinct_pair_count": 30675,
+      "evidence_assertion_count": 0,
+      "feature_surface": "contraindication",
+      "lane": "legacy_contraindication",
+      "provenance": "fresh_local_independently_reproduced",
+      "relation": "molecule_contraindicates_disease",
+      "source_backed_causal_eligibility": false,
+      "remaining_unknowns": [
+        "source provenance is absent; pairs cannot support signed inference or anti-join completeness"
+      ]
+    }
+  ],
+  "relation_semantics": {
+    "canonical_relation_per_assertion": true,
+    "expression": {
+      "direct_protein_measurement": "x_expresses_protein",
+      "gene_or_rna_level": "x_expresses_gene",
+      "protein_to_gene_projection_preserves_modality": true
+    },
+    "response": [
+      "cell_type_responds_to_molecule",
+      "cell_line_responds_to_molecule"
+    ],
+    "source_native_direction_required": true
+  },
+  "status": "contract documented"
+}
