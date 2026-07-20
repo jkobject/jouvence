@@ -1,6 +1,8 @@
 # 03 — Node features and embeddings
 
-_Last verified: 2026-07-15. Kanban board `txgnn` remains the live source of truth._
+_Status snapshot: 2026-07-19 CEST._
+
+Kanban board `txgnn` remains the live source of truth.
 
 ## Review verdict
 
@@ -16,7 +18,7 @@ There are 15 active canonical node types: `paper`, `gene`, `transcript`, `protei
 | --- | --- | --- | --- |
 | protein | `protein_sequence`: 112,051 rows | `protein_textual_summary`: 162,163 rows / 69.30% protein coverage | source-backed but not every protein has both modalities |
 | transcript | `transcript_sequence`: 187,268 rows | none | sequence coverage partial versus 507,365 transcript nodes |
-| gene | none canonical; staged `gene_genomic_sequence`: 78,164 rows and `gene_genomic_interval`: 78,644 rows | `gene_textual_summary`: 212,029 / 267,830 | genomic candidate is staged-only and does not cover NCBI-only/long-locus cases |
+| gene | none canonical; staged `gene_genomic_sequence`: 78,164 rows and `gene_genomic_interval`: 78,644 rows | `gene_textual_summary`: 212,029 / 267,830 on the pre-migration source | genomic features and counts require rebase to the 81,715-human-ENSG target after `t_8b9cdabc`; no promotion claimed |
 | molecule | `molecule_fingerprint`: 18,614; source SMILES/text available for 22,230 / 31,007 | `molecule_textual_summary`: 22,230 | no fabricated structure for molecules without valid SMILES |
 | disease | n/a | 26,395 / 41,859 | partial text coverage |
 | pathway | n/a | 37,492 / 48,575 | mostly GO; Reactome descriptions remain incomplete/deferred |
@@ -34,7 +36,20 @@ Sequences are therefore **not expected for every node type**, and are not comple
 
 ## Real embedding artifacts
 
-Validated/reviewed staged-only outputs include:
+### Immutable public embeddings v2
+
+`t_2d54477b` published a corrected immutable candidate under `kg/v2/features/embeddings/`; reviewer `t_2e6b355f` independently returned `validated` PASS on 2026-07-19:
+
+- marker generation `1784460889447648`, 51 objects, 2,557,651,434 bytes;
+- 808,269 rows across 12 logical leaves and 13 Parquets;
+- protein ESM2 112,051; transcript NT 187,268; S-BioBERT text 490,336 across nine node types; ChemBERTa 18,614;
+- exact hashes/generations, fixed-size float32 vectors, clean keys/vectors, replay no-op and conflict fail-closed all passed independent readback;
+- v1 remains rejected, historical and unaccepted;
+- no mutable latest pointer was written, and this does not imply one source-backed vector for every physical node.
+
+The v2 object set is therefore a **validated immutable candidate**. It is not a claim of universal source coverage or full model training.
+
+Earlier validated/reviewed staged-only outputs include:
 
 - **protein ESM2 t33:** 112,051 / 112,051 source sequence rows, 1,280 dimensions, zero skipped/failed rows, finite/non-zero, duplicate keys 0;
 - **transcript Nucleotide Transformer:** 187,268 / 187,268 source transcript-sequence rows, accepted staged-only full artifact, 512 dimensions;
@@ -44,11 +59,15 @@ Validated/reviewed staged-only outputs include:
 
 Important boundaries:
 
-- most embedding outputs remain **staged-only**, not canonically promoted under `kg/v2/features/embeddings/`;
+- older individual outputs remain **staged-only**; the v2 set above is separately published and validated under its immutable identity;
 - there is not one source-backed vector for each of the 55,523,691 physical nodes;
 - enhancer and mutation dominate node count and currently rely on learned fallback in model materialization because reviewed source embedding modalities are absent;
 - edge/value MLP output has executable bounded proof, but full all-relation production embedding materialization and model calibration are not complete;
 - learned fallback is a model parameter/initialization, not biological source evidence.
+
+## Gene Nucleotide Transformer stop
+
+`t_d3b876b3` is **stopped-by-user** at 6,912 / 78,164 scratch rows. Those rows are non-canonical and have no accepted release marker. Do not auto-resume, publish, delete, or count the scratch checkpoint as accepted embedding coverage. Any future restart requires a new explicit operator decision and bounded plan.
 
 ## 16 GB implication
 
@@ -62,10 +81,10 @@ The reviewed design fits a 16 GB worker only through versioned sidecars, mmap/sh
 
 ## Remaining review gaps
 
-1. Promote or explicitly retain staged-only versions of full real embedding modalities with one coherent manifest/index.
-2. Produce a per-node-type coverage manifest: canonical rows, source-feature rows, real embedding rows, skipped rows, fallback-required rows.
+1. Integrate the validated immutable v2 identity into downstream manifests without inventing a mutable latest pointer.
+2. Rebase the per-node-type coverage manifest after the human ENSG-only Gene candidate is independently reviewed/promoted: canonical rows, source-feature rows, real embedding rows, skipped rows, fallback-required rows.
 3. Decide reviewed sequence/context features for enhancer and mutation; decide whether staged gene genomic features should be promoted.
-4. Confirm full text/SMILES output counts and canonical promotion status in a fresh promotion-readiness audit.
+4. Preserve v1 rejection and v2 immutable identity in every downstream consumer/readiness audit.
 5. Run a larger PyG model test that consumes these modalities under a measured 16 GB budget.
 
 ## Definition of done

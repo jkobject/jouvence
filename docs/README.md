@@ -6,6 +6,8 @@ This directory is the single home for durable project knowledge. Start at the re
 
 | Need | Read |
 | --- | --- |
+| Clone, authenticate, and run a bounded first data query | [`getting-started-data.md`](getting-started-data.md) |
+| Why Jouvence-Graph extends Open Targets and keeps Neo4j optional | [`why-not-open-targets.html`](why-not-open-targets.html) |
 | KG topology, evidence, metadata, features, and proof | [`guides/kg-architecture-and-evidence.md`](guides/kg-architecture-and-evidence.md) |
 | Source-native relation and endpoint policy | [`guides/source-native-modeling.md`](guides/source-native-modeling.md) |
 | Agent role routing and validation recipes | [`guides/agent-context.md`](guides/agent-context.md) |
@@ -23,6 +25,7 @@ This directory is the single home for durable project knowledge. Start at the re
 - [`evidence_and_edge_schema_plan.md`](evidence_and_edge_schema_plan.md) — assertion/evidence separation.
 - [`source_native_expansion_policy.md`](source_native_expansion_policy.md) — source and endpoint policy.
 - [`source_measure_edge_matrix.md`](source_measure_edge_matrix.md) — source/measurement/relation decisions.
+- [`causal_edge_feature_model.md`](causal_edge_feature_model.md) — authoritative contract for GoF/LoF, pharmacological action, effect direction, response polarity, edge/evidence placement, and conflict aggregation without relation-name proliferation.
 - [`inferred_edges_policy.md`](inferred_edges_policy.md) — inferred and contextual assertions.
 - [`human_ensg_gene_migration_t_8b9cdabc.md`](human_ensg_gene_migration_t_8b9cdabc.md) — staged human ENSG identifier audit, migration, validation, and rollback evidence.
 

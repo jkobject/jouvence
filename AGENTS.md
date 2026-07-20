@@ -21,9 +21,9 @@ Jouvence is a biomedical knowledge-graph and zero-shot drug-repurposing project 
 
 ## Reviewability rule
 
-`/Users/jkobject/.openclaw/workspace/work/txgnn` is the canonical local Jouvence worktree for `https://github.com/jkobject/jouvence`. The local path remains unchanged as a compatibility boundary. It also contains ignored local artifacts/caches; those do not make the Git diff reviewable by themselves.
+`/Users/jkobject/Documents/jouvence` is the canonical local Jouvence checkout for `https://github.com/jkobject/jouvence`. Task worktrees live under `/Users/jkobject/Documents/jouvence/.worktrees/` unless a card names another verified Git worktree. The checkout also contains ignored local artifacts/caches; those do not make the Git diff reviewable by themselves.
 
-Run project-level Git commands from this root and verify `git rev-parse --show-toplevel` resolves to it. Parallel task worktrees remain under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`. Never `git init` another Jouvence directory or commit ignored artifacts, caches, credentials, GCS/FUSE mirrors, or unrelated workspace state.
+Run project-level Git commands from this root and verify `git rev-parse --show-toplevel` resolves to it. Never `git init` another Jouvence directory or commit ignored artifacts, caches, credentials, GCS/FUSE mirrors, or unrelated workspace state.
 
 ## Context discipline
 
@@ -36,6 +36,18 @@ Do not browse the repo/docs broadly by default.
 5. If still unclear, block with the exact missing context instead of wandering through old reports.
 
 When creating Kanban cards, include: target relation/artifact, source files, allowed writes, exact validation, canonical-write permission, relevant docs, and what not to read.
+
+## Public data onboarding
+
+For “set this up and show me Jouvence,” follow
+[`docs/getting-started-data.md`](docs/getting-started-data.md). Start in fixture
+mode unless `JOUVENCE_DATA_MODE=live` is explicit. Live GCS reads require the
+consumer's own `JOUVENCE_BILLING_PROJECT` and ADC; never invent or reuse a
+maintainer billing project. Default to read-only, bounded, named-table access.
+`JOUVENCE_LAMIN_LIVE=1` is a separate opt-in and does not make the currently
+partial/external-blocked Lamin mirror canonical. All-relation scans, bulk
+downloads, production PyG/GNN, bulk Lamin work, and embedding/full-KG scans are
+heavy work and remain prohibited on laptops.
 
 ## Safety rules
 
@@ -56,6 +68,8 @@ When creating Kanban cards, include: target relation/artifact, source files, all
 
 - Relation names must match source-native assertion and endpoint type.
 - Edges are deduplicated graph assertions; evidence rows carry source-specific predicates, scores, studies, assays, and provenance.
+- Do not let assay modality redefine an accepted biological relation: observed source assertions and inferred biological implications use the same stable endpoint relation where appropriate, while RNA/proteomics/clinical modality, derivation path, sample and context stay in `evidence/` or `evidence_inferred/`. Protein-product expression may support inferred expression of its encoding gene; it must not be mislabeled as an RNA measurement.
+- Causal mechanism, effect direction, pharmacological action, pathogenicity, and response polarity are typed features of existing broad edge tables, with row-level assertions and conflicts in the corresponding evidence tables; do not create GoF/LoF/inhibitor/risk relation-name variants. See `docs/causal_edge_feature_model.md`.
 - Do not create placeholder Parquets just to satisfy schema coverage.
 - Use precise status vocabulary: `design done`, `pilot accepted`, `staged-only`, `review-required`, `validated`, `canonical promoted`, `production/full done`.
 

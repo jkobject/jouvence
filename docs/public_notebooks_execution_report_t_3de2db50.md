@@ -4,7 +4,7 @@ Date: 2026-07-16
 
 ## Scope
 
-Six output-free notebooks under `notebooks/public/` were generated and executed independently in default fixture mode. The fixture exercises node, edge, evidence, feature, embedding, Lamin-equivalent, sampled PyG, retrieval, neighborhood, and link-prediction paths without canonical writes, live LaminDB writes, full-KG reads, or macOS GCS-FUSE.
+Six output-free user notebooks, now located directly under `notebooks/` as the canonical numbered usage suite, were generated and executed independently in default fixture mode. The fixture exercises node, edge, evidence, feature, embedding, Lamin-equivalent, sampled PyG, retrieval, neighborhood, and link-prediction paths without canonical writes, live LaminDB writes, full-KG reads, or macOS GCS-FUSE.
 
 ## Execution evidence
 

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Pourquoi Jouvence-Graph étend Open Targets, modélise explicitement la biologie et la causalité, et conserve Neo4j comme projection optionnelle plutôt que source de vérité.">
+  <meta name="theme-color" content="#10211d">
+  <meta property="og:title" content="Pourquoi pas seulement Open Targets ? — Jouvence-Graph">
+  <meta property="og:description" content="Les décisions scientifiques et techniques derrière Jouvence-Graph : biologie source-native, causalité fondée sur les preuves, reproductibilité Parquet et projections graph database optionnelles.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://www.jkobject.com/jouvence/pourquoi-pas-seulement-open-targets.html">
+  <link rel="canonical" href="https://www.jkobject.com/jouvence/pourquoi-pas-seulement-open-targets.html">
+  <link rel="alternate" hreflang="en" href="https://www.jkobject.com/jouvence/why-not-open-targets.html">
+  <link rel="alternate" hreflang="fr" href="https://www.jkobject.com/jouvence/pourquoi-pas-seulement-open-targets.html">
+  <link rel="stylesheet" href="site.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2310211d'/%3E%3Ccircle cx='19' cy='34' r='6' fill='%23c8f66f'/%3E%3Ccircle cx='43' cy='18' r='5' fill='%23f4f1e8'/%3E%3Ccircle cx='45' cy='45' r='8' fill='%23ff8068'/%3E%3Cpath d='M24 31 38 21M25 37l12 5M43 23l2 14' stroke='%23f4f1e8' stroke-width='3'/%3E%3C/svg%3E">
+  <title>Pourquoi pas seulement Open Targets ? — Jouvence-Graph</title>
+</head>
+<body class="decision-page">
+  <a class="skip-link" href="#main">Aller au contenu</a>
+  <header class="site-header">
+    <a class="brand" href="fr.html" aria-label="Jouvence-Graph, accueil">
+      <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><circle cx="10" cy="24" r="5"></circle><circle cx="30" cy="10" r="4"></circle><circle cx="32" cy="32" r="7"></circle><path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path></svg>
+      <span>Jouvence-Graph</span>
+    </a>
+    <nav aria-label="Navigation de la page">
+      <a href="#open-targets">Open Targets</a>
+      <a href="#biology">Biologie</a>
+      <a href="#causality">Causalité</a>
+      <a href="#neo4j">Neo4j</a>
+    </nav>
+    <div class="header-actions">
+      <a class="language-link" href="why-not-open-targets.html" lang="en" hreflang="en">EN</a>
+      <a class="header-github" href="https://github.com/jkobject/jouvence" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="decision-hero" id="top">
+      <p class="eyebrow"><span></span> Décision d’architecture · juillet 2026</p>
+      <h1>Pourquoi pas seulement<br>Open Targets ?</h1>
+      <p class="decision-deck">Parce qu’une grande plateforme de preuves biomédicales ne devient pas automatiquement un graphe biologiquement fidèle, causal et prêt pour le machine learning. Jouvence-Graph part d’Open Targets, puis change le contrat scientifique.</p>
+      <div class="decision-thesis" aria-label="Thèse centrale">
+        <span>LA THÈSE</span>
+        <strong>Le graphe n’est pas un tas de liens. C’est une affirmation typée sur ce que la biologie autorise un modèle à apprendre.</strong>
+      </div>
+    </section>
+
+    <section class="decision-section decision-intro" id="open-targets">
+      <div class="decision-index">01</div>
+      <div class="decision-copy">
+        <p class="section-kicker">La fondation</p>
+        <h2>Open Targets est excellent.<br>Ce n’est pas tout le modèle.</h2>
+        <p class="decision-lede">Open Targets apporte à Jouvence-Graph un cœur de grande valeur : génétique, preuves cible–maladie, variants, médicaments, pharmacogénomique, interactions et identifiants harmonisés. Réutiliser ce travail est le choix rationnel.</p>
+        <p>Mais Open Targets est conçu pour agréger et servir des preuves afin d’identifier des cibles. Jouvence-Graph vise autre chose en aval : construire adjacence d’entraînement, features et supervision pour des modèles de graphes hétérogènes, tout en conservant exactement ce que chaque source a observé. Cela impose de refuser certains liens disponibles et d’ajouter des couches biologiques qu’Open Targets n’a jamais eu vocation à rendre ML-ready dans un même graphe.</p>
+      </div>
+    </section>
+
+    <section class="decision-contrast" aria-label="Objectifs d’Open Targets et Jouvence-Graph">
+      <article>
+        <p class="feature-code">OPEN TARGETS</p>
+        <h3>Plateforme de preuves</h3>
+        <ul>
+          <li>Intègre les preuves cible–maladie</li>
+          <li>Optimise la découverte et l’accès aux preuves</li>
+          <li>Expose des payloads source riches</li>
+          <li>Fournit une excellente fondation biomédicale</li>
+        </ul>
+      </article>
+      <article class="decision-contrast-accent">
+        <p class="feature-code">JOUVENCE-GRAPH</p>
+        <h3>Contrat de graphe prédictif</h3>
+        <ul>
+          <li>Sélectionne une adjacence biologiquement valide pour le message passing</li>
+          <li>Sépare observations, contexte et labels</li>
+          <li>Préserve niveau d’endpoint et qualifiants causaux</li>
+          <li>Exporte des surfaces Parquet auditables et PyG bornées</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="decision-section section-paper" id="biology">
+      <div class="decision-index">02</div>
+      <div class="decision-copy">
+        <p class="section-kicker">Pertinence biologique</p>
+        <h2>Modéliser ce qui a été mesuré.<br>Pas ce qu’un mapping d’IDs rend imaginable.</h2>
+        <p class="decision-lede">La décision la plus importante de Jouvence-Graph est la modélisation source-native. Une normalisation peut changer l’identifiant ; elle ne doit jamais changer silencieusement le niveau biologique de l’assertion.</p>
+        <div class="doctrine-list">
+          <article><span>A</span><div><h3>Un gène n’est pas une protéine</h3><p>Une association au niveau gène reste au niveau gène. Une arête protéine exige un endpoint protéine ou isoforme direct. Chaque xref gène ne devient pas une preuve protéique.</p></div></article>
+          <article><span>B</span><div><h3>Une prédiction n’est pas une observation</h3><p>Un motif n’est pas une liaison TF observée. Un overlap de coordonnées n’est pas une régulation. Une fréquence populationnelle n’est pas une pathogenicité.</p></div></article>
+          <article><span>C</span><div><h3>Le contexte n’est pas l’adjacence</h3><p>Papiers, datasets, texte d’essais et métadonnées denses restent des preuves, features ou objets de catalogue sans relation biologique défendable.</p></div></article>
+          <article><span>D</span><div><h3>La direction compte</h3><p>L’expression ARN ne prouve pas qu’une protéine ou un isoforme existe. Une protéine observée directement peut soutenir une expression génique dérivée, en conservant la dérivation.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="decision-section decision-dark" id="causality">
+      <div class="decision-index">03</div>
+      <div class="decision-copy">
+        <p class="section-kicker">Pertinence causale</p>
+        <h2>La causalité est portée par les preuves et les features typées des arêtes.</h2>
+        <p class="decision-lede">Le nom d’une relation ne suffit pas à dire à un modèle si inhiber une cible doit aider ou aggraver une maladie. Jouvence-Graph garde des relations biologiques stables, puis attache mécanisme, signe, action et contexte soutenus par les sources.</p>
+        <div class="causal-equation" aria-label="Règle d’inférence signée">
+          <span>action du médicament</span><b>×</b><span>mécanisme maladie</span><b>×</b><span>direction d’effet</span><b>→</b><strong>bénéfice ou risque candidat</strong>
+        </div>
+        <div class="status-disclosure"><strong>Discipliné causalement, pas un KG entièrement causal.</strong><span>Les associations maladie peuvent encore provenir de statistiques, biomarqueurs, expression ou organismes modèles. L’inférence thérapeutique signée reste fail-closed tant que les features de direction et de mécanisme ne sont pas matériellement présentes et validées indépendamment.</span></div>
+        <div class="causal-rules">
+          <article><h3>Une assertion, plusieurs preuves</h3><p>L’arête est dédupliquée. Essais, études, populations, scores, releases et conflits restent auditables séparément.</p></article>
+          <article><h3>Le conflit est une donnée</h3><p>Mécanisme et direction s’agrègent en <code>single</code>, <code>consensus</code>, <code>conflicting</code> ou <code>unknown</code>. Une inférence signée échoue sur les deux derniers.</p></article>
+          <article><h3>L’inférence reste inférée</h3><p>Les règles de chemins approuvées génèrent des candidats dans des surfaces séparées. Elles ne remplacent jamais une observation source.</p></article>
+          <article><h3>La fuite prime sur la commodité</h3><p>Outcomes d’essais, preuves circulaires et conséquences aval sont exclus des inputs s’ils peuvent révéler le label cible.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="decision-section" id="neo4j">
+      <div class="decision-index">04</div>
+      <div class="decision-copy">
+        <p class="section-kicker">Pourquoi pas Neo4j aujourd’hui ?</p>
+        <h2>Une graph database stocke un graphe.<br>Elle ne le rend pas scientifiquement juste.</h2>
+        <p class="decision-lede">Pour Jouvence-Graph aujourd’hui, Neo4j dupliquerait les données canoniques sans résoudre les problèmes difficiles : sémantique des endpoints, multiplicité des preuves, fuite, promotion reproductible et export graph ML.</p>
+        <div class="neo-ledger">
+          <article><span>01</span><h3>Nos workloads dominants sont columnaires</h3><p>Lectures bulk versionnées, anti-joins, audits ligne à ligne, hashes, exports par relation et assemblage de features correspondent naturellement à Parquet, DuckDB et PyArrow.</p></article>
+          <article><span>02</span><h3>Les preuves peuvent dépasser la topologie</h3><p>Matérialiser chaque enregistrement source comme objet de graphe multiplierait stockage et coût opérationnel sur plus de 100M de lignes d’arêtes auditées.</p></article>
+          <article><span>03</span><h3>Le ML exige toujours un autre export</h3><p>TxGNN et PyG consomment tenseurs, node maps, features et contrats de splits. Neo4j devrait tout de même exporter déterministiquement ces représentations.</p></article>
+          <article><span>04</span><h3>Une deuxième vérité dériverait</h3><p>Une base vivante et éditable ajoute migrations, index, backups, contrôle d’accès et synchronisation. Les Parquets canoniques restent moins chers à versionner, revoir et reproduire.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="projection-callout">
+      <p class="section-kicker">La position exacte</p>
+      <h2>Neo4j est une vue utile.<br>Pas le coffre.</h2>
+      <p>Nous utiliserions une projection Neo4j générée et read-only pour explorer les voisinages, écrire des requêtes Cypher, faire des démos et extraire des sous-graphes bornés. Chaque projection doit être reproductible depuis les Parquets canoniques, porter un manifeste et ne jamais devenir une source de vérité modifiée indépendamment.</p>
+      <div class="projection-flow" aria-label="Architecture recommandée">
+        <span>Parquet canonique</span><b>→</b><span>export validé</span><b>→</b><span>vue Neo4j optionnelle</span>
+      </div>
+    </section>
+
+    <section class="decision-summary">
+      <p class="section-kicker">L’architecture qui en résulte</p>
+      <h2>Open Targets comme fondation.<br>La biologie comme contrainte.<br>Les preuves comme mémoire.<br>Parquet comme vérité.</h2>
+      <p>Cette combinaison rend Jouvence-Graph moins facile à construire qu’un property graph générique. Elle rend aussi chaque arête d’entraînement plus facile à défendre.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="fr.html">Retourner à Jouvence-Graph <span aria-hidden="true">→</span></a>
+        <a class="button button-secondary" href="https://github.com/jkobject/jouvence/blob/main/docs/guides/kg-architecture-and-evidence.md">Lire le contrat d’architecture</a>
+      </div>
+    </section>
+
+    <aside class="decision-sources" aria-label="Sources techniques">
+      <strong>Base technique</strong>
+      <a href="https://github.com/jkobject/jouvence/blob/main/docs/guides/source-native-modeling.md">Doctrine source-native</a>
+      <a href="https://github.com/jkobject/jouvence/blob/main/docs/causal_edge_feature_model.md">Modèle causal des arêtes</a>
+      <a href="https://github.com/jkobject/jouvence/blob/main/docs/inferred_edges_policy.md">Politique des arêtes inférées</a>
+      <a href="https://github.com/jkobject/jouvence/blob/main/docs/biocypher_neo4j_comparison.md">Comparaison Neo4j</a>
+    </aside>
+  </main>
+
+  <footer>
+    <a class="brand footer-brand" href="fr.html"><svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><circle cx="10" cy="24" r="5"></circle><circle cx="30" cy="10" r="4"></circle><circle cx="32" cy="32" r="7"></circle><path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path></svg><span>Jouvence-Graph</span></a>
+    <p>Une biologie source-aware pour un graph ML prédictif et auditable.</p>
+    <div class="footer-links"><a href="fr.html">Accueil</a><a href="https://github.com/jkobject/jouvence">GitHub</a><a href="https://github.com/jkobject/jouvence/blob/main/docs/README.md">Documentation</a></div>
+  </footer>
+</body>
+</html>

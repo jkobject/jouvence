@@ -9,7 +9,7 @@ from pathlib import Path
 import nbformat as nbf
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "notebooks" / "public"
+OUT = ROOT / "notebooks"
 
 
 def md(text: str):
@@ -29,9 +29,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path.cwd()
-if REPO_ROOT.name == "public":
-    REPO_ROOT = REPO_ROOT.parents[1]
-elif REPO_ROOT.name == "notebooks":
+if REPO_ROOT.name == "notebooks":
     REPO_ROOT = REPO_ROOT.parent
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -80,10 +78,10 @@ def write(path: str, cells: list) -> None:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     write(
-        "00_data_model_and_use_cases.ipynb",
+        "01_data_model_and_use_cases.ipynb",
         [
             md("""
-# 00 — Jouvence data model and scientific use cases
+# 01 — Jouvence data model and scientific use cases
 
 Jouvence separates **entities** (`nodes/`), deduplicated biological **assertions** (`edges/`), source-specific **support/provenance** (`evidence/`), and node/edge **features** (`features/`). This separation matters: a graph edge states what the KG represents, while evidence records why that assertion is present and with what source context.
 
@@ -127,10 +125,10 @@ print("Fixture rows are examples for executable documentation, not release cardi
         ],
     )
     write(
-        "01_nodes_features_and_embeddings.ipynb",
+        "02_nodes_features_and_embeddings.ipynb",
         [
             md("""
-# 01 — Explore entities, descriptions, sequences, and embeddings
+# 02 — Explore entities, descriptions, sequences, and embeddings
 
 Entity tables bind stable identifiers to cross-references and labels. Feature tables carry modality-specific data such as text, sequence, fingerprints, or embeddings. Modalities stay separate because sequence similarity, textual similarity, and chemical similarity answer different questions.
 """),
@@ -165,10 +163,10 @@ Cosine neighbors are candidates for inspection, not functional equivalence. Simi
         ],
     )
     write(
-        "02_relations_evidence_and_questions.ipynb",
+        "03_relations_evidence_and_questions.ipynb",
         [
             md("""
-# 02 — Assertions, evidence, and a bounded biological question
+# 03 — Assertions, evidence, and a bounded biological question
 
 We ask: **which diseases are connected to TP53 in this bounded graph, and what source records support each assertion?** DuckDB performs the join without loading a full KG into Python memory.
 """),
@@ -197,10 +195,10 @@ The result shows represented associations and their attached provenance. Scores 
         ],
     )
     write(
-        "03_lamindb_equivalent_queries.ipynb",
+        "04_lamindb_equivalent_queries.ipynb",
         [
             md("""
-# 03 — Equivalent entity/relation lookup through LaminDB
+# 04 — Equivalent entity/relation lookup through LaminDB
 
 LaminDB catalogs exact-ID registries and generic edge/evidence records in `jkobject/jouvencekb`. It is a query/catalog surface, not a replacement for canonical Parquet. Current ingestion is partial, so notebook output must not hide coverage gaps.
 """),
@@ -247,10 +245,10 @@ Lamin queries are bounded and read-only. The helper refuses any instance slug ot
         ],
     )
     write(
-        "04_sampled_pyg_heterodata.ipynb",
+        "05_sampled_pyg_heterodata.ipynb",
         [
             md("""
-# 04 — Build a meaningful sampled PyG `HeteroData`
+# 05 — Build a meaningful sampled PyG `HeteroData`
 
 This notebook delegates to the repository's tested `build_pyg_export` implementation. It preserves typed node maps, relation-specific edge indices, reverse-edge identity, feature coverage, and deterministic learned fallbacks. The fixture is intentionally tiny; production/full exports remain sidecar-first and worker-only.
 """),
@@ -282,10 +280,10 @@ The node maps define index↔biological-ID identity and must travel with tensors
         ],
     )
     write(
-        "05_sampled_ml_use_cases.ipynb",
+        "06_sampled_ml_use_cases.ipynb",
         [
             md("""
-# 05 — Sampled link prediction, retrieval, and neighborhood analysis
+# 06 — Sampled link prediction, retrieval, and neighborhood analysis
 
 Three realistic operations are demonstrated on a deterministic fixture: representation retrieval, relation-neighborhood inspection, and a tiny heterogeneous link-prediction smoke. The training result is a software smoke only.
 """),

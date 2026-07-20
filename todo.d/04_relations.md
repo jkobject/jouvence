@@ -26,7 +26,7 @@ Definition: inferred links must remain labeled/separate from observed canonical 
   - `docs/relation_coverage_current.md`
   - `docs/dataset_paper_graph_disconnection_t_c07b8b57.md`
   - `docs/literature_metadata_policy_t_9c86ca89.md`
-  - `notebooks/kg_schema_overview.ipynb`
+  - `reproduce/15_kg_schema_overview.ipynb`
 
 Counts:
 

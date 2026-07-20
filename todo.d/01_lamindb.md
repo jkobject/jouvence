@@ -1,6 +1,8 @@
 # 01 — LaminDB
 
-_Last verified: 2026-07-15 15:09 CEST. Kanban board `txgnn` remains the live source of truth._
+_Status snapshot: 2026-07-19 CEST._
+
+Kanban board `txgnn` remains the live source of truth. Counter evidence below is explicitly dated; this mirror does not imply a fresh database read.
 
 Heavy-job guardrail: full/bulk LaminDB syncs or registry scans must run on `txgnn-worker` or another explicitly approved in-region worker with source `gs://jouvencekb/kg/v2`. Do not run heavy LaminDB reads/writes from the Mac through `/Users/jkobject/mnt/gcs/...` / macOS GCS-FUSE.
 
@@ -19,44 +21,45 @@ The edge ingestion denominator is larger than the older 100,080,390 snapshot bec
 
 ## Live `jkobject/jouvencekb` ingestion
 
-Strict accepted ledger at the current recovery boundary:
+Latest durable accepted ledger, sealed in 2026-07-18 task evidence:
 
 | Layer | Accepted | Denominator | Status |
 | --- | ---: | ---: | --- |
 | nodes | 3,771,054 | 52,565,491 | partial |
-| edges | 3,956,264 | 101,743,458 | partial |
-| evidence | 3,914,167 | 76,565,213 | partial |
-| **total** | **11,641,485** | **230,874,162** | **5.04%** |
+| edges | 3,971,264 | 101,743,458 | partial |
+| evidence | 3,929,167 | 76,565,213 | partial |
+| **total** | **11,671,485** | **230,874,162** | **partial** |
 
-- Accepted checkpoint: **13,880,000** in `enhancer_regulates_gene`.
-- Previously sealed physical baseline at that checkpoint: 3,771,054 nodes + 3,966,264 edges + 3,924,167 evidence = **11,661,485 physical rows**. The 20,000-row difference from the strict ledger consists of two prior 5k edge + 5k evidence prefixes not yet adopted into a conforming `product_delta`.
-- One additional hash-bound candidate prefix `[13,880,000,13,885,000)` may add 5,000 edges + 5,000 evidence, but it is **not credited** until rollback recovery/parity establishes whether it survived.
-- Current SQLite file is approximately **16.7 GB**. This is the database file size, not the RAM requirement.
-- No product writer is active during recovery.
+The latest sealed physical readback is also from 2026-07-18: 3,771,054 nodes + 4,141,291 edges + 4,099,167 evidence = **12,011,512 physical rows**. The +170,027 edge and +170,000 evidence difference is physical but uncredited. No newer mismatch-0 database readback is claimed here.
 
-## Active recovery
+## Human ENSG-only denominator change in progress
 
-`t_7c4c37b7` is running a copy-only rollback recovery/parity check. The accepted producer interpreter preflight passed (`pandas`, `pyarrow`, row-group reader and fixture). The live DB remains byte-read-only; only a task-local copy is opened by SQLite. At the latest verified heartbeat:
+`t_8b9cdabc` produced a `staged-only` / `review-required` human Gene candidate at commit `8714378`; its PR and independent review remain outstanding:
 
-- copy hashes/drift checks passed far enough to open/recover the copy;
-- copy-only SQLite rollback recovery/open sealed `rc=0` with `query_only` proof;
-- exact selected-key parity for `[13,880,000,13,885,000)` and `[13,885,000,13,890,000)` is running;
-- accepted ledger/checkpoint remain unchanged until classification.
+- current canonical Gene source: 267,830 IDs = 81,715 human ENSG + 27,610 human NCBI + 158,505 non-human Ensembl homologues;
+- target canonical Gene identity: 81,715 human ENSG only;
+- NCBI IDs are aliases/provenance, with authoritative endpoint remap or explicit quarantine required before removal;
+- non-human homologue nodes and `gene_ortholog_gene` are excluded from the human canonical candidate;
+- no canonical KG or LaminDB promotion is claimed.
 
-Product-owner decision: keep the current SQLite/schema/index representation for now. Do not start an index/storage overhaul as part of this recovery. Historical warm-run throughput was genuinely better; retain cold-start/cache/index-growth latency as an unresolved performance issue.
+`t_ce839966` and `t_075f5353` are superseded historical +158,505 Lamin Gene plans. They remain inert and must not run. Their 2026-07-18 readbacks remain useful as dated counter evidence only.
+
+## Current boundary
+
+Do not schedule a new bulk Lamin Gene wave against the old 267,830-row denominator. First complete independent review and any explicit promotion of the ENSG-only candidate, then produce a fresh source↔Lamin denominator and mismatch-0 readback. Keep accepted and physical counters separate until that review closes.
 
 ## What is and is not complete
 
 - Canonical Parquet node inventory: **complete for the 15 active node types**.
 - Canonical relation inventory: **40/67 declared relations physically canonical** in the latest schema snapshot; relation review/backlog is separate from Lamin ingestion.
 - LaminDB artifact catalog/schema activation: implemented and reviewed in bounded form.
-- Full row-level Lamin node/edge/evidence ingestion: **not complete** (11,641,485/230,874,162 strictly accepted).
+- Full row-level Lamin node/edge/evidence ingestion: **not complete** (11,671,485/230,874,162 accepted as of the dated 2026-07-18 evidence).
 - Query helpers and full exact-ID coverage: not a completed global acceptance gate.
 
 ## Definition of done
 
 1. Exact `jkobject/jouvencekb` identity and `lnschema_txgnn` activation verified.
-2. All 230,874,162 target rows durably ingested or explicitly excluded by a reviewed denominator change.
+2. The target denominator is rebased after the reviewed ENSG-only decision, then every included row is durably ingested or explicitly excluded.
 3. Every credited wave has `rc=0`, hash-bound acknowledgements, selected-live edge/evidence equality and mismatch 0.
 4. Exact-ID node/edge/evidence/feature query probes pass.
 5. Independent review accepts the final ledger, query surface and evidence packet.

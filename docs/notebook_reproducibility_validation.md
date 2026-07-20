@@ -9,16 +9,16 @@ Canonical writes: none
 
 Validated the numbered KG reproducibility notebooks and README produced by the N1/N2 work:
 
-- `notebooks/1_lamindb_instance_setup.ipynb`
-- `notebooks/1_lamindb_instance_setup.executed.ipynb`
-- `notebooks/2_manage_db_setup.ipynb`
-- `notebooks/2_manage_db_setup.executed.ipynb`
-- `notebooks/3_access_and_cache_sources.ipynb`
-- `notebooks/4_download_opentargets_and_source_snapshots.ipynb`
-- `notebooks/5_create_core_nodes.ipynb`
-- `notebooks/6_build_core_edges_and_evidence.ipynb`
-- `notebooks/7_opentargets_edges_and_evidence.ipynb`
-- `notebooks/8_block1_relation_splitting_policy.ipynb`
+- `reproduce/01_lamindb_instance_setup.ipynb`
+- `reproduce/executed/01_lamindb_instance_setup.executed.ipynb`
+- `reproduce/02_manage_db_setup.ipynb`
+- `reproduce/executed/02_manage_db_setup.executed.ipynb`
+- `reproduce/03_access_and_cache_sources.ipynb`
+- `reproduce/04_download_opentargets_and_source_snapshots.ipynb`
+- `reproduce/05_create_core_nodes.ipynb`
+- `reproduce/06_build_core_edges_and_evidence.ipynb`
+- `reproduce/07_opentargets_edges_and_evidence.ipynb`
+- `reproduce/08_relation_splitting_policy.ipynb`
 
 Parent handoffs read via Kanban:
 
@@ -109,7 +109,7 @@ Findings:
 
 - No `/home/ubuntu` or `/home/ubuntu/data` stale paths found.
 - No inline secret assignments found by the `api_key|secret|token|password = "..."` scan.
-- `notebooks/4_download_opentargets_and_source_snapshots.ipynb` matched `.json` only because it documents/writes a gated manifest path `.omoc/notebook-manifests/opentargets_sources.json`; the markdown explicitly says the manifest records paths/release strings but no credentials.
+- `reproduce/04_download_opentargets_and_source_snapshots.ipynb` matched `.json` only because it documents/writes a gated manifest path `.omoc/notebook-manifests/opentargets_sources.json`; the markdown explicitly says the manifest records paths/release strings but no credentials.
 - Expected KG/cache roots are used/documented: `.omoc/gcs-cache/kg-v2`, `/mnt/gcs/jouvencekb/kg/v2`, and `gs://jouvencekb/kg/v2`.
 - Notebooks 3-5 derive default writable paths under the current repo workspace (`data/opentargets`, `data/kg`) and keep writes disabled unless explicit flags are set.
 
@@ -169,12 +169,12 @@ TXGNN_NOTEBOOK_RUN_BLOCK1_SPLIT=0 \
 uv run python - <<'PY'
 import nbformat
 notebooks=[
- 'notebooks/3_access_and_cache_sources.ipynb',
- 'notebooks/4_download_opentargets_and_source_snapshots.ipynb',
- 'notebooks/5_create_core_nodes.ipynb',
- 'notebooks/6_build_core_edges_and_evidence.ipynb',
- 'notebooks/7_opentargets_edges_and_evidence.ipynb',
- 'notebooks/8_block1_relation_splitting_policy.ipynb',
+ 'reproduce/03_access_and_cache_sources.ipynb',
+ 'reproduce/04_download_opentargets_and_source_snapshots.ipynb',
+ 'reproduce/05_create_core_nodes.ipynb',
+ 'reproduce/06_build_core_edges_and_evidence.ipynb',
+ 'reproduce/07_opentargets_edges_and_evidence.ipynb',
+ 'reproduce/08_relation_splitting_policy.ipynb',
 ]
 for nb_path in notebooks:
     nb=nbformat.read(nb_path, as_version=4)
@@ -223,9 +223,9 @@ It also documents safe defaults and heavy-operation gates:
 
 These did not break notebook execution, but they are important validation signals for humans/agents rerunning the notebooks:
 
-- `notebooks/6_build_core_edges_and_evidence.ipynb` reported `gene_interacts_gene` edge/evidence anti-join status `ok=False`: `7,424,037` edge rows, `14,336,594` evidence rows, `642,150` edges without evidence, `0` evidence rows without edges.
-- `notebooks/7_opentargets_edges_and_evidence.ipynb` reported several current KG evidence-support caveats in its summary table, including `disease_associated_gene`, `gene_interacts_gene`, and `molecule_treats_disease` with `ok=False`; example: `disease_associated_gene` had `83,339` edge rows, `2,928` evidence rows, and `80,411` edges without evidence.
-- `notebooks/8_block1_relation_splitting_policy.ipynb` again reported `gene_interacts_gene` with `ok=False` for edge/evidence support, while `pathway_contains_gene` and `molecule_targets_gene` were `ok=True` in the sampled/cache-backed anti-join report.
+- `reproduce/06_build_core_edges_and_evidence.ipynb` reported `gene_interacts_gene` edge/evidence anti-join status `ok=False`: `7,424,037` edge rows, `14,336,594` evidence rows, `642,150` edges without evidence, `0` evidence rows without edges.
+- `reproduce/07_opentargets_edges_and_evidence.ipynb` reported several current KG evidence-support caveats in its summary table, including `disease_associated_gene`, `gene_interacts_gene`, and `molecule_treats_disease` with `ok=False`; example: `disease_associated_gene` had `83,339` edge rows, `2,928` evidence rows, and `80,411` edges without evidence.
+- `reproduce/08_relation_splitting_policy.ipynb` again reported `gene_interacts_gene` with `ok=False` for edge/evidence support, while `pathway_contains_gene` and `molecule_targets_gene` were `ok=True` in the sampled/cache-backed anti-join report.
 
 These are data/KG state findings, not notebook reproducibility failures: the notebooks executed and surfaced the caveats rather than hiding them. Full DuckDB endpoint validation and any production split/build remain intentionally gated and were not run.
 

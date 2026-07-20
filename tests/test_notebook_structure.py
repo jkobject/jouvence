@@ -5,9 +5,20 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-N4A_NOTEBOOK = REPO_ROOT / "notebooks" / "9a_source_native_interactions_summary.ipynb"
-N4C_NOTEBOOK = REPO_ROOT / "notebooks" / "9c_pharmacology_context_metadata_summary.ipynb"
-N4D_NOTEBOOK = REPO_ROOT / "notebooks" / "9_source_native_l2_ingestion_index.ipynb"
+N4A_NOTEBOOK = REPO_ROOT / "reproduce" / "10_source_native_interactions_summary.ipynb"
+N4C_NOTEBOOK = REPO_ROOT / "reproduce" / "12_pharmacology_context_metadata_summary.ipynb"
+N4D_NOTEBOOK = REPO_ROOT / "reproduce" / "09_source_native_ingestion_index.ipynb"
+REPRODUCE_ROOT_NOTEBOOKS = [
+    REPO_ROOT / "reproduce" / name
+    for name in (
+        "10_source_native_interactions_summary.ipynb",
+        "11_biological_nodes_context_summary.ipynb",
+        "12_pharmacology_context_metadata_summary.ipynb",
+        "13_non_remap_canonical_promotion_summary.ipynb",
+        "19_node_sequence_text_features_summary.ipynb",
+        "21_pyg_out_of_core_and_lamin_remaining.ipynb",
+    )
+]
 
 
 def _notebook_text_for(path: Path) -> tuple[dict, str]:
@@ -147,15 +158,38 @@ def test_n4d_source_native_l2_index_notebook_is_read_only_by_default() -> None:
     assert "no canonical KG writes" in text
 
 
+def test_n4d_source_native_l2_index_resolves_repo_root_from_reproduce(
+    monkeypatch,
+) -> None:
+    notebook, _ = _notebook_text_for(N4D_NOTEBOOK)
+    setup_cell = next(
+        cell for cell in notebook["cells"] if cell.get("cell_type") == "code"
+    )
+    namespace: dict[str, object] = {}
+
+    monkeypatch.chdir(REPO_ROOT / "reproduce")
+    exec(compile("".join(setup_cell["source"]), str(N4D_NOTEBOOK), "exec"), namespace)
+
+    assert namespace["REPO_ROOT"] == REPO_ROOT
+
+
+def test_moved_reproduction_notebooks_resolve_the_current_repo_root() -> None:
+    for path in REPRODUCE_ROOT_NOTEBOOKS:
+        _, text = _notebook_text_for(path)
+        assert "pyproject.toml" in text, path
+        assert ".parent" in text, path
+        assert "/Users/jkobject/.openclaw/workspace/work/txgnn" not in text, path
+
+
 def test_n4d_source_native_l2_index_links_split_notebooks_and_lanes() -> None:
     _, text = _notebook_text_for(N4D_NOTEBOOK)
 
     required_tokens = [
-        "9a_source_native_interactions_summary.ipynb",
-        "9b_l2_biological_nodes_context_summary.ipynb",
-        "9c_pharmacology_context_metadata_summary.ipynb",
-        "9d_non_remap_part2_canonical_promotion_summary.ipynb",
-        "12_node_sequence_text_features_summary.ipynb",
+        "10_source_native_interactions_summary.ipynb",
+        "11_biological_nodes_context_summary.ipynb",
+        "12_pharmacology_context_metadata_summary.ipynb",
+        "13_non_remap_canonical_promotion_summary.ipynb",
+        "19_node_sequence_text_features_summary.ipynb",
         "top_level_matrix = pd.DataFrame",
         "tranche_status = pd.DataFrame",
         "edge_promotion_matrix = pd.DataFrame",

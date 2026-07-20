@@ -1,10 +1,10 @@
-# Jouvence: a source-aware biomedical knowledge graph for drug repurposing
+# Jouvence-Graph: a source-aware biomedical knowledge graph for drug repurposing
 
-This repository is **Jouvence**, a source-aware biomedical knowledge graph and drug-repurposing project built on the upstream TxGNN method and library. Jouvence expands the data, provenance, feature, export, catalog, and reproducible scientific-notebook layers around TxGNN's zero-shot modeling foundation.
+This repository is **Jouvence-Graph**, a source-aware biomedical knowledge graph and drug-repurposing project built on the upstream TxGNN method and library. Jouvence-Graph expands the data, provenance, feature, export, catalog, and reproducible scientific-notebook layers around TxGNN's zero-shot modeling foundation.
 
 Compatibility boundary: Python imports remain `txgnn`, and public model classes such as `TxGNN`, `TxData`, and `TxEval` retain their upstream names. The upstream implementation and citation remain at [`mims-harvard/TxGNN`](https://github.com/mims-harvard/TxGNN); the active Jouvence repository is [`jkobject/jouvence`](https://github.com/jkobject/jouvence).
 
-**Start here:** [installation](#installation) · [API usage](#core-api-interface) · [paper reproduction](reproduce/README.md) · [documentation](docs/README.md) · [current work](TODO.md) · [agent instructions](AGENTS.md)
+**Start here:** [project website](https://www.jkobject.com/jouvence/) · [why this architecture](https://www.jkobject.com/jouvence/why-not-open-targets.html) · [data quickstart](docs/getting-started-data.md) · [installation](#installation) · [API usage](#core-api-interface) · [paper reproduction](reproduce/README.md) · [documentation](docs/README.md) · [current work](TODO.md) · [agent instructions](AGENTS.md)
 
 ## Jouvence KG
 
@@ -20,6 +20,7 @@ Large KG scans, LaminDB bulk syncs, ReMap processing, and production exports run
 
 Documentation and contribution routes:
 
+- [`docs/getting-started-data.md`](docs/getting-started-data.md) — clone-to-first-query guide for agents and external collaborators, including current access blocks;
 - [`docs/README.md`](docs/README.md) — documentation index: architecture, source/evidence policy, runbooks, and durable knowledge;
 - [`docs/guides/kg-architecture-and-evidence.md`](docs/guides/kg-architecture-and-evidence.md) — topology, evidence, metadata, features, and proof;
 - [`docs/guides/lamindb-porting-operations.md`](docs/guides/lamindb-porting-operations.md) — LaminDB migration, progress semantics, VM/GCS/storage rationale, cost controls, and recovery gates;
@@ -41,14 +42,19 @@ TxGNN is a graph neural network pre-trained on a comprehensive knowledge graph o
 
 ![TxGNN](fig/txgnn_fig1.png)
 
-## Jouvence public scientific notebooks
+## Jouvence scientific notebooks
 
-The numbered suite in [`notebooks/public/`](notebooks/public/) introduces the
+The numbered suite in [`notebooks/`](notebooks/) contains only user-facing
+exploration and usage notebooks. It introduces the
 Jouvence node/assertion/evidence/feature model and then demonstrates bounded
 entity exploration, provenance-aware biological questions, exact-instance
 LaminDB queries, a sampled PyG `HeteroData`, embedding retrieval, neighborhood
-analysis, and a deterministic link-prediction smoke.  Each notebook states what
+analysis, and a deterministic link-prediction smoke. Each notebook states what
 its output means biologically and what it does not prove.
+
+Database construction, ingestion, schema-audit, and paper-reproduction
+notebooks live separately in [`reproduce/`](reproduce/), also in a numbered
+sequence. They are not part of the user quickstart.
 
 Run the complete fixture-backed suite without reading the live KG:
 
@@ -61,7 +67,11 @@ uv run python scripts/check_public_notebooks.py --execute
 Fixture mode is the default so the notebooks execute in a clean environment.
 For bounded live public reads, authenticate with Google application-default
 credentials and supply your own requester-pays billing project; this repository
-does not embed or require a project-specific default:
+does not embed or require a project-specific default. The bucket is not
+anonymous: a new collaborator currently needs the maintainer to grant their
+Google identity read-only object access first. See the
+[`data quickstart`](docs/getting-started-data.md) for the current PASS/BLOCK
+boundary and exact prerequisites:
 
 ```bash
 export JOUVENCE_DATA_MODE=live
