@@ -103,6 +103,7 @@
         <div class="causal-equation" aria-label="Règle d’inférence signée">
           <span>action du médicament</span><b>×</b><span>mécanisme maladie</span><b>×</b><span>direction d’effet</span><b>→</b><strong>bénéfice ou risque candidat</strong>
         </div>
+        <div class="status-disclosure"><strong>Discipliné causalement, pas un KG entièrement causal.</strong><span>Les associations maladie peuvent encore provenir de statistiques, biomarqueurs, expression ou organismes modèles. L’inférence thérapeutique signée reste fail-closed tant que les features de direction et de mécanisme ne sont pas matériellement présentes et validées indépendamment.</span></div>
         <div class="causal-rules">
           <article><h3>Une assertion, plusieurs preuves</h3><p>L’arête est dédupliquée. Essais, études, populations, scores, releases et conflits restent auditables séparément.</p></article>
           <article><h3>Le conflit est une donnée</h3><p>Mécanisme et direction s’agrègent en <code>single</code>, <code>consensus</code>, <code>conflicting</code> ou <code>unknown</code>. Une inférence signée échoue sur les deux derniers.</p></article>
