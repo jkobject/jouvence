@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Why Jouvence-Graph extends Open Targets, models biological and causal semantics explicitly, and keeps Neo4j as an optional projection rather than its source of truth.">
+  <meta name="theme-color" content="#10211d">
+  <meta property="og:title" content="Why not just Open Targets? — Jouvence-Graph">
+  <meta property="og:description" content="The scientific and engineering decisions behind Jouvence-Graph: source-native biology, evidence-aware causality, Parquet-first reproducibility and optional graph-database projections.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://www.jkobject.com/jouvence/why-not-open-targets.html">
+  <link rel="canonical" href="https://www.jkobject.com/jouvence/why-not-open-targets.html">
+  <link rel="alternate" hreflang="en" href="https://www.jkobject.com/jouvence/why-not-open-targets.html">
+  <link rel="alternate" hreflang="fr" href="https://www.jkobject.com/jouvence/pourquoi-pas-seulement-open-targets.html">
+  <link rel="stylesheet" href="site.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2310211d'/%3E%3Ccircle cx='19' cy='34' r='6' fill='%23c8f66f'/%3E%3Ccircle cx='43' cy='18' r='5' fill='%23f4f1e8'/%3E%3Ccircle cx='45' cy='45' r='8' fill='%23ff8068'/%3E%3Cpath d='M24 31 38 21M25 37l12 5M43 23l2 14' stroke='%23f4f1e8' stroke-width='3'/%3E%3C/svg%3E">
+  <title>Why not just Open Targets? — Jouvence-Graph</title>
+</head>
+<body class="decision-page">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="Jouvence-Graph, home">
+      <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><circle cx="10" cy="24" r="5"></circle><circle cx="30" cy="10" r="4"></circle><circle cx="32" cy="32" r="7"></circle><path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path></svg>
+      <span>Jouvence-Graph</span>
+    </a>
+    <nav aria-label="Page navigation">
+      <a href="#open-targets">Open Targets</a>
+      <a href="#biology">Biology</a>
+      <a href="#causality">Causality</a>
+      <a href="#neo4j">Neo4j</a>
+    </nav>
+    <div class="header-actions">
+      <a class="language-link" href="pourquoi-pas-seulement-open-targets.html" lang="fr" hreflang="fr">FR</a>
+      <a class="header-github" href="https://github.com/jkobject/jouvence" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="decision-hero" id="top">
+      <p class="eyebrow"><span></span> Architecture decision · July 2026</p>
+      <h1>Why not just<br>Open Targets?</h1>
+      <p class="decision-deck">Because a large biomedical evidence platform is not automatically a biologically faithful, causal or machine-learning-ready graph. Jouvence-Graph starts from Open Targets, then changes the scientific contract.</p>
+      <div class="decision-thesis" aria-label="Central thesis">
+        <span>THE THESIS</span>
+        <strong>The graph is not a pile of links. It is a typed claim about what biology permits a model to learn.</strong>
+      </div>
+    </section>
+
+    <section class="decision-section decision-intro" id="open-targets">
+      <div class="decision-index">01</div>
+      <div class="decision-copy">
+        <p class="section-kicker">The foundation</p>
+        <h2>Open Targets is excellent.<br>It is not the whole model.</h2>
+        <p class="decision-lede">Open Targets gives Jouvence-Graph a high-value core: genetics, target–disease evidence, variants, drugs, pharmacogenomics, interactions and harmonized identifiers. Reusing that work is the rational choice.</p>
+        <p>But Open Targets is built to aggregate and serve evidence for target identification. Jouvence-Graph has a different downstream objective: construct training adjacency, features and supervision for heterogeneous graph models, while preserving exactly what each source observed. That requires saying no to some available links and adding biological layers that Open Targets was never designed to make ML-ready as one graph.</p>
+      </div>
+    </section>
+
+    <section class="decision-contrast" aria-label="Open Targets and Jouvence-Graph objectives">
+      <article>
+        <p class="feature-code">OPEN TARGETS</p>
+        <h3>Evidence platform</h3>
+        <ul>
+          <li>Integrates target–disease evidence</li>
+          <li>Optimizes discovery and evidence access</li>
+          <li>Exposes rich source payloads</li>
+          <li>Provides a strong biomedical foundation</li>
+        </ul>
+      </article>
+      <article class="decision-contrast-accent">
+        <p class="feature-code">JOUVENCE-GRAPH</p>
+        <h3>Predictive graph contract</h3>
+        <ul>
+          <li>Selects biologically valid message-passing adjacency</li>
+          <li>Separates observations, context and labels</li>
+          <li>Preserves endpoint level and causal qualifiers</li>
+          <li>Exports auditable Parquet and bounded PyG surfaces</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="decision-section section-paper" id="biology">
+      <div class="decision-index">02</div>
+      <div class="decision-copy">
+        <p class="section-kicker">Biological relevance</p>
+        <h2>Model what was measured.<br>Not what an ID mapping makes imaginable.</h2>
+        <p class="decision-lede">The most consequential decision in Jouvence-Graph is source-native modeling. Normalization may change an identifier; it must not silently change the biological level of an assertion.</p>
+        <div class="doctrine-list">
+          <article><span>A</span><div><h3>Genes are not proteins</h3><p>A gene-level association stays gene-level. A protein edge requires a direct protein or isoform endpoint. We do not turn every gene xref into protein evidence.</p></div></article>
+          <article><span>B</span><div><h3>Prediction is not observation</h3><p>A motif hit is not observed TF binding. Coordinate overlap is not regulation. Population frequency is not pathogenicity.</p></div></article>
+          <article><span>C</span><div><h3>Context is not adjacency</h3><p>Papers, datasets, trial text and dense metadata remain evidence, features or catalog objects unless they express a defensible biological relation.</p></div></article>
+          <article><span>D</span><div><h3>Direction matters</h3><p>RNA expression cannot prove that a protein or isoform exists. Direct protein observation can support a carefully derived gene-expression claim, with the derivation retained.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="decision-section decision-dark" id="causality">
+      <div class="decision-index">03</div>
+      <div class="decision-copy">
+        <p class="section-kicker">Causal relevance</p>
+        <h2>Causality is carried by evidence and typed edge features.</h2>
+        <p class="decision-lede">A relation name alone cannot tell a model whether inhibiting a target should help or harm a disease. Jouvence-Graph keeps stable biological relations, then attaches source-backed mechanism, sign, action and context.</p>
+        <div class="causal-equation" aria-label="Signed inference rule">
+          <span>drug action</span><b>×</b><span>disease mechanism</span><b>×</b><span>effect direction</span><b>→</b><strong>candidate benefit or harm</strong>
+        </div>
+        <div class="causal-rules">
+          <article><h3>One assertion, many evidence rows</h3><p>The edge is deduplicated. Assays, studies, populations, scores, releases and conflicts remain separately auditable.</p></article>
+          <article><h3>Conflict is data</h3><p>Mechanism and direction aggregate to <code>single</code>, <code>consensus</code>, <code>conflicting</code> or <code>unknown</code>. Required signs fail closed on the last two.</p></article>
+          <article><h3>Inference stays inferred</h3><p>Approved path rules generate candidates in separate inferred surfaces. They never overwrite or masquerade as observed source assertions.</p></article>
+          <article><h3>Leakage beats convenience</h3><p>Trial outcomes, circular disease evidence and downstream consequences are excluded from training inputs when they could reveal the target label.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="decision-section" id="neo4j">
+      <div class="decision-index">04</div>
+      <div class="decision-copy">
+        <p class="section-kicker">Why not Neo4j today?</p>
+        <h2>A graph database stores a graph.<br>It does not make the graph scientifically correct.</h2>
+        <p class="decision-lede">For Jouvence-Graph today, Neo4j would duplicate the canonical data without solving the hardest problems: endpoint semantics, evidence multiplicity, leakage, reproducible promotion and graph-ML export.</p>
+        <div class="neo-ledger">
+          <article><span>01</span><h3>Our dominant workloads are columnar</h3><p>Versioned bulk reads, anti-joins, row-level audits, hashes, relation exports and feature assembly map naturally to Parquet, DuckDB and PyArrow.</p></article>
+          <article><span>02</span><h3>Evidence can dwarf topology</h3><p>Materializing every source record as a graph object would multiply storage and operational cost across more than 100M audited edge rows.</p></article>
+          <article><span>03</span><h3>ML still needs another export</h3><p>TxGNN and PyG consume tensors, node maps, features and split contracts. A Neo4j database would still need a deterministic export back into those representations.</p></article>
+          <article><span>04</span><h3>A second truth would drift</h3><p>A live editable database introduces schema migrations, indexes, backups, access control and synchronization. Canonical Parquet artifacts remain cheaper to version, review and reproduce.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="projection-callout">
+      <p class="section-kicker">The precise position</p>
+      <h2>Neo4j is a useful view.<br>Not the vault.</h2>
+      <p>We would use a generated, read-only Neo4j projection for scientist-friendly neighborhood browsing, Cypher queries, demos and bounded subgraph extraction. Every projection should be reproducible from canonical Parquet, carry a manifest and never become an independently edited source of truth.</p>
+      <div class="projection-flow" aria-label="Recommended architecture">
+        <span>Canonical Parquet</span><b>→</b><span>validated export</span><b>→</b><span>optional Neo4j view</span>
+      </div>
+    </section>
+
+    <section class="decision-summary">
+      <p class="section-kicker">The resulting architecture</p>
+      <h2>Open Targets as a foundation.<br>Biology as the constraint.<br>Evidence as the memory.<br>Parquet as the truth.</h2>
+      <p>That combination makes Jouvence-Graph less convenient to build than a generic property graph. It also makes every training edge easier to defend.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="index.html">Return to Jouvence-Graph <span aria-hidden="true">→</span></a>
+        <a class="button button-secondary" href="https://github.com/jkobject/jouvence/blob/main/docs/guides/kg-architecture-and-evidence.md">Read the architecture contract</a>
+      </div>
+    </section>
+
+    <aside class="decision-sources" aria-label="Technical sources">
+      <strong>Technical basis</strong>
+      <a href="https://github.com/jkobject/jouvence/blob/main/docs/guides/source-native-modeling.md">Source-native modeling doctrine</a>
+      <a href="https://github.com/jkobject/jouvence/blob/main/docs/causal_edge_feature_model.md">Causal edge feature model</a>
+      <a href="https://github.com/jkobject/jouvence/blob/main/docs/inferred_edges_policy.md">Inferred-edge policy</a>
+      <a href="https://github.com/jkobject/jouvence/blob/main/docs/biocypher_neo4j_comparison.md">Neo4j comparison</a>
+    </aside>
+  </main>
+
+  <footer>
+    <a class="brand footer-brand" href="index.html"><svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><circle cx="10" cy="24" r="5"></circle><circle cx="30" cy="10" r="4"></circle><circle cx="32" cy="32" r="7"></circle><path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path></svg><span>Jouvence-Graph</span></a>
+    <p>Source-aware biology for auditable predictive graph ML.</p>
+    <div class="footer-links"><a href="index.html">Home</a><a href="https://github.com/jkobject/jouvence">GitHub</a><a href="https://github.com/jkobject/jouvence/blob/main/docs/README.md">Documentation</a></div>
+  </footer>
+</body>
+</html>
