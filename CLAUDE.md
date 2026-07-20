@@ -63,7 +63,7 @@ jkobject-1549353370965
 
 - Run: `python -m manage_db.i1_bionty_pertdb_import` (idempotent)
 - Output: see `i1_run.log` for counts; executed notebook at
-  `notebooks/1_lamindb_instance_setup.executed.ipynb`.
+  `reproduce/executed/01_lamindb_instance_setup.executed.ipynb`.
 - HP (Human Phenotype Ontology) is the active Phenotype source (PATO disabled
   per §7).
 
@@ -83,7 +83,7 @@ jkobject-1549353370965
   `/mnt/gcs/jouvencekb/kg/local-archive/home-ubuntu-data-txgnn-20260611T0940Z/txgnn-literature.tar.zst`.
 - Sync mapped 129,375 nodes (existing=125,744, created=30, uncertain=3,601); see
   `data/txdata/node_entity_mapping.csv`.
-- Executed notebook: `notebooks/2_manage_db_setup.executed.ipynb`.
+- Executed notebook: `reproduce/executed/02_manage_db_setup.executed.ipynb`.
 
 Doctrine note: `bt.Protein` exists but is UniProt-centric. TxGNN `protein`
 nodes are Ensembl Protein (`ENSP`) translation products and use custom
@@ -694,7 +694,7 @@ hetero_dgl  = kg.to_dgl()   # DGL HeteroGraph (legacy)
       credibility 3) (`manage_db/kg_migrate.py` — 8,100,498 edges × 17 relation
       files; zero unmapped relations)
 - [x] Validate every node ID resolves to a bionty/LaminDB record (schema
-      validation helper in `notebooks/kg_schema_overview.ipynb` §7; all IDs
+      validation helper in `reproduce/15_kg_schema_overview.ipynb` §7; all IDs
       normalised to valid ontology formats)
 
 ### Phase 4 — OpenTargets ingestion ⚠️ (implemented; canonical subset exported)

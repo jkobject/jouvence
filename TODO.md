@@ -65,7 +65,7 @@ Use these, not old `.omoc` reports:
 
 - `docs/kg_schema_overview.md`
 - `docs/relation_coverage_current.md`
-- `notebooks/kg_schema_overview.ipynb`
+- `reproduce/15_kg_schema_overview.ipynb`
 - `docs/relation_backlog_prioritized.md`
 
 Accepted snapshot:

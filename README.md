@@ -41,14 +41,19 @@ TxGNN is a graph neural network pre-trained on a comprehensive knowledge graph o
 
 ![TxGNN](fig/txgnn_fig1.png)
 
-## Jouvence public scientific notebooks
+## Jouvence scientific notebooks
 
-The numbered suite in [`notebooks/public/`](notebooks/public/) introduces the
+The numbered suite in [`notebooks/`](notebooks/) contains only user-facing
+exploration and usage notebooks. It introduces the
 Jouvence node/assertion/evidence/feature model and then demonstrates bounded
 entity exploration, provenance-aware biological questions, exact-instance
 LaminDB queries, a sampled PyG `HeteroData`, embedding retrieval, neighborhood
-analysis, and a deterministic link-prediction smoke.  Each notebook states what
+analysis, and a deterministic link-prediction smoke. Each notebook states what
 its output means biologically and what it does not prove.
+
+Database construction, ingestion, schema-audit, and paper-reproduction
+notebooks live separately in [`reproduce/`](reproduce/), also in a numbered
+sequence. They are not part of the user quickstart.
 
 Run the complete fixture-backed suite without reading the live KG:
 

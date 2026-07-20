@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """I1 — bionty & pertdb import into jkobject/jouvencekb lamindb instance.
 
-Reproduces notebooks/1_lamindb_instance_setup.ipynb end-to-end as a re-runnable
+Reproduces reproduce/01_lamindb_instance_setup.ipynb end-to-end as a re-runnable
 script. Idempotent: re-running skips already-imported records (use
 ignore_conflicts=True).
 """

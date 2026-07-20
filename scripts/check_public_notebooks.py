@@ -12,14 +12,14 @@ import nbformat
 from nbclient import NotebookClient
 
 ROOT = Path(__file__).resolve().parents[1]
-NOTEBOOK_DIR = ROOT / "notebooks" / "public"
+NOTEBOOK_DIR = ROOT / "notebooks"
 EXPECTED = [
-    "00_data_model_and_use_cases.ipynb",
-    "01_nodes_features_and_embeddings.ipynb",
-    "02_relations_evidence_and_questions.ipynb",
-    "03_lamindb_equivalent_queries.ipynb",
-    "04_sampled_pyg_heterodata.ipynb",
-    "05_sampled_ml_use_cases.ipynb",
+    "01_data_model_and_use_cases.ipynb",
+    "02_nodes_features_and_embeddings.ipynb",
+    "03_relations_evidence_and_questions.ipynb",
+    "04_lamindb_equivalent_queries.ipynb",
+    "05_sampled_pyg_heterodata.ipynb",
+    "06_sampled_ml_use_cases.ipynb",
 ]
 FORBIDDEN = [
     "/Users/jkobject/mnt/gcs",
