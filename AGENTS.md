@@ -37,6 +37,18 @@ Do not browse the repo/docs broadly by default.
 
 When creating Kanban cards, include: target relation/artifact, source files, allowed writes, exact validation, canonical-write permission, relevant docs, and what not to read.
 
+## Public data onboarding
+
+For “set this up and show me Jouvence,” follow
+[`docs/getting-started-data.md`](docs/getting-started-data.md). Start in fixture
+mode unless `JOUVENCE_DATA_MODE=live` is explicit. Live GCS reads require the
+consumer's own `JOUVENCE_BILLING_PROJECT` and ADC; never invent or reuse a
+maintainer billing project. Default to read-only, bounded, named-table access.
+`JOUVENCE_LAMIN_LIVE=1` is a separate opt-in and does not make the currently
+partial/external-blocked Lamin mirror canonical. All-relation scans, bulk
+downloads, production PyG/GNN, bulk Lamin work, and embedding/full-KG scans are
+heavy work and remain prohibited on laptops.
+
 ## Safety rules
 
 - Do not treat old `.omoc` paths as current operating instructions; `.omoc/` is legacy-only.
