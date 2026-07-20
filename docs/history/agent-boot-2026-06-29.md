@@ -16,7 +16,7 @@ Python was managed with `uv`; the intended LaminDB instance was `jkobject/jouven
 
 - [`../kg_schema_overview.md`](../kg_schema_overview.md)
 - [`../relation_coverage_current.md`](../relation_coverage_current.md)
-- [`../../notebooks/kg_schema_overview.ipynb`](../../notebooks/kg_schema_overview.ipynb)
+- [`../../reproduce/15_kg_schema_overview.ipynb`](../../reproduce/15_kg_schema_overview.ipynb)
 - [`../relation_backlog_prioritized.md`](../relation_backlog_prioritized.md)
 
 The 2026-06-29 snapshot recorded 67 active declared relations, 40 canonical active edge relations, 18 canonical relations with evidence, 22 without evidence, 27 not yet canonical, 100,080,390 canonical edge rows, and 55,523,691 node rows. These numbers are dated and must not be treated as live status.

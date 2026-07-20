@@ -15,7 +15,7 @@ Local Jouvence/TxGNN sources:
 - `docs/source_measure_edge_matrix.md`
 - `docs/source_native_expansion_policy.md`
 - `docs/txgnn_access_runbook.md`
-- Notebook summaries from `notebooks/11_lamin_kg_schema_explorer.ipynb` and `notebooks/12_node_sequence_text_features_summary.ipynb`
+- Notebook summaries from `reproduce/18_lamin_kg_schema_explorer.ipynb` and `reproduce/19_node_sequence_text_features_summary.ipynb`
 
 Public references:
 

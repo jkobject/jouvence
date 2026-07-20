@@ -3,20 +3,24 @@ name: public-notebooks
 on:
   pull_request:
     paths:
-      - "notebooks/public/**"
+      - "notebooks/**"
+      - "reproduce/**"
       - "manage_db/public_notebooks.py"
       - "scripts/*public_notebooks.py"
       - "tests/test_public_notebooks.py"
+      - "tests/test_notebook_structure.py"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/public-notebooks.yml"
   push:
     branches: [main]
     paths:
-      - "notebooks/public/**"
+      - "notebooks/**"
+      - "reproduce/**"
       - "manage_db/public_notebooks.py"
       - "scripts/*public_notebooks.py"
       - "tests/test_public_notebooks.py"
+      - "tests/test_notebook_structure.py"
 
 jobs:
   smoke:
@@ -30,7 +34,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: uv sync --frozen --group dev --group notebooks --group gnn
-      - run: uv run pytest -q tests/test_public_notebooks.py
+      - run: uv run pytest -q tests/test_public_notebooks.py tests/test_notebook_structure.py
       - run: uv run python scripts/build_public_notebooks.py
-      - run: git diff --exit-code -- notebooks/public
+      - run: git diff --exit-code -- notebooks
       - run: uv run python scripts/check_public_notebooks.py --execute

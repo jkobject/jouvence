@@ -14,18 +14,18 @@ This audit maps the current notebook surface to a clean numbered sequence for ex
 
 | Notebook | Current coverage | Keep / replace / obsolete | Notes |
 | --- | --- | --- | --- |
-| `notebooks/1_lamindb_instance_setup.ipynb` | LaminDB instance connection, initial audit, bionty source inspection/import, pertdb compound transfer, HP-vs-PATO phenotype source note. | Keep as notebook 1, but refresh execution metadata when Lamin auth works. | Good conceptual setup notebook. It is Lamin-heavy and depends on auth/instance state. |
-| `notebooks/1_lamindb_instance_setup.executed.ipynb` | Executed copy of notebook 1. | Keep as historical artifact or replace with a standard executed artifact naming policy. | Duplicates notebook 1 content; should not be the canonical editable notebook. |
-| `notebooks/2_manage_db_setup.ipynb` | `manage_db` setup, custom `lnschema_txgnn` record types, `sync_txgnn_nodes_to_lamin_entities`, final record counts. | Keep as notebook 2, but modernize to current Parquet-first sync. | Uses older `nodes.tab` assumptions. Should point newer KG node sync to `sync_parquet_nodes_to_lamindb`. |
-| `notebooks/2_manage_db_setup.executed.ipynb` | Executed copy of notebook 2. | Keep as historical artifact or replace with standard executed artifact naming policy. | Duplicates notebook 2 content; not canonical editable source. |
-| `notebooks/ingest_opentargets.ipynb` | OpenTargets discovery/download/inspection plus calls to ingestion helpers: `ingest_targets`, `ingest_diseases`, `ingest_drugs`, `ingest_interactions`, `ingest_evidence`, `ingest_go`, `ingest_reactome`, `ingest_literature`, `ingest_indication`, `ingest_mechanism_of_action`. | Replace/split into the new numbered sequence. | Valuable but too broad; it mixes release discovery, raw inspection, nodes, edges, evidence, and summary. Also misses newer ingest functions added after the notebook. |
-| `notebooks/Jouvence_Explore.ipynb` | LaminDB counts and full graph exploration through KGLoader/GCS Parquet. | Replace with a final inspection/loading notebook. | Contains a likely stale import: `from manage_db.kg_loader import KGLoader`; the actual loader inspected here is `txgnn/KGLoader.py`. |
-| `notebooks/kg_schema_overview.ipynb` | Interactive schema guide: node types, xrefs, relation taxonomy, credibility, edge schema, xref helpers, legacy mapping, pipeline sketch. | Keep as a companion explainer, but do not make it part of the build sequence. | Its markdown overlaps `docs/kg_schema_overview.md`; future build notebooks should link to docs instead of duplicating schema policy. |
-| `notebooks/kg_schema_current_status.ipynb` | Current status inspection: schema relations, Parquet metadata, phenotype direction sanity check, bounded relation sample, backlog view. | Merge into the proposed validation/status notebook. | Useful lightweight status checks; overlaps `kg_schema_deep_inspection.ipynb`. |
-| `notebooks/kg_schema_deep_inspection.ipynb` | Deep inspection using `audit_coverage`, `audit_edge_evidence`, schema enums, relation lifecycle views, endpoint sanity checks, optional CSV exports. | Keep concepts, rename into the proposed validation/status notebook. | Best current audit notebook; should be the basis for the final validation notebook. |
-| `notebooks/txdata_explore.ipynb` | Original TxData CSV exploration, `download_txdata_csvs`, `add_disease_anatomy_relationships`, and early raw OpenTargets Parquet peeks. | Replace with a legacy TxData/bootstrap notebook if still needed. | Exploratory, partly obsolete. It reads `nodes.tab` / `edges.csv` and should not be the main KG build path. |
-| `TxGNN_Demo.ipynb` | Legacy TxGNN model training demo with `TxData`, `TxGNN`, `TxEval`, scratch paths, disease split. | Keep outside KG creation sequence as downstream ML demo. | No markdown; uses old absolute scratch path. Not a reproducible KG creation notebook. |
-| `reproduce/gather result-txgnn.ipynb` | Result gathering/plotting for TxGNN runs; imports `TxData`, metrics, seaborn/matplotlib. | Keep under `reproduce/` as experiment analysis, outside KG creation sequence. | Not a KG construction notebook. |
+| `reproduce/01_lamindb_instance_setup.ipynb` | LaminDB instance connection, initial audit, bionty source inspection/import, pertdb compound transfer, HP-vs-PATO phenotype source note. | Keep as notebook 1, but refresh execution metadata when Lamin auth works. | Good conceptual setup notebook. It is Lamin-heavy and depends on auth/instance state. |
+| `reproduce/executed/01_lamindb_instance_setup.executed.ipynb` | Executed copy of notebook 1. | Keep as historical artifact or replace with a standard executed artifact naming policy. | Duplicates notebook 1 content; should not be the canonical editable notebook. |
+| `reproduce/02_manage_db_setup.ipynb` | `manage_db` setup, custom `lnschema_txgnn` record types, `sync_txgnn_nodes_to_lamin_entities`, final record counts. | Keep as notebook 2, but modernize to current Parquet-first sync. | Uses older `nodes.tab` assumptions. Should point newer KG node sync to `sync_parquet_nodes_to_lamindb`. |
+| `reproduce/executed/02_manage_db_setup.executed.ipynb` | Executed copy of notebook 2. | Keep as historical artifact or replace with standard executed artifact naming policy. | Duplicates notebook 2 content; not canonical editable source. |
+| `reproduce/14_ingest_opentargets_legacy.ipynb` | OpenTargets discovery/download/inspection plus calls to ingestion helpers: `ingest_targets`, `ingest_diseases`, `ingest_drugs`, `ingest_interactions`, `ingest_evidence`, `ingest_go`, `ingest_reactome`, `ingest_literature`, `ingest_indication`, `ingest_mechanism_of_action`. | Replace/split into the new numbered sequence. | Valuable but too broad; it mixes release discovery, raw inspection, nodes, edges, evidence, and summary. Also misses newer ingest functions added after the notebook. |
+| `reproduce/22_jouvence_explore_legacy.ipynb` | LaminDB counts and full graph exploration through KGLoader/GCS Parquet. | Replace with a final inspection/loading notebook. | Contains a likely stale import: `from manage_db.kg_loader import KGLoader`; the actual loader inspected here is `txgnn/KGLoader.py`. |
+| `reproduce/15_kg_schema_overview.ipynb` | Interactive schema guide: node types, xrefs, relation taxonomy, credibility, edge schema, xref helpers, legacy mapping, pipeline sketch. | Keep as a companion explainer, but do not make it part of the build sequence. | Its markdown overlaps `docs/kg_schema_overview.md`; future build notebooks should link to docs instead of duplicating schema policy. |
+| `reproduce/16_kg_schema_current_status.ipynb` | Current status inspection: schema relations, Parquet metadata, phenotype direction sanity check, bounded relation sample, backlog view. | Merge into the proposed validation/status notebook. | Useful lightweight status checks; overlaps `kg_schema_deep_inspection.ipynb`. |
+| `reproduce/17_kg_schema_deep_inspection.ipynb` | Deep inspection using `audit_coverage`, `audit_edge_evidence`, schema enums, relation lifecycle views, endpoint sanity checks, optional CSV exports. | Keep concepts, rename into the proposed validation/status notebook. | Best current audit notebook; should be the basis for the final validation notebook. |
+| `reproduce/23_txdata_explore_legacy.ipynb` | Original TxData CSV exploration, `download_txdata_csvs`, `add_disease_anatomy_relationships`, and early raw OpenTargets Parquet peeks. | Replace with a legacy TxData/bootstrap notebook if still needed. | Exploratory, partly obsolete. It reads `nodes.tab` / `edges.csv` and should not be the main KG build path. |
+| `reproduce/24_txgnn_model_demo.ipynb` | Legacy TxGNN model training demo with `TxData`, `TxGNN`, `TxEval`, scratch paths, disease split. | Keep outside KG creation sequence as downstream ML demo. | No markdown; uses old absolute scratch path. Not a reproducible KG creation notebook. |
+| `reproduce/25_gather_txgnn_paper_results.ipynb` | Result gathering/plotting for TxGNN runs; imports `TxData`, metrics, seaborn/matplotlib. | Keep under `reproduce/` as experiment analysis, outside KG creation sequence. | Not a KG construction notebook. |
 
 ## Existing code surface notebooks should call
 
@@ -299,7 +299,7 @@ Validation cells:
 
 Purpose:
 - Keep legacy TxGNN/TxData reproduction separate from Jouvence KG creation.
-- Explain how `TxGNN_Demo.ipynb`, `txdata_explore.ipynb`, and `reproduce/gather result-txgnn.ipynb` relate to downstream experiments.
+- Explain how `reproduce/24_txgnn_model_demo.ipynb`, `txdata_explore.ipynb`, and `reproduce/25_gather_txgnn_paper_results.ipynb` relate to downstream experiments.
 
 Required inputs:
 - Legacy TxData files (`nodes.tab`, `edges.csv`) or downloaded TxData CSVs.
@@ -331,11 +331,11 @@ Validation cells:
   - Add notebooks `3_...` through `10_...` above.
 - Historical executed artifacts:
   - Keep `.executed.ipynb` files only as generated artifacts, not hand-edited sources.
-  - Prefer a consistent execution artifact convention, e.g. `notebooks/executed/<name>.ipynb`, if the repo wants to preserve executed outputs.
+  - Preserve historical executed copies under `reproduce/executed/<numbered-name>.ipynb`; `notebooks/` remains output-free and user-facing.
 - Replace `ingest_opentargets.ipynb` with notebooks 3-7.
 - Merge `kg_schema_current_status.ipynb` and `kg_schema_deep_inspection.ipynb` into notebook 8.
 - Keep `kg_schema_overview.ipynb` as an explainer, but make `docs/kg_schema_overview.md` and `docs/source_measure_edge_matrix.md` the authoritative docs.
-- Move/label `txdata_explore.ipynb`, `TxGNN_Demo.ipynb`, and `reproduce/gather result-txgnn.ipynb` as legacy/downstream experiment notebooks, outside KG creation.
+- Move/label `txdata_explore.ipynb`, `reproduce/24_txgnn_model_demo.ipynb`, and `reproduce/25_gather_txgnn_paper_results.ipynb` as legacy/downstream experiment notebooks, outside KG creation.
 
 ## Blockers and caveats for implementers
 
