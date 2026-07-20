@@ -68,6 +68,19 @@ def test_fixture_catalog_queries_and_embeddings(tmp_path: Path) -> None:
     assert neighbors.iloc[0]["node_id"] == "ENSG00000139618"
     assert np.isfinite(neighbors["cosine_similarity"]).all()
 
+    joined = public.bounded_edge_evidence_join(
+        root,
+        "disease_associated_gene",
+        edge_limit=5,
+        evidence_limit=10,
+    )
+    assert len(joined) == 5
+    assert {
+        "source_assertion",
+        "source_evidence",
+        "source_record_id",
+    }.issubset(joined.columns)
+
 
 def test_sampled_pyg_and_ml_reuse_existing_pipeline(tmp_path: Path) -> None:
     pytest.importorskip("torch")
