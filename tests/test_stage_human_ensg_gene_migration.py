@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import gzip
 from pathlib import Path
 
@@ -87,6 +88,7 @@ def test_affected_edge_relation_rejects_preexisting_duplicate_identity(tmp_path:
 def test_genuine_remap_collision_is_deduplicated_deterministically(tmp_path: Path) -> None:
     source = tmp_path / "affected.parquet"
     target = tmp_path / "candidate.parquet"
+    receipt = tmp_path / "collision_lineage.parquet"
     pd.DataFrame(
         [
             _edge("NCBI:7157", source="legacy", credibility=1),
@@ -101,13 +103,22 @@ def test_genuine_remap_collision_is_deduplicated_deterministically(tmp_path: Pat
         target,
         tmp_path / "quarantine.parquet",
         evidence=False,
+        collision_receipt=receipt,
     )
 
     result = pd.read_parquet(target)
+    lineage = pd.read_parquet(receipt)
     assert len(result) == 1
     assert result.loc[0, "source"] == "modern"
+    assert lineage[["source_x_id", "retained"]].to_dict("records") == [
+        {"source_x_id": "ENSG00000141510", "retained": True},
+        {"source_x_id": "NCBI:7157", "retained": False},
+    ]
     assert report["source_preexisting_duplicate_rows"] == 0
+    assert report["collision_identity_count"] == 1
+    assert report["collision_source_rows"] == 2
     assert report["remap_collision_rows"] == 1
+    assert report["collision_receipt_sha256"]
     assert report["lineage_conservation_ok"] is True
 
 
@@ -236,12 +247,65 @@ def test_builds_human_only_candidate_and_quarantines_unmapped_rows(tmp_path: Pat
     assert evidence.loc[0, "edge_key"] == "disease_associated_gene|ENSG00000141510|MONDO:1"
     assert evidence.loc[0, "canonicalization_source_x_id"] == "NCBI:7157"
     assert quarantined.loc[0, "x_id"] == "NCBI:999"
+    assert quarantined.columns[-1] == "quarantine_reason"
+    assert quarantined.loc[0, "quarantine_reason"] == "retired_unmapped"
     assert not (output / "edges" / "gene_ortholog_gene.parquet").exists()
     assert manifest["validation"]["ok"] is True
     assert manifest["mapping"]["status_counts"] == {"accepted_1to1": 1, "retired_unmapped": 1}
+    assert manifest["canonical_write_performed"] is False
+    assert manifest["lamindb_write_performed"] is False
 
-    manifest["relations"]["edges"]["disease_associated_gene"]["remap_collision_rows"] += 1
-    revalidation = validate_candidate(duckdb.connect(), output, manifest["relations"])
+    second_output = tmp_path / "candidate-rebuild"
+    second_manifest = build(
+        argparse.Namespace(
+            source_root=source,
+            output_root=second_output,
+            gene2ensembl=gene2ensembl,
+            gene_history=history,
+        )
+    )
+    first_contract = output / "metadata" / "deterministic_rebuild_contract.json"
+    second_contract = second_output / "metadata" / "deterministic_rebuild_contract.json"
+    assert first_contract.read_bytes() == second_contract.read_bytes()
+    assert (
+        manifest["deterministic_rebuild_contract"]["sha256"]
+        == second_manifest["deterministic_rebuild_contract"]["sha256"]
+    )
+
+    bad_conservation = copy.deepcopy(manifest["relations"])
+    bad_conservation["edges"]["disease_associated_gene"]["remap_collision_rows"] += 1
+    revalidation = validate_candidate(duckdb.connect(), output, bad_conservation)
     assert "edges/disease_associated_gene.parquet: row_conservation_failed" in revalidation[
         "failures"
     ]
+
+    bad_provenance = copy.deepcopy(manifest["relations"])
+    bad_provenance["edges"]["disease_associated_gene"][
+        "collision_identities_without_rewrite"
+    ] = 1
+    provenance_validation = validate_candidate(duckdb.connect(), output, bad_provenance)
+    assert "edges/disease_associated_gene.parquet: collision_provenance_failed" in (
+        provenance_validation["failures"]
+    )
+
+
+@pytest.mark.parametrize("remote_root", ["gs://bucket/kg", "s3://bucket/kg"])
+def test_build_rejects_remote_storage_boundary(tmp_path: Path, remote_root: str) -> None:
+    with pytest.raises(RuntimeError, match="local-only builder"):
+        build(
+            argparse.Namespace(
+                source_root=Path(remote_root),
+                output_root=tmp_path / "candidate",
+                gene2ensembl=tmp_path / "gene2ensembl.gz",
+                gene_history=tmp_path / "gene_history.gz",
+            )
+        )
+    with pytest.raises(RuntimeError, match="local-only builder"):
+        build(
+            argparse.Namespace(
+                source_root=tmp_path / "source",
+                output_root=Path(remote_root),
+                gene2ensembl=tmp_path / "gene2ensembl.gz",
+                gene_history=tmp_path / "gene_history.gz",
+            )
+        )

@@ -1,12 +1,19 @@
 # Human ENSG gene migration candidate — `t_8b9cdabc`
 
-Status: **staged-only; review-required; canonical not modified**
+Status: **prior production-scale candidate rejected; corrected implementation local-only and
+review-required; canonical not modified**
+
+Revision producer: `t_5c938f23`. The earlier 12.6 GB candidate below was built by
+`t_8b9cdabc` and is retained only as rejected historical evidence. It is not a corrected
+candidate and must not be promoted. A fresh production-scale staged rebuild requires a
+separate remote execution lane after lifecycle reauthorization and acceptance of this
+implementation.
 
 ## Scope and policy
 
 This candidate rewrites the full canonical KG snapshot to the human gene identifier contract in [`guides/kg-architecture-and-evidence.md`](guides/kg-architecture-and-evidence.md): canonical human `gene` nodes and endpoints use Ensembl stable gene IDs (`ENSG...`); NCBI Gene IDs remain aliases and provenance; ambiguous and unavailable mappings fail closed.
 
-The staged builder reads an immutable local copy of all canonical `nodes/`, `edges/`, and `evidence/` Parquets. It does not accept a GCS destination and cannot promote. The candidate is isolated at:
+The staged builder reads an immutable local copy of all canonical `nodes/`, `edges/`, and `evidence/` Parquets. It does not accept a GCS destination and cannot promote. The rejected historical candidate is isolated at:
 
 `gs://jouvencekb/kg/staging/human-ensg-gene-migration/t_8b9cdabc/ncbi-2e5f37c-genehist-ab8a3a8/`
 
@@ -36,24 +43,48 @@ The source `gene` table had 267,830 rows: 81,715 existing human ENSG nodes, 27,6
 
 Across every relation type, the source had 725,891 NCBI `x` endpoint occurrences, 2,574,911 NCBI `y` endpoint occurrences, and 161,675 non-human ortholog `y` occurrences. The orthology relation and its evidence are excluded by explicit human-only policy; Open Targets orthology ingestion is disabled by default unless a caller deliberately requests cross-species staging.
 
-| Surface | Source rows | Candidate rows | Quarantined | Exact-identity rows deduplicated | Policy-excluded orthology |
+| Surface | Source rows | Rejected candidate rows | Quarantined | Rows previously labeled deduplicated | Policy-excluded orthology |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Edges | 101,744,668 | 99,903,239 | 40,513 | 1,639,241 | 161,675 |
 | Evidence | 76,565,213 | 76,401,411 | 2,127 | 0 | 161,675 |
 
-Deduplication retains one deterministic graph assertion for each exact `(relation, x_id, y_id)` identity. Source evidence multiplicity remains intact and is re-keyed to the canonical edge identity. Quarantine Parquets preserve every unresolved row plus `quarantine_reason`.
+Those counts are not acceptance evidence: the rejected implementation also removed 411,687
+pre-existing duplicate rows from relations with no NCBI rewrite. The corrected implementation
+copies every unaffected relation byte-for-byte. An affected edge relation fails closed if it
+contains a pre-existing duplicate identity. Only post-remap identities with distinct source
+endpoint identities may collapse, and every member of such a collision is recorded under
+`metadata/collision_lineage/edges/` with canonical endpoints, source endpoints, deterministic
+rank, and retained status. Evidence rows are preserved one-for-one after resolved endpoint
+rewrites. Quarantine Parquets preserve every unresolved row plus `quarantine_reason`.
 
 ## Validation and rollback contract
 
-`metadata/promotion_rollback_manifest.json` records source and candidate row counts, relation-level migration/quarantine/dedup counts, source and candidate SHA-256 inventories, source GCS generations, mapping hashes, and validation output. Its staged SHA-256 is `73cdf159f4e28eb4942e9a9184e1f4901c8f8025d75663be038cb62c3d91b26d` before GCS upload metadata generation.
+The corrected builder emits `metadata/deterministic_rebuild_contract.json`. It excludes
+wall-clock timestamps and absolute output paths, so two builds from byte-identical inputs must
+produce the same contract bytes and candidate Parquet inventory hashes. Per-relation receipts
+enforce `source_rows = candidate_rows + quarantine_rows + remap_collision_rows`; collision
+receipt rows must equal retained collision identities plus removed collision rows. The outer
+`promotion_rollback_manifest.json` records execution paths and time, references the deterministic
+contract hash, and always records `canonical_write_performed=false`,
+`lamindb_write_performed=false`, and `promotion.authorized=false`.
 
-The final validation is `ok: true` with:
+The old manifest SHA-256
+`73cdf159f4e28eb4942e9a9184e1f4901c8f8025d75663be038cb62c3d91b26d`
+belongs to the rejected candidate and is not a corrected artifact hash.
+
+The corrected local fixture validation is required to be `ok: true` with:
 
 - zero non-ENSG candidate `gene` IDs;
 - zero `NCBI:` or non-human Ensembl gene endpoints in edges or evidence;
-- zero duplicate graph edge identities;
+- untouched duplicate graph identities preserved byte-for-byte;
+- zero pre-existing duplicate identities in any affected relation (fail closed before output);
+- zero unreceipted post-remap collision rows;
 - zero endpoint anti-join misses for every relation and node type;
 - zero evidence identities without a matching edge;
-- exact source generation equality before and after staging.
+- exact deterministic rebuild-contract equality across two local fixture builds;
+- no remote object-store, GCS-FUSE, canonical, or LaminDB write path.
 
-Promotion remains prohibited until reviewer acceptance. A promoter must verify the staged manifest and object hashes, snapshot or generation-pin the current canonical prefix again, and use the normal atomic review/promotion path. Rollback means restoring the 76 canonical source object generations listed in `metadata/canonical_source_generations.json`; the staged builder never overwrote those objects.
+Promotion remains prohibited. The old 76-object generation inventory is historical rollback
+evidence for the rejected build, not authorization for reuse. A later remote rebuild must freshly
+generation-pin its source snapshot, produce a new immutable staging prefix and hashes, and pass
+independent review before a separate promotion path can be considered.
