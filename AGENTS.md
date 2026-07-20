@@ -21,9 +21,9 @@ Jouvence is a biomedical knowledge-graph and zero-shot drug-repurposing project 
 
 ## Reviewability rule
 
-`/Users/jkobject/.openclaw/workspace/work/txgnn` is the canonical local Jouvence worktree for `https://github.com/jkobject/jouvence`. The local path remains unchanged as a compatibility boundary. It also contains ignored local artifacts/caches; those do not make the Git diff reviewable by themselves.
+`/Users/jkobject/Documents/jouvence` is the canonical local Jouvence checkout for `https://github.com/jkobject/jouvence`. It contains ignored local artifacts/caches; those do not make the Git diff reviewable by themselves.
 
-Run project-level Git commands from this root and verify `git rev-parse --show-toplevel` resolves to it. Parallel task worktrees remain under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`. Never `git init` another Jouvence directory or commit ignored artifacts, caches, credentials, GCS/FUSE mirrors, or unrelated workspace state.
+Run project-level Git commands from this root and verify `git rev-parse --show-toplevel` resolves to it. Parallel task worktrees now live under `/Users/jkobject/Documents/jouvence/.worktrees/<task-id>` unless a card explicitly names a preserved legacy worktree. Never `git init` another Jouvence directory or commit ignored artifacts, caches, credentials, GCS/FUSE mirrors, or unrelated workspace state.
 
 ## Context discipline
 
