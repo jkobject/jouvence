@@ -37,32 +37,58 @@ jobs:
       - name: Reject unconfigured worktree gitlinks
         shell: bash
         run: |
-          bad=0
-          while IFS= read -r -d '' entry; do
-            metadata=${entry%%$'\t'*}
-            path=${entry#*$'\t'}
-            [[ ${metadata%% *} == 160000 ]] || continue
-            [[ $path == .claude/worktrees/* || $path == .worktrees/* ]] || continue
+          python3 - <<'PY'
+          import configparser
+          import pathlib
+          import subprocess
+          import sys
 
-            configured=0
-            if [[ -f .gitmodules ]]; then
-              while IFS= read -r key; do
-                configured_path=$(git config -f .gitmodules --get "$key" || true)
-                [[ $configured_path == "$path" ]] || continue
-                section=${key%.path}
-                url=$(git config -f .gitmodules --get "$section.url" || true)
-                if [[ -n ${url//[[:space:]]/} ]]; then
-                  configured=1
-                fi
-              done < <(git config -f .gitmodules --name-only --get-regexp '^submodule\..*\.path$' || true)
-            fi
+          entries = subprocess.check_output(
+              ["git", "ls-files", "--stage", "-z"]
+          ).split(b"\0")
+          worktree_gitlinks = []
+          for entry in entries:
+              if not entry:
+                  continue
+              metadata, path_bytes = entry.split(b"\t", 1)
+              if metadata.split(b" ", 1)[0] != b"160000":
+                  continue
+              path = path_bytes.decode("utf-8", "surrogateescape")
+              if path.startswith((".claude/worktrees/", ".worktrees/")):
+                  worktree_gitlinks.append(path)
 
-            if (( configured == 0 )); then
-              echo "::error file=$path::worktree gitlink has no configured non-empty submodule URL"
-              bad=1
-            fi
-          done < <(git ls-files --stage -z)
-          exit "$bad"
+          mappings = {}
+          modules_path = pathlib.Path(".gitmodules")
+          if modules_path.exists():
+              parser = configparser.ConfigParser(
+                  interpolation=None,
+                  strict=True,
+              )
+              try:
+                  with modules_path.open(encoding="utf-8") as handle:
+                      parser.read_file(handle)
+                  for section in parser.sections():
+                      if not section.startswith("submodule "):
+                          continue
+                      path = parser.get(section, "path", fallback="")
+                      url = parser.get(section, "url", fallback="")
+                      if path:
+                          mappings.setdefault(path, []).append(url)
+              except (configparser.Error, UnicodeError, OSError) as exc:
+                  print(f"::error file=.gitmodules::invalid .gitmodules: {exc}")
+                  sys.exit(1)
+
+          bad = False
+          for path in worktree_gitlinks:
+              urls = mappings.get(path, [])
+              if len(urls) != 1 or not urls[0].strip():
+                  print(
+                      f"::error file={path}::worktree gitlink must have exactly "
+                      "one configured non-empty submodule URL"
+                  )
+                  bad = True
+          sys.exit(1 if bad else 0)
+          PY
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
