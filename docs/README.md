@@ -7,6 +7,7 @@ This directory is the single home for durable project knowledge. Start at the re
 | Need | Read |
 | --- | --- |
 | Clone, authenticate, and run a bounded first data query | [`getting-started-data.md`](getting-started-data.md) |
+| Why Jouvence-Graph extends Open Targets and keeps Neo4j optional | [`why-not-open-targets.html`](why-not-open-targets.html) |
 | KG topology, evidence, metadata, features, and proof | [`guides/kg-architecture-and-evidence.md`](guides/kg-architecture-and-evidence.md) |
 | Source-native relation and endpoint policy | [`guides/source-native-modeling.md`](guides/source-native-modeling.md) |
 | Agent role routing and validation recipes | [`guides/agent-context.md`](guides/agent-context.md) |

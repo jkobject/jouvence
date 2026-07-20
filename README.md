@@ -4,7 +4,7 @@ This repository is **Jouvence-Graph**, a source-aware biomedical knowledge graph
 
 Compatibility boundary: Python imports remain `txgnn`, and public model classes such as `TxGNN`, `TxData`, and `TxEval` retain their upstream names. The upstream implementation and citation remain at [`mims-harvard/TxGNN`](https://github.com/mims-harvard/TxGNN); the active Jouvence repository is [`jkobject/jouvence`](https://github.com/jkobject/jouvence).
 
-**Start here:** [project website](https://www.jkobject.com/jouvence/) · [data quickstart](docs/getting-started-data.md) · [installation](#installation) · [API usage](#core-api-interface) · [paper reproduction](reproduce/README.md) · [documentation](docs/README.md) · [current work](TODO.md) · [agent instructions](AGENTS.md)
+**Start here:** [project website](https://www.jkobject.com/jouvence/) · [why this architecture](https://www.jkobject.com/jouvence/why-not-open-targets.html) · [data quickstart](docs/getting-started-data.md) · [installation](#installation) · [API usage](#core-api-interface) · [paper reproduction](reproduce/README.md) · [documentation](docs/README.md) · [current work](TODO.md) · [agent instructions](AGENTS.md)
 
 ## Jouvence KG
 
