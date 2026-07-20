@@ -23,6 +23,7 @@ This directory is the single home for durable project knowledge. Start at the re
 - [`evidence_and_edge_schema_plan.md`](evidence_and_edge_schema_plan.md) — assertion/evidence separation.
 - [`source_native_expansion_policy.md`](source_native_expansion_policy.md) — source and endpoint policy.
 - [`source_measure_edge_matrix.md`](source_measure_edge_matrix.md) — source/measurement/relation decisions.
+- [`causal_edge_feature_model.md`](causal_edge_feature_model.md) — authoritative contract for GoF/LoF, pharmacological action, effect direction, response polarity, edge/evidence placement, and conflict aggregation without relation-name proliferation.
 - [`inferred_edges_policy.md`](inferred_edges_policy.md) — inferred and contextual assertions.
 
 ### PyG, GNN, and embeddings
