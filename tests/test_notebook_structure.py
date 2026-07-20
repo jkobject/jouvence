@@ -147,6 +147,21 @@ def test_n4d_source_native_l2_index_notebook_is_read_only_by_default() -> None:
     assert "no canonical KG writes" in text
 
 
+def test_n4d_source_native_l2_index_resolves_repo_root_from_reproduce(
+    monkeypatch,
+) -> None:
+    notebook, _ = _notebook_text_for(N4D_NOTEBOOK)
+    setup_cell = next(
+        cell for cell in notebook["cells"] if cell.get("cell_type") == "code"
+    )
+    namespace: dict[str, object] = {}
+
+    monkeypatch.chdir(REPO_ROOT / "reproduce")
+    exec(compile("".join(setup_cell["source"]), str(N4D_NOTEBOOK), "exec"), namespace)
+
+    assert namespace["REPO_ROOT"] == REPO_ROOT
+
+
 def test_n4d_source_native_l2_index_links_split_notebooks_and_lanes() -> None:
     _, text = _notebook_text_for(N4D_NOTEBOOK)
 
