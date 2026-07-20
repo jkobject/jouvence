@@ -118,8 +118,9 @@ mutation_associated_gene(mutation, gene)
 Policy:
 
 - Default label: `inferred_weak`.
-- Upgrade toward `inferred_obvious` only if the gene support is direct genomic containment or mechanistic consequence (`mutation_in_gene`, high-quality consequence, or direct protein change linked back to gene) and the disease support is strong clinical/GWAS evidence with compatible source semantics.
-- Keep as `inferred_weak` when `mutation_associated_gene` is L2G/statistical locus-to-gene because both sides may be association-level and LD/confounding-heavy.
+- Upgrade only when gene attribution is supported by a reviewed direct coding/pathogenic consequence, exact splice consequence, direct protein change mapped back to the exact gene, colocalized eQTL, or explicit OpenTargets L2G evidence, and disease support has compatible strong clinical/GWAS semantics.
+- Simple genomic containment (`mutation_in_gene`), LD alone, nearest-gene assignment, or ambiguous locus-to-gene mapping never supplies C2 eligibility, causal mechanism, effect direction, or sign.
+- Keep colocalized-eQTL/explicit-L2G candidates statistical/conditional unless independent mechanistic evidence is also present.
 - `do_not_infer` for canonical promotion into `disease_associated_gene`; use as a candidate queue only unless independent gene-disease evidence is later found.
 
 Evidence requirements:
@@ -127,7 +128,7 @@ Evidence requirements:
 - support mutation ID;
 - source/evidence IDs from both mutation-gene and mutation-disease edges;
 - score/credibility/statistical fields where available;
-- indication whether mutation-gene support is containment, consequence, or statistical L2G.
+- exact attribution family and source assertion: coding/pathogenic, splice, protein change, colocalized eQTL, or explicit L2G; containment-only rows are reported as rejected rather than candidates.
 
 Bounded audit result (`100,000` mutation anchors):
 
@@ -138,7 +139,7 @@ Bounded audit result (`100,000` mutation anchors):
 Recommendation:
 
 - Good first family to build/test, but only as `edges_inferred/disease_associated_gene/mutation_gene_disease.parquet`, not canonical observed edges.
-- Before full build, prefer using reviewed direct `mutation_in_gene`/consequence support if/when staged genomic-direct relations are accepted; until then, the current canonical `mutation_associated_gene` version is weak.
+- Before full build, require reviewed consequence/splice/colocalized-eQTL/explicit-L2G support. `mutation_in_gene` containment alone is never accepted C2 support.
 
 ### Template B: protein-changing mutation + disease genetics -> candidate protein-disease
 
@@ -281,14 +282,14 @@ mutation_overlaps_enhancer(mutation, enhancer)
 
 Policy:
 
-- Default label: `inferred_weak`.
-- Upgrade only if the enhancer overlap tranche is reviewed, the enhancer-gene relation has strong model/evidence scores, and the mutation-disease evidence is strong.
-- Keep context fields: biosample, assay feature scores, distance, variant/eQTL/GWAS support.
-- Do not promote overlap-only candidates; `mutation_overlaps_enhancer` is staged-only/deferred and contextual per current relation coverage.
+- Default label: `do_not_infer` for v1.
+- C3 is removed from the active allowlist because the pilot was dominated by contextual fan-out and locus-local path multiplication.
+- Retain enhancer overlap and enhancer-gene scores only as source/context features. No candidate edge is generated in v1.
+- Reconsideration requires a new reviewed human decision, exact biosample/tissue compatibility, strict path deduplication, and a bounded pilot proving that combinatorial fan-out is controlled.
 
 Recommendation:
 
-- Potentially valuable later for regulatory mechanisms, but not first because one support relation is currently staged-only/deferred and high fan-out.
+- Excluded from v1. Future-only behind a new reviewed decision; do not materialize C3 candidates from the current relations.
 
 ### Template G: ontology closure within the same relation family
 
@@ -386,6 +387,6 @@ Reasons:
 - useful for GNN ablation because it creates a clear inferred layer that can be included/excluded;
 - lower fan-out and less generic than phenotype/pathway templates.
 
-Second choice: Template A, but only after deciding whether to use reviewed direct `mutation_in_gene`/consequence support instead of the weaker canonical `mutation_associated_gene` L2G-style relation.
+Second choice: Template A, but only with reviewed coding/pathogenic, splice, direct protein-change, colocalized-eQTL, or explicit-L2G attribution. Simple `mutation_in_gene` containment is rejected.
 
 Do not build Template D as edges; keep it as a feature/ranking baseline.

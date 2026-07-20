@@ -28,6 +28,20 @@ Keep source nuance in evidence:
 
 Never synthesize placeholder evidence merely to make edge/evidence parity pass. Unsupported assertions remain unsupported or are excluded.
 
+## Causal semantics belong to existing edges
+
+Jouvence keeps broad, stable relation identities. GoF/LoF, pharmacological action, risk/protection, pathogenicity, response direction, inheritance, dose, and context normally refine an existing `A → B` assertion; they do not create a new relation name.
+
+- edge tables carry compact normalized features needed by graph consumers;
+- evidence tables retain every source assertion, raw value, study/context, and provenance;
+- multi-source edge features use explicit `single`, `consensus`, `conflicting`, or `unknown` aggregation states;
+- inference requiring a known sign fails closed on `conflicting` or `unknown`;
+- generic missense, coordinate containment, LD, expression, or physical interaction must not be converted into a causal sign without source-backed evidence.
+
+The authoritative field families, examples, inference constraints, and validation gates are in [`../causal_edge_feature_model.md`](../causal_edge_feature_model.md).
+
+The edge records the accepted biological assertion; the evidence records assay/source modality and derivation context. Consequently, direct protein-product expression may support an inferred `x_expresses_gene` edge through an exact protein/transcript/gene mapping, with `support_mode=protein_product_observed` in `evidence_inferred/`. This does not assert an RNA measurement. The reverse RNA/gene-expression→protein-expression projection remains forbidden.
+
 ## Feature/context is a valid final representation
 
 Data does not need to become topology to be valuable. Use metadata, feature, evidence, or proof sidecars when the source is contextual, dense, or potentially leaky.
@@ -66,6 +80,7 @@ Both are required for canonical graph topology.
 ## Authoritative detailed sources
 
 - [`../evidence_and_edge_schema_plan.md`](../evidence_and_edge_schema_plan.md)
+- [`../causal_edge_feature_model.md`](../causal_edge_feature_model.md)
 - [`../dataset_paper_graph_disconnection_t_c07b8b57.md`](../dataset_paper_graph_disconnection_t_c07b8b57.md)
 - [`../clinical_trials_canonical_features_resolution_t_957a3640.md`](../clinical_trials_canonical_features_resolution_t_957a3640.md)
 - [`../remap_crm_full_support_sidecar_canonical_promotion_t_f2a2952e.md`](../remap_crm_full_support_sidecar_canonical_promotion_t_f2a2952e.md)
