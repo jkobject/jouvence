@@ -12,6 +12,9 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/public-notebooks.yml"
+      - ".gitmodules"
+      - ".claude/worktrees/**"
+      - ".worktrees/**"
   push:
     branches: [main]
     paths:
@@ -21,12 +24,41 @@ on:
       - "scripts/*public_notebooks.py"
       - "tests/test_public_notebooks.py"
       - "tests/test_notebook_structure.py"
+      - ".github/workflows/public-notebooks.yml"
+      - ".gitmodules"
+      - ".claude/worktrees/**"
+      - ".worktrees/**"
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Reject unconfigured worktree gitlinks
+        shell: bash
+        run: |
+          bad=0
+          while IFS=$'\t' read -r metadata path; do
+            [[ ${metadata%% *} == 160000 ]] || continue
+            [[ $path == .claude/worktrees/* || $path == .worktrees/* ]] || continue
+
+            configured=0
+            if [[ -f .gitmodules ]]; then
+              while read -r key configured_path; do
+                [[ $configured_path == "$path" ]] || continue
+                section=${key%.path}
+                if git config -f .gitmodules --get "$section.url" >/dev/null; then
+                  configured=1
+                fi
+              done < <(git config -f .gitmodules --get-regexp '^submodule\..*\.path$' || true)
+            fi
+
+            if (( configured == 0 )); then
+              echo "::error file=$path::worktree gitlink has no configured submodule URL"
+              bad=1
+            fi
+          done < <(git ls-files --stage)
+          exit "$bad"
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
