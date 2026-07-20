@@ -103,12 +103,28 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Credentials and private key material
+credentials*.json
+service-account*.json
+application_default_credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+.laminkey
+.lamin/
+.config/gcloud/
 
 # Spyder project settings
 .spyderproject

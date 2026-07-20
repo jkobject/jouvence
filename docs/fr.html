@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Jouvence est un graphe de connaissances biomédical source-aware pour explorer des hypothèses de repositionnement thérapeutique avec provenance, notebooks et modèles TxGNN.">
+  <meta name="theme-color" content="#10211d">
+  <meta property="og:title" content="Jouvence — Biomedical knowledge, with receipts">
+  <meta property="og:description" content="Du signal biomédical à l’hypothèse thérapeutique, sans perdre les sources en route.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.jkobject.com/jouvence/">
+  <link rel="canonical" href="https://www.jkobject.com/jouvence/fr.html">
+  <link rel="alternate" hreflang="en" href="https://www.jkobject.com/jouvence/">
+  <link rel="alternate" hreflang="fr" href="https://www.jkobject.com/jouvence/fr.html">
+  <link rel="stylesheet" href="site.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2310211d'/%3E%3Ccircle cx='19' cy='34' r='6' fill='%23c8f66f'/%3E%3Ccircle cx='43' cy='18' r='5' fill='%23f4f1e8'/%3E%3Ccircle cx='45' cy='45' r='8' fill='%23ff8068'/%3E%3Cpath d='M24 31 38 21M25 37l12 5M43 23l2 14' stroke='%23f4f1e8' stroke-width='3'/%3E%3C/svg%3E">
+  <script src="site.js" defer></script>
+  <title>Jouvence — Source-aware biomedical knowledge graph</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">Aller au contenu</a>
+
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Jouvence, accueil">
+      <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true">
+        <circle cx="10" cy="24" r="5"></circle>
+        <circle cx="30" cy="10" r="4"></circle>
+        <circle cx="32" cy="32" r="7"></circle>
+        <path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path>
+      </svg>
+      <span>Jouvence</span>
+    </a>
+    <nav aria-label="Navigation principale">
+      <a href="#mission">Mission</a>
+      <a href="#possibilities">Possibilités</a>
+      <a href="#features">Architecture</a>
+      <a href="#start">Démarrer</a>
+    </nav>
+    <div class="header-actions">
+      <a class="language-link" href="index.html" lang="en" hreflang="en">EN</a>
+      <a class="header-github" href="https://github.com/jkobject/jouvence" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="hero-copy reveal">
+        <p class="eyebrow"><span></span> Biomedical knowledge, with receipts</p>
+        <h1>Du signal biomédical à l’hypothèse thérapeutique.</h1>
+        <p class="hero-lede">Jouvence relie maladies, gènes, protéines, molécules et phénotypes dans un graphe de connaissances où chaque assertion garde sa provenance — puis ouvre ce graphe à l’exploration, à PyG et au zero-shot drug repurposing avec TxGNN.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/jkobject/jouvence/tree/main/notebooks">Explorer les notebooks <span aria-hidden="true">→</span></a>
+          <a class="button button-secondary" href="https://github.com/jkobject/jouvence">Voir le code</a>
+        </div>
+        <ul class="project-facts" aria-label="Informations projet">
+          <li>Open source</li>
+          <li>MIT</li>
+          <li>Python 3.11+</li>
+          <li>Compatible TxGNN</li>
+        </ul>
+      </div>
+
+      <div class="graph-panel reveal" aria-label="Schéma conceptuel du graphe Jouvence">
+        <div class="panel-label">A source-aware path</div>
+        <svg class="knowledge-graph" viewBox="0 0 620 520" role="img" aria-labelledby="graph-title graph-desc">
+          <title id="graph-title">De la source à l’hypothèse thérapeutique</title>
+          <desc id="graph-desc">Des sources alimentent des assertions biomédicales avec leurs preuves, connectées en graphe puis utilisées pour former une hypothèse.</desc>
+          <g class="edges">
+            <path d="M92 106 C170 100 176 190 250 192"></path>
+            <path d="M94 106 C180 130 140 290 230 310"></path>
+            <path d="M250 192 C330 170 358 106 430 118"></path>
+            <path d="M250 192 C334 220 358 296 446 290"></path>
+            <path d="M230 310 C310 328 350 306 446 290"></path>
+            <path d="M446 290 C486 344 488 390 520 428"></path>
+            <path d="M430 118 C494 168 478 218 446 290"></path>
+          </g>
+          <g class="node source" transform="translate(92 106)">
+            <circle r="42"></circle><circle class="pulse" r="50"></circle>
+            <text y="5">source</text>
+          </g>
+          <g class="node assertion" transform="translate(250 192)">
+            <circle r="53"></circle><text y="5">assertion</text>
+          </g>
+          <g class="node evidence" transform="translate(230 310)">
+            <circle r="47"></circle><text y="5">evidence</text>
+          </g>
+          <g class="node entity" transform="translate(430 118)">
+            <circle r="44"></circle><text y="5">entity</text>
+          </g>
+          <g class="node graph" transform="translate(446 290)">
+            <circle r="61"></circle><text y="5">graph</text>
+          </g>
+          <g class="node hypothesis" transform="translate(520 428)">
+            <circle r="57"></circle><text y="-3">therapeutic</text><text y="15">hypothesis</text>
+          </g>
+          <g class="edge-labels" aria-hidden="true">
+            <text x="146" y="143">supports</text>
+            <text x="333" y="166">connects</text>
+            <text x="463" y="366">ranks</text>
+          </g>
+        </svg>
+        <div class="panel-note"><span>01</span> Assertions are compact. Evidence stays rich.</div>
+      </div>
+    </section>
+
+    <section class="statement reveal" id="mission">
+      <p class="section-kicker">La mission</p>
+      <div>
+        <h2>Faire émerger des connexions utiles<br>sans aplatir la biologie.</h2>
+        <p>Les graphes biomédicaux deviennent vite grands. Le problème plus difficile est de rester précis : distinguer une assertion d’une mesure, conserver le contexte expérimental et savoir exactement pourquoi une arête existe. Jouvence construit cette couche de confiance autour du socle de modélisation TxGNN.</p>
+      </div>
+    </section>
+
+    <section class="pipeline" aria-label="Pipeline Jouvence">
+      <article class="pipeline-step reveal">
+        <span>01</span><h3>Ingest</h3><p>Intégrer des sources biomédicales en respectant leurs assertions natives.</p>
+      </article>
+      <article class="pipeline-step reveal">
+        <span>02</span><h3>Trace</h3><p>Séparer l’arête dédupliquée de ses preuves, scores, études et contextes.</p>
+      </article>
+      <article class="pipeline-step reveal">
+        <span>03</span><h3>Represent</h3><p>Cataloguer, enrichir et exporter le graphe vers des représentations apprenables.</p>
+      </article>
+      <article class="pipeline-step reveal">
+        <span>04</span><h3>Reason</h3><p>Explorer, entraîner, évaluer et expliquer des hypothèses de repositionnement.</p>
+      </article>
+    </section>
+
+    <section class="possibilities section-dark" id="possibilities">
+      <div class="section-heading reveal">
+        <p class="section-kicker">Ce que vous pouvez faire</p>
+        <h2>Un graphe à lire,<br>à auditer et à apprendre.</h2>
+      </div>
+      <div class="possibility-list">
+        <article class="possibility reveal">
+          <span class="possibility-index">A</span>
+          <div><h3>Explorer une entité et son voisinage</h3><p>Partir d’une maladie, d’un gène, d’une protéine ou d’une molécule et suivre des relations biomédicales typées.</p></div>
+          <span class="possibility-tag">Notebooks</span>
+        </article>
+        <article class="possibility reveal">
+          <span class="possibility-index">B</span>
+          <div><h3>Remonter jusqu’aux preuves</h3><p>Inspecter la provenance, les scores, les études, les essais et les conflits derrière une assertion du graphe.</p></div>
+          <span class="possibility-tag">Evidence</span>
+        </article>
+        <article class="possibility reveal">
+          <span class="possibility-index">C</span>
+          <div><h3>Construire des représentations ML</h3><p>Exporter des sous-graphes hétérogènes vers PyG et associer des embeddings texte, molécule, protéine ou séquence.</p></div>
+          <span class="possibility-tag">PyG · Embeddings</span>
+        </article>
+        <article class="possibility reveal">
+          <span class="possibility-index">D</span>
+          <div><h3>Tester des hypothèses thérapeutiques</h3><p>Utiliser le socle TxGNN pour entraîner, évaluer et expliquer des prédictions de liens, y compris en régime zero-shot.</p></div>
+          <span class="possibility-tag">TxGNN</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="features" id="features">
+      <div class="section-heading reveal">
+        <p class="section-kicker">Les choix d’architecture</p>
+        <h2>La provenance n’est pas une note de bas de page.</h2>
+      </div>
+      <div class="feature-grid">
+        <article class="feature feature-wide reveal">
+          <p class="feature-code">SOURCE → ASSERTION → EVIDENCE</p>
+          <h3>Sémantique source-native</h3>
+          <p>Les relations suivent l’assertion et le type d’endpoint réellement portés par la source. Les détails spécifiques restent dans la preuve au lieu de faire exploser la taxonomie du graphe.</p>
+        </article>
+        <article class="feature feature-accent reveal">
+          <p class="feature-code">COMPATIBILITY</p>
+          <h3>TxGNN, sans rupture</h3>
+          <p>Le namespace <code>txgnn</code> et les classes <code>TxData</code>, <code>TxGNN</code> et <code>TxEval</code> restent les frontières publiques.</p>
+        </article>
+        <article class="feature reveal">
+          <p class="feature-code">REPRODUCIBILITY</p>
+          <h3>Notebooks exécutables</h3>
+          <p>Une suite fixture-backed permet d’explorer les concepts sans lire le graphe complet ni dépendre d’une infrastructure privée.</p>
+        </article>
+        <article class="feature reveal">
+          <p class="feature-code">INTEROPERABILITY</p>
+          <h3>Parquet · LaminDB · PyG</h3>
+          <p>Des formats canoniques aux catalogues de données puis aux graphes hétérogènes pour le machine learning.</p>
+        </article>
+        <article class="feature feature-wide reveal">
+          <p class="feature-code">GUARDED SCALE</p>
+          <h3>Le chemin lourd est volontairement explicite</h3>
+          <p>Les lectures locales restent bornées. Les scans complets, synchronisations et exports de production sont routés vers l’infrastructure adaptée avec validation et promotion indépendante.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="routes section-paper" id="routes">
+      <div class="section-heading reveal">
+        <p class="section-kicker">Où aller</p>
+        <h2>Choisissez votre point d’entrée.</h2>
+      </div>
+      <div class="route-grid">
+        <a class="route reveal" href="https://github.com/jkobject/jouvence#installation">
+          <span class="route-number">01</span><div><h3>Installer</h3><p>Cloner le repo, synchroniser l’environnement avec uv et charger l’API.</p></div><span class="route-arrow">↗</span>
+        </a>
+        <a class="route reveal" href="https://github.com/jkobject/jouvence/tree/main/notebooks">
+          <span class="route-number">02</span><div><h3>Explorer</h3><p>Parcourir la suite de notebooks orientée utilisateur.</p></div><span class="route-arrow">↗</span>
+        </a>
+        <a class="route reveal" href="https://github.com/jkobject/jouvence/blob/main/docs/README.md">
+          <span class="route-number">03</span><div><h3>Comprendre</h3><p>Architecture du KG, provenance, exports, embeddings et runbooks.</p></div><span class="route-arrow">↗</span>
+        </a>
+        <a class="route reveal" href="https://github.com/jkobject/jouvence/blob/main/reproduce/README.md">
+          <span class="route-number">04</span><div><h3>Reproduire</h3><p>Séparer les notebooks scientifiques des pipelines de construction.</p></div><span class="route-arrow">↗</span>
+        </a>
+        <a class="route reveal" href="https://github.com/jkobject/jouvence/blob/main/AGENTS.md">
+          <span class="route-number">05</span><div><h3>Contribuer avec un agent</h3><p>Commencer par les règles de contexte, de sécurité et de reviewabilité.</p></div><span class="route-arrow">↗</span>
+        </a>
+        <a class="route reveal" href="https://github.com/mims-harvard/TxGNN">
+          <span class="route-number">06</span><div><h3>Lire l’upstream</h3><p>Retrouver l’implémentation et la publication TxGNN d’origine.</p></div><span class="route-arrow">↗</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="agent-section" id="start">
+      <div class="agent-intro reveal">
+        <p class="section-kicker">Agent-ready</p>
+        <h2>Donnez-lui le bon contexte.<br>Pas un vague « setup le projet ».</h2>
+        <p>Ces prompts imposent les bons points d’entrée et empêchent un agent de lancer un traitement lourd sur votre machine par accident.</p>
+      </div>
+
+      <div class="prompt-stack">
+        <article class="prompt-card reveal">
+          <div class="prompt-meta"><span>Setup local</span><button class="copy-button" type="button" aria-live="polite" data-copied-label="Copié" data-copy-target="prompt-setup">Copier</button></div>
+          <pre id="prompt-setup"><code>Clone https://github.com/jkobject/jouvence.git puis entre dans le repo. Lis AGENTS.md avant toute action. Utilise uv, vérifie Python 3.11+, puis installe l'environnement local avec les groupes dev et notebooks. Exécute uniquement les checks fixture-backed et bornés décrits dans le README. Ne lance aucun scan complet du KG, sync LaminDB bulk, export de production ou entraînement lourd sur cette machine. Termine par un récapitulatif des commandes exécutées, de leurs résultats et des accès optionnels encore nécessaires.</code></pre>
+        </article>
+
+        <article class="prompt-card reveal">
+          <div class="prompt-meta"><span>Première exploration</span><button class="copy-button" type="button" aria-live="polite" data-copied-label="Copié" data-copy-target="prompt-explore">Copier</button></div>
+          <pre id="prompt-explore"><code>Dans le repo Jouvence, lis AGENTS.md, README.md et notebooks/README.md. Prépare puis exécute la suite de notebooks publics en mode fixture, sans accès au KG live. Explique-moi ensuite le modèle node / assertion / evidence / feature, montre-moi où commencer pour explorer une maladie ou une molécule, et distingue clairement démonstration locale, accès live borné et traitement de production.</code></pre>
+        </article>
+
+        <article class="prompt-card reveal">
+          <div class="prompt-meta"><span>Contribution sûre</span><button class="copy-button" type="button" aria-live="polite" data-copied-label="Copié" data-copy-target="prompt-contribute">Copier</button></div>
+          <pre id="prompt-contribute"><code>Tu contribues à Jouvence. Commence par AGENTS.md, puis lis seulement la documentation spécifique à la tâche. Avant de modifier quoi que ce soit, vérifie l'état Git et isole les changements préexistants. Respecte les relations source-native et la séparation assertion/evidence. Utilise uv pour les tests. Toute écriture canonique ou charge lourde exige une autorisation explicite et l'infrastructure prévue. Fournis un diff reviewable, les tests réellement exécutés et les limites de validation restantes.</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="closing">
+      <div class="closing-mark" aria-hidden="true">J</div>
+      <div class="reveal">
+        <p class="section-kicker">Start with the evidence</p>
+        <h2>Construisez des hypothèses<br>que l’on peut encore auditer.</h2>
+        <div class="hero-actions">
+          <a class="button button-light" href="https://github.com/jkobject/jouvence">Ouvrir Jouvence sur GitHub <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="https://www.medrxiv.org/content/10.1101/2023.03.19.23287458v2">Lire la publication TxGNN</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand footer-brand" href="#top">
+      <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><circle cx="10" cy="24" r="5"></circle><circle cx="30" cy="10" r="4"></circle><circle cx="32" cy="32" r="7"></circle><path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path></svg>
+      <span>Jouvence</span>
+    </a>
+    <p>A source-aware biomedical knowledge graph for drug repurposing.</p>
+    <div class="footer-links">
+      <a href="https://github.com/jkobject/jouvence">GitHub</a>
+      <a href="https://github.com/jkobject/jouvence/blob/main/docs/README.md">Documentation</a>
+      <a href="https://github.com/jkobject/jouvence/blob/main/LICENSE">MIT License</a>
+    </div>
+  </footer>
+</body>
+</html>

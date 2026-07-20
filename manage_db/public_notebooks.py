@@ -130,6 +130,46 @@ def parquet_catalog(
     return pd.DataFrame(rows, columns=["layer", "path", "rows", "row_groups", "columns"])
 
 
+def bounded_edge_evidence_join(
+    kg_root: str | Path,
+    relation: str,
+    *,
+    edge_limit: int = 100,
+    evidence_limit: int = 1_000,
+    billing_project: str | None = None,
+) -> pd.DataFrame:
+    """Join two bounded prefixes of one assertion and evidence table.
+
+    This deliberately reads selected columns from at most one or a few Parquet
+    row groups in each object.  It is an inspection helper, not a completeness
+    query: missing rows in the result do not mean that evidence is absent.
+    """
+
+    edge_limit = _validated_limit(edge_limit)
+    evidence_limit = _validated_limit(evidence_limit)
+    root = str(kg_root).rstrip("/")
+    keys = ["relation", "x_id", "x_type", "y_id", "y_type"]
+    edges = read_bounded_parquet(
+        f"{root}/edges/{relation}.parquet",
+        columns=[*keys, "source"],
+        limit=edge_limit,
+        billing_project=billing_project,
+    )
+    evidence = read_bounded_parquet(
+        f"{root}/evidence/{relation}.parquet",
+        columns=[*keys, "source", "source_record_id"],
+        limit=evidence_limit,
+        billing_project=billing_project,
+    )
+    return edges.merge(
+        evidence,
+        on=keys,
+        how="inner",
+        suffixes=("_assertion", "_evidence"),
+        validate="one_to_many",
+    )
+
+
 def diseases_with_gene_evidence(
     kg_root: str | Path,
     gene_id: str,
