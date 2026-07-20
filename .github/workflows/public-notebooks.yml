@@ -38,26 +38,30 @@ jobs:
         shell: bash
         run: |
           bad=0
-          while IFS=$'\t' read -r metadata path; do
+          while IFS= read -r -d '' entry; do
+            metadata=${entry%%$'\t'*}
+            path=${entry#*$'\t'}
             [[ ${metadata%% *} == 160000 ]] || continue
             [[ $path == .claude/worktrees/* || $path == .worktrees/* ]] || continue
 
             configured=0
             if [[ -f .gitmodules ]]; then
-              while read -r key configured_path; do
+              while IFS= read -r key; do
+                configured_path=$(git config -f .gitmodules --get "$key" || true)
                 [[ $configured_path == "$path" ]] || continue
                 section=${key%.path}
-                if git config -f .gitmodules --get "$section.url" >/dev/null; then
+                url=$(git config -f .gitmodules --get "$section.url" || true)
+                if [[ -n ${url//[[:space:]]/} ]]; then
                   configured=1
                 fi
-              done < <(git config -f .gitmodules --get-regexp '^submodule\..*\.path$' || true)
+              done < <(git config -f .gitmodules --name-only --get-regexp '^submodule\..*\.path$' || true)
             fi
 
             if (( configured == 0 )); then
-              echo "::error file=$path::worktree gitlink has no configured submodule URL"
+              echo "::error file=$path::worktree gitlink has no configured non-empty submodule URL"
               bad=1
             fi
-          done < <(git ls-files --stage)
+          done < <(git ls-files --stage -z)
           exit "$bad"
       - uses: astral-sh/setup-uv@v6
         with:
