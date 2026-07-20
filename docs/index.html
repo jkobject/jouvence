@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Jouvence is a source-aware biomedical knowledge graph for exploring drug-repurposing hypotheses with provenance, notebooks and TxGNN models.">
+  <meta name="description" content="Jouvence-Graph is a 100M+ edge, ML-ready biomedical knowledge graph built for agents, predictive graph ML and evidence-aware link inference.">
   <meta name="theme-color" content="#10211d">
-  <meta property="og:title" content="Jouvence — Biomedical knowledge, with receipts">
-  <meta property="og:description" content="From biomedical signals to therapeutic hypotheses — without losing the evidence along the way.">
+  <meta property="og:title" content="Jouvence-Graph — 100M+ edges, ready for predictive ML">
+  <meta property="og:description" content="Open, agent-readable and structured for linked Parquet, PyG and formal relation composition.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://www.jkobject.com/jouvence/">
   <link rel="canonical" href="https://www.jkobject.com/jouvence/">
@@ -15,20 +15,20 @@
   <link rel="stylesheet" href="site.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2310211d'/%3E%3Ccircle cx='19' cy='34' r='6' fill='%23c8f66f'/%3E%3Ccircle cx='43' cy='18' r='5' fill='%23f4f1e8'/%3E%3Ccircle cx='45' cy='45' r='8' fill='%23ff8068'/%3E%3Cpath d='M24 31 38 21M25 37l12 5M43 23l2 14' stroke='%23f4f1e8' stroke-width='3'/%3E%3C/svg%3E">
   <script src="site.js" defer></script>
-  <title>Jouvence — Source-aware biomedical knowledge graph</title>
+  <title>Jouvence-Graph — ML-ready biomedical knowledge graph</title>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
 
   <header class="site-header">
-    <a class="brand" href="#top" aria-label="Jouvence, home">
+    <a class="brand" href="#top" aria-label="Jouvence-Graph, home">
       <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true">
         <circle cx="10" cy="24" r="5"></circle>
         <circle cx="30" cy="10" r="4"></circle>
         <circle cx="32" cy="32" r="7"></circle>
         <path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path>
       </svg>
-      <span>Jouvence</span>
+      <span>Jouvence-Graph</span>
     </a>
     <nav aria-label="Main navigation">
       <a href="#mission">Mission</a>
@@ -45,22 +45,22 @@
   <main id="main">
     <section class="hero" id="top">
       <div class="hero-copy reveal">
-        <p class="eyebrow"><span></span> Biomedical knowledge, with receipts</p>
-        <h1>From biomedical signals to therapeutic hypotheses.</h1>
-        <p class="hero-lede">Jouvence connects diseases, genes, proteins, molecules and phenotypes in a knowledge graph where every assertion retains its provenance — then opens that graph to exploration, PyG and zero-shot drug repurposing with TxGNN.</p>
+        <p class="eyebrow"><span></span> Open biomedical infrastructure for agents + ML</p>
+        <h1>The 100M+ edge, ML-ready biomedical knowledge graph.</h1>
+        <p class="hero-lede">Jouvence-Graph is built for agents and predictive graph ML. It combines an Open Targets-derived core with ontologies, molecular interactions, expression, regulatory genomics, pharmacology and clinical evidence — while keeping source identifiers and provenance attached.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="https://github.com/jkobject/jouvence/tree/main/notebooks">Explore the notebooks <span aria-hidden="true">→</span></a>
           <a class="button button-secondary" href="https://github.com/jkobject/jouvence">View the code</a>
         </div>
         <ul class="project-facts" aria-label="Project information">
-          <li>Open source</li>
-          <li>MIT</li>
-          <li>Python 3.11+</li>
-          <li>Compatible TxGNN</li>
+          <li>100M+ canonical edges</li>
+          <li>112 documented Parquet datasets</li>
+          <li>15 node families</li>
+          <li>Open code</li>
         </ul>
       </div>
 
-      <div class="graph-panel reveal" aria-label="Conceptual diagram of the Jouvence graph">
+      <div class="graph-panel reveal" aria-label="Conceptual diagram of the Jouvence-Graph knowledge graph">
         <div class="panel-label">A source-aware path</div>
         <svg class="knowledge-graph" viewBox="0 0 620 520" role="img" aria-labelledby="graph-title graph-desc">
           <title id="graph-title">From source to therapeutic hypothesis</title>
@@ -104,25 +104,25 @@
     </section>
 
     <section class="statement reveal" id="mission">
-      <p class="section-kicker">The mission</p>
+      <p class="section-kicker">The data product</p>
       <div>
-        <h2>Surface useful connections<br>without flattening biology.</h2>
-        <p>Biomedical graphs become large quickly. The harder problem is staying precise: distinguishing an assertion from a measurement, preserving experimental context and knowing exactly why an edge exists. Jouvence builds this trust layer around the TxGNN modeling foundation.</p>
+        <h2>One graph.<br>Three machine interfaces.</h2>
+        <p>The canonical graph is stored as linked Parquet datasets, exported relation-by-relation for PyG, and paired with a fail-closed inference layer that composes only approved biological relations. Agents can inspect the same contracts, manifests and evidence used by predictive models.</p>
       </div>
     </section>
 
-    <section class="pipeline" aria-label="Jouvence pipeline">
+    <section class="pipeline" aria-label="Jouvence-Graph pipeline">
       <article class="pipeline-step reveal">
-        <span>01</span><h3>Ingest</h3><p>Integrate biomedical sources while preserving their native assertions.</p>
+        <span>01</span><h3>Linked Parquet</h3><p>Stable entity IDs, accepted cross-references, source record IDs and evidence remain joinable.</p>
       </article>
       <article class="pipeline-step reveal">
-        <span>02</span><h3>Trace</h3><p>Separate each deduplicated edge from its evidence, scores, studies and contexts.</p>
+        <span>02</span><h3>PyG sidecars</h3><p>Relation-wise edge indices, node maps and manifests are designed for bounded graph-ML loading.</p>
       </article>
       <article class="pipeline-step reveal">
-        <span>03</span><h3>Represent</h3><p>Catalog, enrich and export the graph into machine-learnable representations.</p>
+        <span>03</span><h3>Formal composition</h3><p>Approved relation chains generate explicit inferred candidates, never disguised observations.</p>
       </article>
       <article class="pipeline-step reveal">
-        <span>04</span><h3>Reason</h3><p>Explore, train, evaluate and explain drug-repurposing hypotheses.</p>
+        <span>04</span><h3>Agent-readable</h3><p>Documentation, schemas and safety contracts tell agents what to query, train and never assume.</p>
       </article>
     </section>
 
@@ -149,10 +149,25 @@
         </article>
         <article class="possibility reveal">
           <span class="possibility-index">D</span>
-          <div><h3>Test therapeutic hypotheses</h3><p>Use the TxGNN foundation to train, evaluate and explain link predictions, including in zero-shot settings.</p></div>
+          <div><h3>Test therapeutic hypotheses</h3><p>Train graph models and test zero-shot links with TxGNN-compatible APIs, PyG exports and split-aware leakage controls.</p></div>
           <span class="possibility-tag">TxGNN</span>
         </article>
       </div>
+    </section>
+
+
+    <section class="source-atlas" id="sources">
+      <div class="section-heading reveal">
+        <p class="section-kicker">What is inside</p>
+        <h2>A broad biomedical core — with status made explicit.</h2>
+        <p class="source-intro">Jouvence-Graph absorbs the useful graph-shaped layers of Open Targets and extends them with ontology, interaction, expression, regulatory, pharmacology and clinical sources. Files that are metadata-only, leakage-prone, semantically invalid as topology or not yet independently accepted stay out of the default training graph. The code is MIT-licensed; upstream data licenses still apply, and requester-pays cloud access may incur infrastructure charges.</p>
+      </div>
+      <div class="source-ledger">
+        <article class="source-band source-live reveal"><div><span class="status-dot"></span><p class="feature-code">Canonical now</p><h3>Validated graph + sidecars</h3></div><p>Open Targets-derived variants, genetics, interactions, pharmacogenomics and drug–target/disease layers; GO, HPO and UBERON; BioGRID protein interactions; HPA tissue protein expression; Cellosaurus tissue/species provenance; ClinicalTrials.gov trial text and treatment-link metadata.</p></article>
+        <article class="source-band source-staged reveal"><div><span class="status-dot"></span><p class="feature-code">Reviewed or staged</p><h3>Built, but not all default topology</h3></div><p>ReMap TF–enhancer support, Cell Ontology hierarchy and tissue placement, Reactome protein-native membership, ChEMBL protein-native targets, protein-native disease associations, DepMap essentiality, GDSC response, cell-line proteomics and additional Cellosaurus mappings.</p></article>
+        <article class="source-band source-future reveal"><div><span class="status-dot"></span><p class="feature-code">Not canonical yet</p><h3>Requires a source-native contract</h3></div><p>Direct miRBase/miRTarBase regulation, Complex Portal membership, structured UniProt/BioGRID PTM events and richer direct IntAct protein endpoints. These are not advertised as finished until endpoint, license, evidence and leakage gates pass.</p></article>
+      </div>
+      <div class="exclusion-note reveal"><strong>What is deliberately excluded from default topology?</strong><span>Open Targets payloads that are metadata rather than biological adjacency; paper/dataset inventory edges; unsafe gene→protein projections; generic phenotype/pathway Cartesian joins; trial outcomes that leak treatment labels; and any inferred candidate without an approved composition rule.</span></div>
     </section>
 
     <section class="features" id="features">
@@ -178,8 +193,8 @@
         </article>
         <article class="feature reveal">
           <p class="feature-code">INTEROPERABILITY</p>
-          <h3>Parquet · LaminDB · PyG</h3>
-          <p>From canonical formats to data catalogs and heterogeneous graphs for machine learning.</p>
+          <h3>Linked Parquet · PyG</h3>
+          <p>Every logical dataset is cataloged; reference identifiers and source records remain in nodes, evidence or metadata sidecars instead of being discarded during export.</p>
         </article>
         <article class="feature feature-wide reveal">
           <p class="feature-code">GUARDED SCALE</p>
@@ -231,12 +246,12 @@
 
         <article class="prompt-card reveal">
           <div class="prompt-meta"><span>First exploration</span><button class="copy-button" type="button" aria-live="polite" data-copied-label="Copied" data-copy-target="prompt-explore">Copy</button></div>
-          <pre id="prompt-explore"><code>In the Jouvence repository, read AGENTS.md, README.md and notebooks/README.md. Prepare and run the public notebook suite in fixture mode, without accessing the live KG. Then explain the node / assertion / evidence / feature model, show me where to start when exploring a disease or molecule, and clearly distinguish local demonstration, bounded live access and production processing.</code></pre>
+          <pre id="prompt-explore"><code>In the Jouvence-Graph repository, read AGENTS.md, README.md and notebooks/README.md. Prepare and run the public notebook suite in fixture mode, without accessing the live KG. Then explain the node / assertion / evidence / feature model, show me where to start when exploring a disease or molecule, and clearly distinguish local demonstration, bounded live access and production processing.</code></pre>
         </article>
 
         <article class="prompt-card reveal">
           <div class="prompt-meta"><span>Safe contribution</span><button class="copy-button" type="button" aria-live="polite" data-copied-label="Copied" data-copy-target="prompt-contribute">Copy</button></div>
-          <pre id="prompt-contribute"><code>You are contributing to Jouvence. Start with AGENTS.md, then read only the documentation specific to the task. Before changing anything, inspect Git state and isolate pre-existing changes. Respect source-native relationships and the assertion/evidence separation. Use uv for tests. Canonical writes and heavy workloads require explicit authorization and the designated infrastructure. Provide a reviewable diff, the tests actually executed and the remaining validation limits.</code></pre>
+          <pre id="prompt-contribute"><code>You are contributing to Jouvence-Graph. Start with AGENTS.md, then read only the documentation specific to the task. Before changing anything, inspect Git state and isolate pre-existing changes. Respect source-native relationships and the assertion/evidence separation. Use uv for tests. Canonical writes and heavy workloads require explicit authorization and the designated infrastructure. Provide a reviewable diff, the tests actually executed and the remaining validation limits.</code></pre>
         </article>
       </div>
     </section>
@@ -244,10 +259,10 @@
     <section class="closing">
       <div class="closing-mark" aria-hidden="true">J</div>
       <div class="reveal">
-        <p class="section-kicker">Start with the evidence</p>
-        <h2>Build hypotheses<br>that remain auditable.</h2>
+        <p class="section-kicker">Predict, but keep the derivation</p>
+        <h2>Graph ML and formal logic,<br>on the same evidence layer.</h2>
         <div class="hero-actions">
-          <a class="button button-light" href="https://github.com/jkobject/jouvence">Open Jouvence on GitHub <span aria-hidden="true">↗</span></a>
+          <a class="button button-light" href="https://github.com/jkobject/jouvence">Open Jouvence-Graph on GitHub <span aria-hidden="true">↗</span></a>
           <a class="text-link" href="https://www.medrxiv.org/content/10.1101/2023.03.19.23287458v2">Read the TxGNN paper</a>
         </div>
       </div>
@@ -257,9 +272,9 @@
   <footer>
     <a class="brand footer-brand" href="#top">
       <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><circle cx="10" cy="24" r="5"></circle><circle cx="30" cy="10" r="4"></circle><circle cx="32" cy="32" r="7"></circle><path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path></svg>
-      <span>Jouvence</span>
+      <span>Jouvence-Graph</span>
     </a>
-    <p>A source-aware biomedical knowledge graph for drug repurposing.</p>
+    <p>100M+ canonical edges for agentic exploration, predictive ML and auditable link inference.</p>
     <div class="footer-links">
       <a href="https://github.com/jkobject/jouvence">GitHub</a>
       <a href="https://github.com/jkobject/jouvence/blob/main/docs/README.md">Documentation</a>

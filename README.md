@@ -1,6 +1,6 @@
-# Jouvence: a source-aware biomedical knowledge graph for drug repurposing
+# Jouvence-Graph: a source-aware biomedical knowledge graph for drug repurposing
 
-This repository is **Jouvence**, a source-aware biomedical knowledge graph and drug-repurposing project built on the upstream TxGNN method and library. Jouvence expands the data, provenance, feature, export, catalog, and reproducible scientific-notebook layers around TxGNN's zero-shot modeling foundation.
+This repository is **Jouvence-Graph**, a source-aware biomedical knowledge graph and drug-repurposing project built on the upstream TxGNN method and library. Jouvence-Graph expands the data, provenance, feature, export, catalog, and reproducible scientific-notebook layers around TxGNN's zero-shot modeling foundation.
 
 Compatibility boundary: Python imports remain `txgnn`, and public model classes such as `TxGNN`, `TxData`, and `TxEval` retain their upstream names. The upstream implementation and citation remain at [`mims-harvard/TxGNN`](https://github.com/mims-harvard/TxGNN); the active Jouvence repository is [`jkobject/jouvence`](https://github.com/jkobject/jouvence).
 
