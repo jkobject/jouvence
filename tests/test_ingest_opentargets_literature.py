@@ -3,9 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from manage_db import kg_storage
 from manage_db.ingest_opentargets import (
+    _has_explicit_measurement,
+    _remove_edge_rows_by_source_streaming,
     ingest_biosample,
     ingest_disease_phenotype,
     ingest_drugs,
@@ -20,6 +23,16 @@ from manage_db.ingest_opentargets import (
     ingest_variants,
     ingest_variant_protein_changes,
 )
+
+
+@pytest.mark.parametrize("value", [0, 0.0, False])
+def test_has_explicit_measurement_preserves_zero_and_false(value: object) -> None:
+    assert _has_explicit_measurement(value) is True
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), pd.NA, pd.NaT])
+def test_has_explicit_measurement_rejects_missing_scalars(value: object) -> None:
+    assert _has_explicit_measurement(value) is False
 
 
 def test_ingest_evidence_finalizes_chunked_edges(tmp_path: Path) -> None:
@@ -149,7 +162,12 @@ def test_ingest_orthology_writes_only_high_confidence_target_homologues(tmp_path
     kg_dir = tmp_path / "kg"
     root = kg_storage.open_kg_root(str(kg_dir))
 
-    assert ingest_orthology(ot_dir, kg_dir, root) == {
+    assert ingest_orthology(
+        ot_dir,
+        kg_dir,
+        root,
+        include_cross_species_staging=True,
+    ) == {
         "gene": 2,
         "gene_ortholog_gene": 1,
     }
@@ -165,6 +183,13 @@ def test_ingest_orthology_writes_only_high_confidence_target_homologues(tmp_path
     assert edges.loc[0, "homology_type"] == "ortholog_one2one"
     assert edges.loc[0, "species_id"] == "10090"
     assert bool(edges.loc[0, "is_high_confidence"])
+
+
+def test_ingest_orthology_is_disabled_without_explicit_staging_opt_in(tmp_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+
+    with pytest.raises(ValueError, match="excluded from the canonical human KG"):
+        ingest_orthology(tmp_path / "opentargets", tmp_path / "kg", root)
 
 
 def test_ingest_targets_writes_ensp_protein_nodes(tmp_path: Path) -> None:
@@ -642,35 +667,40 @@ def test_ingest_evidence_backed_variants_joins_gwas_credible_sets(tmp_path: Path
 
 
 
-def test_ingest_target_essentiality_writes_cell_line_context(tmp_path: Path) -> None:
+def _ingest_target_essentiality_screen(
+    tmp_path: Path,
+    screen_measurements: dict[str, object],
+    *,
+    is_essential: bool | None,
+    seed_protein_edges: bool = False,
+) -> tuple[dict[str, int], kg_storage.KGRoot]:
     ot_dir = tmp_path / "opentargets"
     te_dir = ot_dir / "target_essentiality"
     te_dir.mkdir(parents=True)
+    essentiality: dict[str, object] = {
+        "depMapEssentiality": [
+            {
+                "tissueId": "UBERON_0002367",
+                "tissueName": "prostate gland",
+                "screens": [
+                    {
+                        "depmapId": "ACH-000001",
+                        "cellLineName": "A549",
+                        "diseaseFromSource": "lung carcinoma",
+                        "diseaseCellLineId": "EFO_0001071",
+                        **screen_measurements,
+                    }
+                ],
+            }
+        ],
+    }
+    if is_essential is not None:
+        essentiality["isEssential"] = is_essential
     pd.DataFrame(
         [
             {
                 "id": "ENSG00000123456",
-                "geneEssentiality": [
-                    {
-                        "isEssential": True,
-                        "depMapEssentiality": [
-                            {
-                                "tissueId": "UBERON_0002367",
-                                "tissueName": "prostate gland",
-                                "screens": [
-                                    {
-                                        "depmapId": "ACH-000001",
-                                        "cellLineName": "A549",
-                                        "diseaseFromSource": "lung carcinoma",
-                                        "diseaseCellLineId": "EFO_0001071",
-                                        "geneEffect": -1.2,
-                                        "expression": 4.5,
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                ],
+                "geneEssentiality": [essentiality],
             }
         ]
     ).to_parquet(te_dir / "part-000.parquet", index=False)
@@ -694,13 +724,99 @@ def test_ingest_target_essentiality_writes_cell_line_context(tmp_path: Path) -> 
             ]
         ),
     )
+    if seed_protein_edges:
+        kg_storage.write_edges(
+            root,
+            "cell_line_expresses_protein",
+            pd.DataFrame(
+                [
+                    {
+                        "x_id": "ACH-000001",
+                        "x_type": "cell_line",
+                        "y_id": "ENSP00000123456",
+                        "y_type": "protein",
+                        "relation": "cell_line_expresses_protein",
+                        "display_relation": "expresses protein",
+                        "source": "OpenTargets/DepMap;projected_via_protein_node_xref",
+                        "credibility": 3,
+                    },
+                    {
+                        "x_id": "ACH-000002",
+                        "x_type": "cell_line",
+                        "y_id": "ENSP00000123456",
+                        "y_type": "protein",
+                        "relation": "cell_line_expresses_protein",
+                        "display_relation": "expresses protein",
+                        "source": "DepMap/CCLE direct proteomics",
+                        "credibility": 3,
+                    },
+                ]
+            ),
+        )
     results = ingest_target_essentiality(ot_dir, kg_dir, root)
 
-    assert results["cell_line"] == 1
+    return results, root
+
+
+def test_ingest_target_essentiality_only_writes_essentiality_relation(tmp_path: Path) -> None:
+    results, root = _ingest_target_essentiality_screen(
+        tmp_path,
+        {"geneEffect": -1.2},
+        is_essential=True,
+    )
+
+    assert results["cell_line_gene_essentiality"] == 1
+    assert results["cell_line_expresses_gene"] == 0
+    assert results["cell_line_expresses_protein"] == 0
+
+    edges = kg_storage.read_edges(root, "cell_line_gene_essentiality")
+    assert edges.loc[0, "relation"] == "cell_line_gene_essentiality"
+    assert edges.loc[0, "gene_effect"] == -1.2
+    assert bool(edges.loc[0, "is_essential"]) is True
+    assert "expression" not in edges.columns
+
+
+def test_ingest_target_essentiality_expression_only_writes_expression_relation(tmp_path: Path) -> None:
+    results, root = _ingest_target_essentiality_screen(
+        tmp_path,
+        {"expression": 4.5},
+        is_essential=None,
+    )
+
+    assert results["cell_line_gene_essentiality"] == 0
     assert results["cell_line_expresses_gene"] == 1
-    assert results["cell_line_expresses_protein"] == 1
+    assert results["cell_line_expresses_protein"] == 0
+
+    edges = kg_storage.read_edges(root, "cell_line_expresses_gene")
+    assert edges.loc[0, "relation"] == "cell_line_expresses_gene"
+    assert edges.loc[0, "expression"] == 4.5
+    assert "gene_effect" not in edges.columns
+    assert "is_essential" not in edges.columns
+
+
+def test_ingest_target_essentiality_mixed_measurements_write_both_relations(tmp_path: Path) -> None:
+    results, root = _ingest_target_essentiality_screen(
+        tmp_path,
+        {"geneEffect": -1.2, "expression": 4.5},
+        is_essential=True,
+    )
+
+    assert results["cell_line"] == 1
+    assert results["cell_line_gene_essentiality"] == 1
+    assert results["cell_line_expresses_gene"] == 1
+    assert results["cell_line_expresses_protein"] == 0
     assert results["cell_line_derived_from_tissue"] == 1
     assert results["cell_line_associated_disease"] == 1
+
+    essentiality_edges = kg_storage.read_edges(root, "cell_line_gene_essentiality")
+    assert essentiality_edges.loc[0, "gene_effect"] == -1.2
+    assert bool(essentiality_edges.loc[0, "is_essential"]) is True
+    assert "expression" not in essentiality_edges.columns
+
+    expression_edges = kg_storage.read_edges(root, "cell_line_expresses_gene")
+    assert expression_edges.loc[0, "expression"] == 4.5
+    assert "gene_effect" not in expression_edges.columns
+    assert "is_essential" not in expression_edges.columns
 
     cell_lines = kg_storage.read_nodes(root, "cell_line")
     assert cell_lines.loc[0, "id"] == "ACH-000001"
@@ -716,3 +832,140 @@ def test_ingest_target_essentiality_writes_cell_line_context(tmp_path: Path) -> 
     dataset_edges = kg_storage.read_edges(root, "dataset_contains_cell_line")
     assert dataset_edges.loc[0, "x_type"] == "dataset"
     assert dataset_edges.loc[0, "y_type"] == "cell_line"
+
+
+def test_ingest_target_essentiality_removes_only_obsolete_projected_protein_edges(tmp_path: Path) -> None:
+    results, root = _ingest_target_essentiality_screen(
+        tmp_path,
+        {"geneEffect": -1.2},
+        is_essential=True,
+        seed_protein_edges=True,
+    )
+
+    assert results["cell_line_expresses_protein"] == 0
+    protein_edges = kg_storage.read_edges(root, "cell_line_expresses_protein")
+    assert protein_edges["source"].tolist() == ["DepMap/CCLE direct proteomics"]
+
+
+_OBSOLETE_DEPMAP_PROJECTION = "OpenTargets/DepMap;projected_via_protein_node_xref"
+_DIRECT_DEPMAP_PROTEOMICS = "DepMap/CCLE direct proteomics"
+
+
+def _write_source_filter_edges(root: kg_storage.KGRoot, sources: list[str]) -> None:
+    kg_storage.write_edges(
+        root,
+        "cell_line_expresses_protein",
+        pd.DataFrame(
+            [
+                {
+                    "x_id": f"ACH-{index:06d}",
+                    "x_type": "cell_line",
+                    "y_id": "ENSP00000123456",
+                    "y_type": "protein",
+                    "relation": "cell_line_expresses_protein",
+                    "display_relation": "expresses protein",
+                    "source": source,
+                    "credibility": 3,
+                }
+                for index, source in enumerate(sources, start=1)
+            ]
+        ),
+    )
+
+
+def _source_filter_task_files(path: Path) -> list[Path]:
+    return list(path.parent.glob(f"{path.name}.source-filter.*"))
+
+
+def test_remove_edge_rows_by_source_preserves_other_sources_and_removes_stale_rows(tmp_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+    _write_source_filter_edges(root, [_OBSOLETE_DEPMAP_PROJECTION, _DIRECT_DEPMAP_PROTEOMICS])
+
+    removed = _remove_edge_rows_by_source_streaming(
+        root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+    )
+
+    assert removed == 1
+    edges = kg_storage.read_edges(root, "cell_line_expresses_protein")
+    assert edges["source"].tolist() == [_DIRECT_DEPMAP_PROTEOMICS]
+    assert _source_filter_task_files(Path(root._edge_internal("cell_line_expresses_protein"))) == []
+
+
+def test_remove_edge_rows_by_source_publish_failure_restores_original_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+    _write_source_filter_edges(root, [_OBSOLETE_DEPMAP_PROJECTION, _DIRECT_DEPMAP_PROTEOMICS])
+    path = Path(root._edge_internal("cell_line_expresses_protein"))
+    original_bytes = path.read_bytes()
+    real_mv = root.fs.mv
+
+    def fail_filtered_publish(src: str, dst: str, recursive: bool = True, **kwargs) -> None:
+        if ".source-filter.tmp" in str(src) and str(dst) == str(path):
+            raise RuntimeError("injected publish failure")
+        real_mv(src, dst, recursive=recursive, **kwargs)
+
+    monkeypatch.setattr(root.fs, "mv", fail_filtered_publish)
+
+    with pytest.raises(RuntimeError, match="injected publish failure"):
+        _remove_edge_rows_by_source_streaming(
+            root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+        )
+
+    assert path.read_bytes() == original_bytes
+    assert kg_storage.read_edges(root, "cell_line_expresses_protein")["source"].tolist() == [
+        _OBSOLETE_DEPMAP_PROJECTION,
+        _DIRECT_DEPMAP_PROTEOMICS,
+    ]
+    assert _source_filter_task_files(path) == []
+
+
+def test_remove_edge_rows_by_source_uses_unique_temp_names_across_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+    _write_source_filter_edges(root, [_DIRECT_DEPMAP_PROTEOMICS])
+    path = Path(root._edge_internal("cell_line_expresses_protein"))
+    real_open = root.fs.open
+    temp_writes: list[str] = []
+
+    def record_temp_writes(candidate: str, mode: str = "rb", *args, **kwargs):
+        if mode == "wb" and ".source-filter.tmp" in str(candidate):
+            temp_writes.append(str(candidate))
+        return real_open(candidate, mode, *args, **kwargs)
+
+    monkeypatch.setattr(root.fs, "open", record_temp_writes)
+
+    for _ in range(2):
+        assert (
+            _remove_edge_rows_by_source_streaming(
+                root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+            )
+            == 0
+        )
+
+    assert len(temp_writes) == 2
+    assert len(set(temp_writes)) == 2
+    assert _source_filter_task_files(path) == []
+
+
+def test_remove_edge_rows_by_source_handles_missing_and_all_stale_artifacts(tmp_path: Path) -> None:
+    root = kg_storage.open_kg_root(str(tmp_path / "kg"))
+    path = Path(root._edge_internal("cell_line_expresses_protein"))
+
+    assert (
+        _remove_edge_rows_by_source_streaming(
+            root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+        )
+        == 0
+    )
+
+    _write_source_filter_edges(root, [_OBSOLETE_DEPMAP_PROJECTION, _OBSOLETE_DEPMAP_PROJECTION])
+    assert (
+        _remove_edge_rows_by_source_streaming(
+            root, "cell_line_expresses_protein", _OBSOLETE_DEPMAP_PROJECTION
+        )
+        == 2
+    )
+    assert not path.exists()
+    assert _source_filter_task_files(path) == []
