@@ -27,6 +27,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-rows-per-file", type=int, default=100_000)
     parser.add_argument("--max-paths-per-template", type=int, default=100_000)
     parser.add_argument("--sample-limit", type=int, default=10)
+    parser.add_argument("--canonical-target-inventory-source-identity")
+    parser.add_argument("--canonical-target-inventory-receipt-sha256")
     args = parser.parse_args(argv)
     report = build_composition_allowlist(
         BuildConfig(
@@ -39,6 +41,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_rows_per_file=args.max_rows_per_file,
             max_paths_per_template=args.max_paths_per_template,
             sample_limit=args.sample_limit,
+            canonical_target_inventory_source_identity=(
+                args.canonical_target_inventory_source_identity
+            ),
+            canonical_target_inventory_receipt_sha256=(
+                args.canonical_target_inventory_receipt_sha256
+            ),
         )
     )
     print(json.dumps(report, indent=2, sort_keys=True))
