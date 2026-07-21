@@ -28,6 +28,7 @@ This directory is the single home for durable project knowledge. Start at the re
 - [`source_measure_edge_matrix.md`](source_measure_edge_matrix.md) — source/measurement/relation decisions.
 - [`causal_edge_feature_model.md`](causal_edge_feature_model.md) — authoritative contract for GoF/LoF, pharmacological action, effect direction, response polarity, edge/evidence placement, and conflict aggregation without relation-name proliferation.
 - [`inferred_edges_policy.md`](inferred_edges_policy.md) — inferred and contextual assertions.
+- [`human_ensg_gene_migration_t_8b9cdabc.md`](human_ensg_gene_migration_t_8b9cdabc.md) — staged human ENSG identifier audit, migration, validation, and rollback evidence.
 
 ### PyG, GNN, and embeddings
 
