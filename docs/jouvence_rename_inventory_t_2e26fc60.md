@@ -4,8 +4,8 @@ This is the bounded occurrence inventory for the 2026-07-17 product/repository r
 
 ## Rename now
 
-- Public repository/product surfaces: root `README.md`, `AGENTS.md`, `TODO.md`, `docs/README.md`, `docs/guides/agent-context.md`, and the current access runbook now lead with **Jouvence** and point to `https://github.com/jkobject/jouvence`.
-- Python project metadata: distribution metadata is `Jouvence`; homepage/repository point to `jkobject/jouvence`; the description explicitly acknowledges upstream TxGNN.
+- Public repository/product surfaces: root `README.md`, `AGENTS.md`, `TODO.md`, `docs/README.md`, `docs/guides/agent-context.md`, and the current access runbook now lead with **Jouvence** and point to `https://github.com/jkobject/jouvence-graph`.
+- Python project metadata: distribution metadata is `Jouvence`; homepage/repository point to `jkobject/jouvence-graph`; the description explicitly acknowledges upstream TxGNN.
 - Current notebook presentation: reproducibility README, active setup/build notebooks 3–8, Lamin explorer 11, PyG/Lamin notebook 14, and current schema overview/status titles use Jouvence product branding.
 - Notebook configuration: `JOUVENCE_*` is primary in the active setup/build notebooks, with matching `TXGNN_*` fallback aliases. `manage_db.jouvence_env.get_jouvence_env` provides a warning-producing compatibility helper for Python callers.
 - CLI/user-facing output: current OpenTargets ingest, KG validation/audit commands, public-notebook error text, Lamin artifact descriptions, ClinicalTrials.gov user agents, and the Kanban watchdog label use Jouvence.

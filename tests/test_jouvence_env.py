@@ -140,5 +140,5 @@ def test_project_metadata_uses_jouvence_and_records_upstream() -> None:
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
 
     assert metadata["name"] == "Jouvence"
-    assert metadata["urls"]["Repository"] == "https://github.com/jkobject/jouvence"
+    assert metadata["urls"]["Repository"] == "https://github.com/jkobject/jouvence-graph"
     assert metadata["urls"]["Upstream"] == "https://github.com/mims-harvard/TxGNN"

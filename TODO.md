@@ -165,7 +165,7 @@ Use `docs/relation_backlog_prioritized.md` and `todo.d/04_relations.md`. A relat
 
 ## Git / reviewability
 
-The migration from `t_4cab4a2f` is now executed: `/Users/jkobject/Documents/jouvence` is the canonical local checkout for `https://github.com/jkobject/jouvence`. The legacy `txgnn` path remains a compatibility-only location for preserved historical worktrees. Project-level Git commands and human review run from the canonical checkout; new task worktrees live under `/Users/jkobject/Documents/jouvence/.worktrees/<task-id>` unless a card names another verified worktree.
+The migration from `t_4cab4a2f` is now executed: `/Users/jkobject/Documents/jouvence` is the canonical local checkout for `https://github.com/jkobject/jouvence-graph`. The legacy `txgnn` path remains a compatibility-only location for preserved historical worktrees. Project-level Git commands and human review run from the canonical checkout; new task worktrees live under `/Users/jkobject/Documents/jouvence/.worktrees/<task-id>` unless a card names another verified worktree.
 
 The root still contains ignored local artifacts/caches. Reviewability therefore requires an explicit Git diff and generated-file guard; directory contents alone are not a commit surface. Do not initialize or maintain a second canonical checkout under `~/code`.
 

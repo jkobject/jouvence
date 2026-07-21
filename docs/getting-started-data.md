@@ -12,8 +12,8 @@ access path**. Fixture mode works immediately for anyone.
 Requirements: Git, Python 3.11+, and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/jkobject/jouvence.git
-cd jouvence
+git clone https://github.com/jkobject/jouvence-graph.git
+cd jouvence-graph
 uv sync --group dev
 env -u JOUVENCE_DATA_MODE \
     -u JOUVENCE_BILLING_PROJECT \
