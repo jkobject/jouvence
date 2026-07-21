@@ -207,6 +207,41 @@ def test_gcs_requester_pays_reads_only_manifest_declared_objects(
         )
 
 
+def test_gcs_cache_lock_does_not_exceed_file_count_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    local = build_fixture_bundle(tmp_path / "source")
+    manifest_sha256 = hashlib.sha256((local / MANIFEST_NAME).read_bytes()).hexdigest()
+    prefix = "jouvencekb/kg/v2/viewer-bundles/reviewed-fixture"
+    objects = {
+        f"{prefix}/{path.relative_to(local).as_posix()}": path.read_bytes()
+        for path in local.rglob("*")
+        if path.is_file()
+    }
+    monkeypatch.setattr(
+        "manage_db.viewer.bundle.url_to_fs",
+        lambda *_args, **_kwargs: (FakeGCS(objects), prefix),
+    )
+    monkeypatch.setattr("manage_db.viewer.bundle.MAX_CACHE_FILES", 2)
+    cache_root = tmp_path / "full-cache"
+    cache_root.mkdir()
+    (cache_root / "existing-a").write_bytes(b"a")
+    (cache_root / "existing-b").write_bytes(b"b")
+
+    with pytest.raises(BundleError, match="file-count safety bound"):
+        open_viewer_bundle(
+            "gs://jouvencekb/kg/v2/viewer-bundles/reviewed-fixture",
+            billing_project="consumer-project",
+            cache_root=cache_root,
+            expected_manifest_sha256=manifest_sha256,
+        )
+
+    assert sorted(path.name for path in cache_root.iterdir()) == [
+        "existing-a",
+        "existing-b",
+    ]
+
+
 def test_gcs_requires_consumer_billing_project(tmp_path: Path) -> None:
     with pytest.raises(BundleError, match="--billing-project"):
         open_viewer_bundle(

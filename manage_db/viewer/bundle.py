@@ -242,12 +242,16 @@ def _cache_usage(root: Path) -> tuple[int, int]:
 def _cache_lock(root: Path) -> Iterator[None]:
     """Serialize quota checks and atomic cache writes across viewer launches."""
 
+    lock_path = root / ".viewer-cache.lock"
+    _, existing_files = _cache_usage(root)
+    if not lock_path.exists() and existing_files >= MAX_CACHE_FILES:
+        raise BundleError("viewer cache exceeds the file-count safety bound")
     root.mkdir(parents=True, exist_ok=True)
     if not root.is_dir():
         raise BundleError("viewer cache root is not a directory")
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(root / ".viewer-cache.lock", flags, 0o600)
+        descriptor = os.open(lock_path, flags, 0o600)
     except OSError as exc:
         raise BundleError("cannot acquire the private viewer cache lock") from exc
     try:
