@@ -155,6 +155,29 @@ def test_stale_search_response_cannot_replace_newer_results(page: Page, viewer_s
     expect(page.locator("#search-results")).not_to_contain_text("TP53")
 
 
+def test_queued_keyboard_action_is_abandoned_when_query_changes(page: Page, viewer_server: str) -> None:
+    page.add_init_script(
+        """
+        const realFetch = window.fetch.bind(window);
+        window.fetch = (resource, options) => {
+          const url = String(resource);
+          const delay = url.includes('/api/search?') && url.includes('q=TP53') ? 250 : 0;
+          return new Promise(resolve => setTimeout(() => resolve(realFetch(resource, options)), delay));
+        };
+        """
+    )
+    page.goto(viewer_server)
+
+    search = page.locator("#global-search")
+    search.fill("TP53")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+    search.fill("EGFR")
+    expect(page.locator("#search-results")).to_contain_text("EGFR")
+    page.wait_for_timeout(350)
+    expect(page.locator("#entity-name")).to_have_text("BRCA1")
+
+
 def test_backend_unavailable_static_fallback_and_missing_search_state(page: Page) -> None:
     page.goto((ROOT / "docs" / "viewer.html").as_uri())
     expect(page.locator("#source-button")).to_contain_text("Embedded fixture fallback")

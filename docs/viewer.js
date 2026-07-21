@@ -197,9 +197,10 @@
     }
     box.hidden=false; $('#global-search').setAttribute('aria-expanded','true');
   }
-  async function waitForActiveSearch() {
-    let pending;
-    do { pending=activeSearch;await pending; } while (pending !== activeSearch);
+  async function waitForSearch(generation) {
+    const pending=activeSearch;
+    await pending;
+    return generation === searchGeneration && pending === activeSearch;
   }
   function moveSearch(delta) {
     const buttons = $$('[data-search-index]');
@@ -265,7 +266,7 @@
 
   function wireEvents() {
     $('#global-search').addEventListener('input',e=>{activeSearch=search(e.target.value);});
-    $('#global-search').addEventListener('keydown',async e=>{if(e.key==='Escape'){searchGeneration+=1;activeSearch=Promise.resolve();searchItems=[];searchIndex=-1;$('#search-results').hidden=true;e.target.blur();} else if(e.key==='ArrowDown'){e.preventDefault();await waitForActiveSearch();moveSearch(1);} else if(e.key==='ArrowUp'){e.preventDefault();await waitForActiveSearch();moveSearch(-1);} else if(e.key==='Enter'){e.preventDefault();await waitForActiveSearch();const item=searchItems[Math.max(searchIndex,0)];if(item){navigate(item.node_type,item.node_id,'search');$('#search-results').hidden=true;e.target.value='';}}});
+    $('#global-search').addEventListener('keydown',async e=>{if(e.key==='Escape'){searchGeneration+=1;activeSearch=Promise.resolve();searchItems=[];searchIndex=-1;$('#search-results').hidden=true;e.target.blur();} else if(e.key==='ArrowDown'){e.preventDefault();const generation=searchGeneration;if(await waitForSearch(generation))moveSearch(1);} else if(e.key==='ArrowUp'){e.preventDefault();const generation=searchGeneration;if(await waitForSearch(generation))moveSearch(-1);} else if(e.key==='Enter'){e.preventDefault();const generation=searchGeneration;if(!await waitForSearch(generation))return;const item=searchItems[Math.max(searchIndex,0)];if(item){navigate(item.node_type,item.node_id,'search');$('#search-results').hidden=true;e.target.value='';}}});
     document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement.tagName!=='INPUT'){e.preventDefault();$('#global-search').focus();}});
     document.addEventListener('click',e=>{if(!e.target.closest('.viewer-search-wrap'))$('#search-results').hidden=true;});
     $('#evidence-filter').addEventListener('change',e=>renderEvidence(e.target.value));
