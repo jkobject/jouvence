@@ -12,6 +12,9 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/public-notebooks.yml"
+      - ".gitmodules"
+      - ".claude/worktrees/**"
+      - ".worktrees/**"
   push:
     branches: [main]
     paths:
@@ -21,12 +24,71 @@ on:
       - "scripts/*public_notebooks.py"
       - "tests/test_public_notebooks.py"
       - "tests/test_notebook_structure.py"
+      - ".github/workflows/public-notebooks.yml"
+      - ".gitmodules"
+      - ".claude/worktrees/**"
+      - ".worktrees/**"
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Reject unconfigured worktree gitlinks
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import configparser
+          import pathlib
+          import subprocess
+          import sys
+
+          entries = subprocess.check_output(
+              ["git", "ls-files", "--stage", "-z"]
+          ).split(b"\0")
+          worktree_gitlinks = []
+          for entry in entries:
+              if not entry:
+                  continue
+              metadata, path_bytes = entry.split(b"\t", 1)
+              if metadata.split(b" ", 1)[0] != b"160000":
+                  continue
+              path = path_bytes.decode("utf-8", "surrogateescape")
+              if path.startswith((".claude/worktrees/", ".worktrees/")):
+                  worktree_gitlinks.append(path)
+
+          mappings = {}
+          modules_path = pathlib.Path(".gitmodules")
+          if modules_path.exists():
+              parser = configparser.ConfigParser(
+                  interpolation=None,
+                  strict=True,
+              )
+              try:
+                  with modules_path.open(encoding="utf-8") as handle:
+                      parser.read_file(handle)
+                  for section in parser.sections():
+                      if not section.startswith("submodule "):
+                          continue
+                      path = parser.get(section, "path", fallback="")
+                      url = parser.get(section, "url", fallback="")
+                      if path:
+                          mappings.setdefault(path, []).append(url)
+              except (configparser.Error, UnicodeError, OSError) as exc:
+                  print(f"::error file=.gitmodules::invalid .gitmodules: {exc}")
+                  sys.exit(1)
+
+          bad = False
+          for path in worktree_gitlinks:
+              urls = mappings.get(path, [])
+              if len(urls) != 1 or not urls[0].strip():
+                  print(
+                      f"::error file={path}::worktree gitlink must have exactly "
+                      "one configured non-empty submodule URL"
+                  )
+                  bad = True
+          sys.exit(1 if bad else 0)
+          PY
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
