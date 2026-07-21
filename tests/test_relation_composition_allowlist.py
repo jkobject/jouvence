@@ -36,6 +36,57 @@ def write(root: Path, relation: str, rows: list[dict], layer: str = "edges") -> 
     pd.DataFrame(rows).to_parquet(path, index=False)
 
 
+def inventory_key_sha256(keys: set[str]) -> str:
+    payload = json.dumps(sorted(keys), separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def write_inventory_receipt(
+    root: Path,
+    relation: str,
+    *,
+    snapshot_id: str = "immutable-fixture-v1",
+    source_identity: str = "canonical-fixture-source-v1",
+) -> Path:
+    edge_path = root / "edges" / f"{relation}.parquet"
+    evidence_path = root / "evidence" / f"{relation}.parquet"
+    edges = pd.read_parquet(edge_path)
+    evidence = pd.read_parquet(evidence_path)
+    edge_keys = set(edges.edge_key.astype(str))
+    evidence_keys = set(evidence.edge_key.astype(str))
+    receipt = {
+        "receipt_version": "canonical-target-inventory-v1",
+        "accepted": True,
+        "relation": relation,
+        "snapshot_id": snapshot_id,
+        "source_identity": source_identity,
+        "edges": {
+            "path": f"edges/{relation}.parquet",
+            "file_sha256": hashlib.sha256(edge_path.read_bytes()).hexdigest(),
+            "edge_key_count": len(edge_keys),
+            "edge_key_set_sha256": inventory_key_sha256(edge_keys),
+        },
+        "evidence": {
+            "path": f"evidence/{relation}.parquet",
+            "file_sha256": hashlib.sha256(evidence_path.read_bytes()).hexdigest(),
+            "edge_key_count": len(evidence_keys),
+            "edge_key_set_sha256": inventory_key_sha256(evidence_keys),
+        },
+        "coverage": {
+            "supported_edge_key_count": len(edge_keys & evidence_keys),
+            "orphan_evidence_edge_key_count": len(evidence_keys - edge_keys),
+            "gap_edge_key_count": len(edge_keys - evidence_keys),
+        },
+    }
+    receipt["receipt_sha256"] = hashlib.sha256(
+        json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    path = root / "manifest" / "canonical_target_inventory" / f"{relation}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+    return path
+
+
 def config(
     kg: Path, out: Path, *templates: str, staged: tuple[Path, ...] = ()
 ) -> BuildConfig:
@@ -49,6 +100,7 @@ def config(
         max_rows_per_file=1000,
         max_paths_per_template=1000,
         require_canonical_target_inventory=False,
+        canonical_target_inventory_source_identity="canonical-fixture-source-v1",
     )
 
 
@@ -59,8 +111,8 @@ def read_output(
 
 
 def test_registry_maps_every_approved_motif_and_rejects_forbidden_directions() -> None:
-    assert len(TEMPLATES) == 22
-    assert len(TEMPLATE_BY_ID) == 22
+    assert len(TEMPLATES) == 24
+    assert len(TEMPLATE_BY_ID) == 24
     assert all(
         template.required_fields and template.expected_zero for template in TEMPLATES
     )
@@ -78,6 +130,8 @@ def test_registry_maps_every_approved_motif_and_rejects_forbidden_directions() -
     assert "disease_phenotype_tissue_triangle_v2" in ids
     assert "allelic_triangulation_treatment_v2" in ids
     assert "pharmacogenomic_efficacy_treatment_v2" in ids
+    assert "signed_gene_target_contraindication_v2" in ids
+    assert "signed_protein_target_contraindication_v2" in ids
     assert all("enhancer" not in template.template_id for template in TEMPLATES)
     assert "rna_gene_to_protein_expression" in REJECTED_MOTIFS
     assert "generic_cell_response_phenotype" in REJECTED_MOTIFS
@@ -1002,6 +1056,281 @@ def test_signed_pharmacology_and_strict_pgx_fail_closed(tmp_path: Path) -> None:
     )
 
 
+def test_signed_protein_features_emit_treatment_and_contraindication_with_full_provenance(
+    tmp_path: Path,
+) -> None:
+    kg = tmp_path / "kg"
+    write(
+        kg,
+        "molecule_targets_protein",
+        [
+            edge(
+                "molecule_targets_protein",
+                "M-TREAT",
+                "molecule",
+                "P",
+                "protein",
+                action_direction='["negative"]',
+                target_modulation='["decrease"]',
+                action_types='["inhibitor", "antagonist"]',
+                action_status="single",
+                population="EUR",
+                release="ChEMBL-35",
+            ),
+            edge(
+                "molecule_targets_protein",
+                "M-HARM",
+                "molecule",
+                "P",
+                "protein",
+                action_direction='["positive"]',
+                target_modulation='["increase"]',
+                action_types='["agonist"]',
+                action_status="single",
+                population="EUR",
+                release="ChEMBL-35",
+            ),
+            edge(
+                "molecule_targets_protein",
+                "M-CONFLICT",
+                "molecule",
+                "P-CONFLICT",
+                "protein",
+                action_direction='["negative"]',
+                target_modulation='["decrease"]',
+                action_types='["inhibitor"]',
+                action_status="single",
+                population="EUR",
+                release="ChEMBL-35",
+            ),
+            edge(
+                "molecule_targets_protein",
+                "M-NEGATIVE-DISEASE",
+                "molecule",
+                "P-NEGATIVE-DISEASE",
+                "protein",
+                action_direction='["positive"]',
+                action_status="single",
+                population="EUR",
+                release="ChEMBL-35",
+            ),
+            edge(
+                "molecule_targets_protein",
+                "M-DISAGREE",
+                "molecule",
+                "P-DISAGREE",
+                "protein",
+                action_direction='["positive"]',
+                action_status="single",
+                population="EUR",
+                release="ChEMBL-35",
+            ),
+        ],
+    )
+    write(
+        kg,
+        "disease_associated_protein",
+        [
+            edge(
+                "disease_associated_protein",
+                "P",
+                "protein",
+                "D",
+                "disease",
+                causal_mechanisms='["gain_of_function", "activation"]',
+                mechanism_status="single",
+                effect_directions='["risk", "positive"]',
+                effect_direction_status="single",
+                causal_support_level="causal",
+                population="EUR",
+                release_values=["UniProt-2026_03"],
+            ),
+            edge(
+                "disease_associated_protein",
+                "P-CONFLICT",
+                "protein",
+                "D-CONFLICT",
+                "disease",
+                causal_mechanisms='["gain_of_function"]',
+                mechanism_status="conflicting",
+                effect_directions='["risk"]',
+                effect_direction_status="single",
+                causal_support_level="causal",
+                population="EUR",
+                release_values=["UniProt-2026_03"],
+            ),
+            edge(
+                "disease_associated_protein",
+                "P-NEGATIVE-DISEASE",
+                "protein",
+                "D-NEGATIVE-DISEASE",
+                "disease",
+                causal_mechanisms='["loss_of_function"]',
+                mechanism_status="single",
+                effect_directions='["protective"]',
+                effect_direction_status="single",
+                causal_support_level="causal",
+                population="EUR",
+                release_values=["UniProt-2026_03"],
+            ),
+            edge(
+                "disease_associated_protein",
+                "P-DISAGREE",
+                "protein",
+                "D-DISAGREE",
+                "disease",
+                causal_mechanisms='["gain_of_function"]',
+                mechanism_status="single",
+                effect_directions='["protective"]',
+                effect_direction_status="single",
+                causal_support_level="causal",
+                population="EUR",
+                release_values=["UniProt-2026_03"],
+            ),
+        ],
+    )
+
+    report = build_composition_allowlist(
+        config(
+            kg,
+            tmp_path / "out",
+            "signed_protein_target_treatment_v2",
+            "signed_protein_target_contraindication_v2",
+        )
+    )
+
+    treatment = read_output(
+        tmp_path / "out",
+        "molecule_treats_disease",
+        "signed_protein_target_treatment_v2",
+    )
+    contraindication = read_output(
+        tmp_path / "out",
+        "molecule_contraindicates_disease",
+        "signed_protein_target_contraindication_v2",
+    )
+    assert set(zip(treatment.x_id, treatment.y_id)) == {
+        ("M-TREAT", "D"),
+        ("M-NEGATIVE-DISEASE", "D-NEGATIVE-DISEASE"),
+    }
+    assert set(zip(contraindication.x_id, contraindication.y_id)) == {
+        ("M-HARM", "D")
+    }
+    assert report["rejection_reason_counts"]["signed_protein_target_treatment_v2"][
+        "conflicting_sign"
+    ] == 2
+    assert report["rejection_reason_counts"][
+        "signed_protein_target_contraindication_v2"
+    ]["conflicting_sign"] == 2
+    evidence = read_output(
+        tmp_path / "out",
+        "molecule_contraindicates_disease",
+        "signed_protein_target_contraindication_v2",
+        "evidence_inferred",
+    ).iloc[0]
+    assert json.loads(evidence.source_releases) == ["ChEMBL-35", "UniProt-2026_03"]
+    assert evidence.input_snapshot_sha256 == report["input_manifest_sha256"]
+    assert evidence.context_compatibility == "compatible"
+    assert json.loads(evidence.sign_computation) == {
+        "action_sign": 1,
+        "disease_mechanism_sign": 1,
+        "effect_direction_sign": 1,
+        "net_disease_sign": 1,
+        "relation": "molecule_contraindicates_disease",
+    }
+    assert evidence.conflict_state == "none"
+    assert evidence.epistemic_class == "inferred_weak"
+    assert not bool(evidence.canonical_observed_overlap)
+    assert not bool(evidence.staged_source_native_overlap)
+
+
+def test_sign_resolution_accepts_synonyms_but_fails_closed_on_unknown_or_opposite_tokens() -> None:
+    assert composition._action_sign(
+        {"action_types": '["inhibitor", "antagonist"]'}
+    ) == ("known", -1)
+    assert composition._action_sign(
+        {"action_direction": "negative", "action_types": '["unmapped"]'}
+    ) == ("unknown", None)
+    assert composition._action_sign(
+        {"action_types": '["inhibitor", "agonist"]'}
+    ) == ("conflicting", None)
+
+    status, sign, _ = composition._disease_sign(
+        {
+            "causal_mechanisms": '["gain_of_function", "unmapped"]',
+            "effect_directions": '["risk"]',
+        }
+    )
+    assert (status, sign) == ("unknown", None)
+    status, sign, _ = composition._disease_sign(
+        {
+            "causal_mechanisms": "[]",
+            "mechanism_status": "unknown",
+            "effect_directions": '["risk"]',
+        }
+    )
+    assert (status, sign) == ("unknown", None)
+
+
+def test_parent_shaped_unknown_disease_sign_reports_ten_rejected_paths(
+    tmp_path: Path,
+) -> None:
+    kg = tmp_path / "kg"
+    write(
+        kg,
+        "molecule_targets_protein",
+        [
+            edge(
+                "molecule_targets_protein",
+                f"M{i:02d}",
+                "molecule",
+                "P",
+                "protein",
+                action_direction='["negative"]',
+                action_status="single",
+                release="ChEMBL-35",
+            )
+            for i in range(10)
+        ],
+    )
+    write(
+        kg,
+        "disease_associated_protein",
+        [
+            edge(
+                "disease_associated_protein",
+                "P",
+                "protein",
+                "D",
+                "disease",
+                causal_mechanisms="[]",
+                mechanism_status="unknown",
+                effect_directions="[]",
+                effect_direction_status="unknown",
+                causal_support_level="source_backed_disease_assertion",
+                release="uniprot-2026_03",
+            )
+        ],
+    )
+
+    report = build_composition_allowlist(
+        config(kg, tmp_path / "out", "signed_protein_target_treatment_v2")
+    )
+
+    rejected = report["rejected_path_samples"][
+        "signed_protein_target_treatment_v2"
+    ]
+    assert len(rejected) == 10
+    assert {row["reason"] for row in rejected} == {"missing_sign_or_causal_support"}
+    assert all(row["decision"] == "rejected" for row in rejected)
+    assert all(row["classification"] == "plausible hypothesis" for row in rejected)
+    assert all("M" in row["human_readable_path"] for row in rejected)
+    assert all(json.loads(row["typed_path"]) for row in rejected)
+    assert report["counts_by_template"]["signed_protein_target_treatment_v2"][
+        "output_rows"
+    ] == 0
+
+
 def test_allelic_triangulation_rejects_containment_and_requires_three_known_signs(
     tmp_path: Path,
 ) -> None:
@@ -1185,6 +1514,270 @@ def test_missing_canonical_target_inventory_fails_closed_but_reports_generated_s
         "mutation_transcript_gene_attribution_v2"
     ][0]["canonical_target_inventory_available"]
     assert not list((tmp_path / "out" / "edges_inferred").rglob("*.parquet"))
+
+
+def test_legacy_contraindication_edges_without_evidence_are_not_a_complete_inventory(
+    tmp_path: Path,
+) -> None:
+    kg = tmp_path / "kg"
+    write(
+        kg,
+        "molecule_targets_protein",
+        [
+            edge(
+                "molecule_targets_protein",
+                "M",
+                "molecule",
+                "P",
+                "protein",
+                action_direction="positive",
+                action_status="single",
+                population="EUR",
+            )
+        ],
+    )
+    write(
+        kg,
+        "disease_associated_protein",
+        [
+            edge(
+                "disease_associated_protein",
+                "P",
+                "protein",
+                "D",
+                "disease",
+                causal_mechanisms='["gain_of_function"]',
+                mechanism_status="single",
+                effect_directions='["risk"]',
+                effect_direction_status="single",
+                causal_support_level="causal",
+                population="EUR",
+            )
+        ],
+    )
+    write(
+        kg,
+        "molecule_contraindicates_disease",
+        [
+            edge(
+                "molecule_contraindicates_disease",
+                "LEGACY",
+                "molecule",
+                "OTHER",
+                "disease",
+            )
+        ],
+    )
+    strict = replace(
+        config(kg, tmp_path / "out", "signed_protein_target_contraindication_v2"),
+        require_canonical_target_inventory=True,
+    )
+
+    report = build_composition_allowlist(strict)
+
+    assert report["rejection_reason_counts"][
+        "signed_protein_target_contraindication_v2"
+    ]["canonical_target_inventory_missing"] == 1
+    assert report["counts_by_template"][
+        "signed_protein_target_contraindication_v2"
+    ]["output_rows"] == 0
+    assert not list((tmp_path / "out" / "edges_inferred").rglob("*.parquet"))
+
+
+def _write_signed_contraindication_fixture(kg: Path) -> None:
+    write(
+        kg,
+        "molecule_targets_protein",
+        [
+            edge(
+                "molecule_targets_protein",
+                "M-CANDIDATE",
+                "molecule",
+                "P-CANDIDATE",
+                "protein",
+                action_direction="positive",
+                action_status="single",
+                population="EUR",
+            )
+        ],
+    )
+    write(
+        kg,
+        "disease_associated_protein",
+        [
+            edge(
+                "disease_associated_protein",
+                "P-CANDIDATE",
+                "protein",
+                "D-CANDIDATE",
+                "disease",
+                causal_mechanisms='["gain_of_function"]',
+                mechanism_status="single",
+                effect_directions='["risk"]',
+                effect_direction_status="single",
+                causal_support_level="causal",
+                population="EUR",
+            )
+        ],
+    )
+    write(
+        kg,
+        "molecule_contraindicates_disease",
+        [
+            edge(
+                "molecule_contraindicates_disease",
+                "M-OBSERVED-1",
+                "molecule",
+                "D-OBSERVED-1",
+                "disease",
+            ),
+            edge(
+                "molecule_contraindicates_disease",
+                "M-OBSERVED-2",
+                "molecule",
+                "D-OBSERVED-2",
+                "disease",
+            ),
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_inventory",
+    [
+        "absent_receipt",
+        "empty_evidence",
+        "unrelated_evidence",
+        "partial_evidence",
+        "stale_receipt",
+        "source_identity_mismatch",
+        "malformed_receipt",
+        "receipt_hash_mismatch",
+        "accepted_hash_mismatch",
+        "evidence_hash_mismatch",
+    ],
+)
+def test_strict_contraindication_inventory_receipt_fails_closed(
+    tmp_path: Path, invalid_inventory: str
+) -> None:
+    kg = tmp_path / "kg"
+    _write_signed_contraindication_fixture(kg)
+    relation = "molecule_contraindicates_disease"
+    canonical_rows = [
+        edge(relation, "M-OBSERVED-1", "molecule", "D-OBSERVED-1", "disease"),
+        edge(relation, "M-OBSERVED-2", "molecule", "D-OBSERVED-2", "disease"),
+    ]
+    if invalid_inventory == "empty_evidence":
+        evidence = pd.DataFrame(columns=canonical_rows[0])
+        evidence_path = kg / "evidence" / f"{relation}.parquet"
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence.to_parquet(evidence_path, index=False)
+        receipt_path = write_inventory_receipt(kg, relation)
+    else:
+        evidence_rows = canonical_rows
+        if invalid_inventory == "unrelated_evidence":
+            evidence_rows = [
+                edge(relation, "M-OTHER", "molecule", "D-OTHER", "disease")
+            ]
+        elif invalid_inventory == "partial_evidence":
+            evidence_rows = canonical_rows[:1]
+        write(kg, relation, evidence_rows, layer="evidence")
+        receipt_path = (
+            None
+            if invalid_inventory == "absent_receipt"
+            else write_inventory_receipt(
+                kg,
+                relation,
+                snapshot_id=(
+                    "stale-fixture-v0"
+                    if invalid_inventory == "stale_receipt"
+                    else "immutable-fixture-v1"
+                ),
+                source_identity=(
+                    "stale-source-revision"
+                    if invalid_inventory == "source_identity_mismatch"
+                    else "canonical-fixture-source-v1"
+                ),
+            )
+        )
+    accepted_receipt_sha256 = (
+        json.loads(receipt_path.read_text())["receipt_sha256"]
+        if receipt_path is not None
+        else "0" * 64
+    )
+    if invalid_inventory == "accepted_hash_mismatch":
+        accepted_receipt_sha256 = "0" * 64
+    if invalid_inventory == "malformed_receipt":
+        assert receipt_path is not None
+        receipt_path.write_text("{not-json\n")
+    elif invalid_inventory == "receipt_hash_mismatch":
+        assert receipt_path is not None
+        receipt = json.loads(receipt_path.read_text())
+        receipt["receipt_sha256"] = "0" * 64
+        receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+    elif invalid_inventory == "evidence_hash_mismatch":
+        assert receipt_path is not None
+        changed_rows = [{**row, "source": "changed-after-receipt"} for row in canonical_rows]
+        write(kg, relation, changed_rows, layer="evidence")
+
+    report = build_composition_allowlist(
+        replace(
+            config(kg, tmp_path / "out", "signed_protein_target_contraindication_v2"),
+            require_canonical_target_inventory=True,
+            canonical_target_inventory_receipt_sha256=accepted_receipt_sha256,
+        )
+    )
+
+    assert report["rejection_reason_counts"][
+        "signed_protein_target_contraindication_v2"
+    ]["canonical_target_inventory_missing"] == 1
+    assert report["counts_by_template"][
+        "signed_protein_target_contraindication_v2"
+    ]["output_rows"] == 0
+    assert not list((tmp_path / "out" / "edges_inferred").rglob("*.parquet"))
+
+
+def test_strict_contraindication_inventory_accepts_exact_complete_receipt(
+    tmp_path: Path,
+) -> None:
+    kg = tmp_path / "kg"
+    _write_signed_contraindication_fixture(kg)
+    relation = "molecule_contraindicates_disease"
+    canonical_rows = [
+        edge(relation, "M-OBSERVED-1", "molecule", "D-OBSERVED-1", "disease"),
+        edge(relation, "M-OBSERVED-2", "molecule", "D-OBSERVED-2", "disease"),
+    ]
+    write(kg, relation, canonical_rows, layer="evidence")
+    receipt_path = write_inventory_receipt(kg, relation)
+
+    report = build_composition_allowlist(
+        replace(
+            config(kg, tmp_path / "out", "signed_protein_target_contraindication_v2"),
+            require_canonical_target_inventory=True,
+            canonical_target_inventory_receipt_sha256=json.loads(
+                receipt_path.read_text()
+            )["receipt_sha256"],
+        )
+    )
+
+    assert report["rejection_reason_counts"][
+        "signed_protein_target_contraindication_v2"
+    ].get("canonical_target_inventory_missing", 0) == 0
+    rows = read_output(
+        tmp_path / "out",
+        relation,
+        "signed_protein_target_contraindication_v2",
+    )
+    assert set(zip(rows.x_id, rows.y_id)) == {("M-CANDIDATE", "D-CANDIDATE")}
+    evidence = read_output(
+        tmp_path / "out",
+        relation,
+        "signed_protein_target_contraindication_v2",
+        "evidence_inferred",
+    )
+    assert evidence.loc[0, "canonical_target_inventory_receipt_sha256"] == json.loads(
+        receipt_path.read_text()
+    )["receipt_sha256"]
 
 
 def test_zero_rerun_removes_stale_pair_and_deterministic_hashes_ignore_wall_clock(

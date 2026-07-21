@@ -25,6 +25,7 @@ import pyarrow.parquet as pq
 
 POLICY_REVISION = "5dc88d4b5372eb2cf99039d455c556314564450c"
 REGISTRY_VERSION = "2.0.0"
+CANONICAL_TARGET_INVENTORY_RECEIPT_VERSION = "canonical-target-inventory-v1"
 CONTEXT_FIELDS = (
     "assembly",
     "organism",
@@ -52,9 +53,15 @@ EVIDENCE_ONLY_FIELDS = {
     "support_evidence_ids_or_hashes",
     "context_intersection",
     "input_snapshot_id",
+    "input_snapshot_sha256",
+    "source_releases",
+    "context_compatibility",
+    "sign_computation",
+    "conflict_state",
     "canonical_observed_overlap",
     "staged_source_native_overlap",
     "canonical_target_inventory_available",
+    "canonical_target_inventory_receipt_sha256",
 }
 INFERRED_EDGE_DERIVATION_FIELDS = {
     "supporting_protein_id",
@@ -323,6 +330,24 @@ TEMPLATES: tuple[Template, ...] = (
         ("missing_sign", "conflicting_sign", "same_sign", "isoform_mismatch"),
     ),
     Template(
+        "signed_gene_target_contraindication_v2",
+        ("molecule_targets_gene", "disease_associated_gene"),
+        "molecule_contraindicates_disease",
+        "inferred_edge",
+        "inferred_weak",
+        ("known_same_signs", "causal_support", "context_compatible"),
+        ("missing_sign", "conflicting_sign", "opposite_sign", "context_mismatch"),
+    ),
+    Template(
+        "signed_protein_target_contraindication_v2",
+        ("molecule_targets_protein", "disease_associated_protein"),
+        "molecule_contraindicates_disease",
+        "inferred_edge",
+        "inferred_weak",
+        ("known_same_signs", "causal_support", "context_compatible"),
+        ("missing_sign", "conflicting_sign", "opposite_sign", "isoform_mismatch"),
+    ),
+    Template(
         "allelic_triangulation_treatment_v2",
         (
             "molecule_targets_gene",
@@ -374,6 +399,8 @@ class BuildConfig:
     max_paths_per_template: int = 100_000
     sample_limit: int = 10
     require_canonical_target_inventory: bool = True
+    canonical_target_inventory_source_identity: str | None = None
+    canonical_target_inventory_receipt_sha256: str | None = None
 
 
 def _clean(value: Any) -> Any:
@@ -427,6 +454,23 @@ def _values(row: Mapping[str, Any], *fields: str) -> set[str]:
         for item in items:
             if item is not None and str(item).strip():
                 found.add(str(item).strip().lower())
+    return found
+
+
+def _literal_values(row: Mapping[str, Any], *fields: str) -> set[str]:
+    """Return provenance values without semantic case normalization."""
+    found: set[str] = set()
+    for field in fields:
+        value = row.get(field)
+        if isinstance(value, str) and value.strip().startswith("["):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                pass
+        items = value if isinstance(value, (list, tuple, set)) else (value,)
+        for item in items:
+            if item is not None and str(item).strip():
+                found.add(str(item).strip())
     return found
 
 
@@ -680,9 +724,6 @@ def _candidate(
 
 
 def _sign(row: Mapping[str, Any], *fields: str) -> tuple[str, int | None]:
-    status, value = _resolved(row, *fields)
-    if status != "known":
-        return status, None
     signs = {
         "activate": 1,
         "activation": 1,
@@ -690,6 +731,7 @@ def _sign(row: Mapping[str, Any], *fields: str) -> tuple[str, int | None]:
         "gain_of_function": 1,
         "increase": 1,
         "risk": 1,
+        "positive": 1,
         "inhibit": -1,
         "inhibition": -1,
         "inhibitor": -1,
@@ -697,8 +739,99 @@ def _sign(row: Mapping[str, Any], *fields: str) -> tuple[str, int | None]:
         "loss_of_function": -1,
         "decrease": -1,
         "protective": -1,
+        "negative": -1,
     }
-    return ("known", signs[value]) if value in signs else ("unknown", None)
+    statuses = _values(row, *(f"{field}_status" for field in fields))
+    if "conflicting" in statuses:
+        return "conflicting", None
+    values = _values(row, *fields)
+    if "conflicting" in values:
+        return "conflicting", None
+    if (
+        not values
+        or "unknown" in statuses
+        or "unknown" in values
+        or any(value not in signs for value in values)
+    ):
+        return "unknown", None
+    resolved = {signs[value] for value in values}
+    if len(resolved) > 1:
+        return "conflicting", None
+    return "known", resolved.pop()
+
+
+def _disease_sign(row: Mapping[str, Any]) -> tuple[str, int | None, dict[str, Any]]:
+    mechanism_fields = (
+        "causal_mechanisms",
+        "causal_mechanism",
+        "pathological_mechanism_sign",
+    )
+    effect_fields = ("effect_directions", "effect_direction")
+    mechanism_status, mechanism = _sign(row, *mechanism_fields)
+    effect_status, effect = _sign(row, *effect_fields)
+    mechanism_present = bool(
+        _values(row, *mechanism_fields)
+        or _values(row, *(f"{field}_status" for field in mechanism_fields))
+        or _values(row, "mechanism_status")
+    )
+    effect_present = bool(
+        _values(row, *effect_fields)
+        or _values(row, *(f"{field}_status" for field in effect_fields))
+        or _values(row, "effect_direction_status")
+    )
+    mechanism_aggregate_status = _values(row, "mechanism_status")
+    effect_aggregate_status = _values(row, "effect_direction_status")
+    if "conflicting" in mechanism_aggregate_status:
+        mechanism_status, mechanism = "conflicting", None
+    elif "unknown" in mechanism_aggregate_status:
+        mechanism_status, mechanism = "unknown", None
+    if "conflicting" in effect_aggregate_status:
+        effect_status, effect = "conflicting", None
+    elif "unknown" in effect_aggregate_status:
+        effect_status, effect = "unknown", None
+    detail = {
+        "disease_mechanism_sign": mechanism,
+        "effect_direction_sign": effect,
+    }
+    if "conflicting" in {mechanism_status, effect_status}:
+        return "conflicting", None, detail
+    if (mechanism_present and mechanism_status == "unknown") or (
+        effect_present and effect_status == "unknown"
+    ):
+        return "unknown", None, detail
+    known = [value for value in (mechanism, effect) if value is not None]
+    if not known:
+        return "unknown", None, detail
+    if len(set(known)) > 1:
+        return "conflicting", None, detail
+    disease_sign = known[0]
+    detail["net_disease_sign"] = disease_sign
+    return "known", disease_sign, detail
+
+
+def _action_sign(row: Mapping[str, Any]) -> tuple[str, int | None]:
+    aggregate_status = _values(row, "action_status")
+    if "conflicting" in aggregate_status:
+        return "conflicting", None
+    if "unknown" in aggregate_status:
+        return "unknown", None
+    fields = ("action_direction", "target_modulation", "action_types", "action_type")
+    present_fields = [
+        field
+        for field in fields
+        if _values(row, field) or _values(row, f"{field}_status")
+    ]
+    resolved = [_sign(row, field) for field in present_fields]
+    if any(status == "conflicting" for status, _ in resolved):
+        return "conflicting", None
+    if any(status == "unknown" for status, _ in resolved):
+        return "unknown", None
+    signs = {sign for _, sign in resolved if sign is not None}
+    if len(signs) > 1:
+        return "conflicting", None
+    if not signs:
+        return "unknown", None
+    return "known", signs.pop()
 
 
 def _generate(
@@ -706,6 +839,8 @@ def _generate(
     r: Mapping[str, list[dict[str, Any]]],
     rejected: Counter[str],
     max_paths: int,
+    rejected_samples: list[dict[str, Any]],
+    sample_limit: int,
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     tid = template.template_id
@@ -1113,6 +1248,7 @@ def _generate(
                     )
     elif tid.startswith("signed_"):
         protein = "protein" in tid
+        contraindication = "contraindication" in tid
         target_relation = (
             "molecule_targets_protein" if protein else "molecule_targets_gene"
         )
@@ -1122,20 +1258,56 @@ def _generate(
         mechanisms = _by(r.get(disease_relation, []), "x_id")
         for target in r.get(target_relation, []):
             for mechanism in mechanisms.get(str(target["y_id"]), []):
-                action_status, action = _sign(
-                    target, "action_direction", "target_modulation", "action_type"
-                )
-                mechanism_status, mechanism_sign = _sign(
-                    mechanism,
-                    "causal_mechanism",
-                    "effect_direction",
-                    "pathological_mechanism_sign",
-                )
+                action_status, action = _action_sign(target)
+                mechanism_status, mechanism_sign, sign_detail = _disease_sign(mechanism)
                 causal_status, causal = _resolved(
                     mechanism, "causal_support_level", "causal_support"
                 )
+                sign_computation = {
+                    "action_sign": action,
+                    **sign_detail,
+                    "relation": template.target,
+                }
+
+                def reject_signed(reason: str) -> None:
+                    rejected[reason] += 1
+                    if len(rejected_samples) >= sample_limit:
+                        return
+                    supports = (target, mechanism)
+                    typed_path = [
+                        {
+                            key: value
+                            for key, value in row.items()
+                            if key != "evidence_rows"
+                        }
+                        for row in supports
+                    ]
+                    releases = sorted(
+                        {
+                            value
+                            for row in supports
+                            for value in _literal_values(
+                                row, "release", "release_values", "source_release"
+                            )
+                        }
+                    )
+                    rejected_samples.append(
+                        {
+                            "reason": reason,
+                            "decision": "rejected",
+                            "classification": "plausible hypothesis",
+                            "human_readable_path": (
+                                f"{target['x_id']} -[{target_relation}]-> {target['y_id']} "
+                                f"-[{disease_relation}]-> {mechanism['y_id']}"
+                            ),
+                            "typed_path": _json(typed_path),
+                            "source_releases": _json(releases),
+                            "sign_computation": _json(sign_computation),
+                        }
+                    )
+
                 if "conflicting" in {action_status, mechanism_status, causal_status}:
-                    rejected["conflicting_sign"] += 1
+                    reject_signed("conflicting_sign")
                     continue
                 accepted_causal_support = {
                     "causal",
@@ -1146,20 +1318,30 @@ def _generate(
                     "validated_causal",
                 }
                 if action is None or mechanism_sign is None or causal_status != "known":
-                    rejected["missing_sign_or_causal_support"] += 1
+                    reject_signed("missing_sign_or_causal_support")
                     continue
                 if causal not in accepted_causal_support:
-                    rejected["noncausal_support"] += 1
+                    reject_signed("noncausal_support")
                     continue
-                if action == mechanism_sign:
-                    rejected["same_sign"] += 1
+                same_sign = action == mechanism_sign
+                if same_sign != contraindication:
+                    reject_signed("opposite_sign" if contraindication else "same_sign")
                     continue
                 if not _compatible((target, mechanism)):
-                    rejected["context_mismatch"] += 1
+                    reject_signed("context_mismatch")
                     continue
                 if not _has_shared_context((target, mechanism)):
-                    rejected["missing_shared_context"] += 1
+                    reject_signed("missing_shared_context")
                     continue
+                releases = sorted(
+                    {
+                        value
+                        for row in (target, mechanism)
+                        for value in _literal_values(
+                            row, "release", "release_values", "source_release"
+                        )
+                    }
+                )
                 add(
                     _candidate(
                         template,
@@ -1170,8 +1352,14 @@ def _generate(
                         (target, mechanism),
                         extra={
                             "sign_status": "known",
-                            "therapeutic_sign": "opposite",
+                            "therapeutic_sign": (
+                                "same" if contraindication else "opposite"
+                            ),
                             "causal_support": causal,
+                            "source_releases": _json(releases),
+                            "context_compatibility": "compatible",
+                            "sign_computation": _json(sign_computation),
+                            "conflict_state": "none",
                         },
                     )
                 )
@@ -1314,20 +1502,128 @@ def _deduplicate(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def _inventory_key_sha256(keys: set[str]) -> str:
+    return hashlib.sha256(_json(sorted(keys)).encode()).hexdigest()
+
+
+def _validated_inventory_receipt(
+    config: BuildConfig,
+    relation: str,
+    edge_paths: Sequence[Path],
+    evidence_paths: Sequence[Path],
+) -> str:
+    """Return the accepted receipt hash only for an exact, complete inventory."""
+    if len(edge_paths) != 1 or len(evidence_paths) != 1:
+        return ""
+    receipt_path = (
+        config.input_root
+        / "manifest"
+        / "canonical_target_inventory"
+        / f"{relation}.json"
+    )
+    if not receipt_path.is_file():
+        return ""
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        if not isinstance(receipt, dict):
+            return ""
+        claimed_hash = receipt.get("receipt_sha256")
+        unsigned = {key: value for key, value in receipt.items() if key != "receipt_sha256"}
+        if (
+            not isinstance(claimed_hash, str)
+            or claimed_hash != _sha(unsigned)
+            or claimed_hash != config.canonical_target_inventory_receipt_sha256
+        ):
+            return ""
+        if (
+            receipt.get("receipt_version")
+            != CANONICAL_TARGET_INVENTORY_RECEIPT_VERSION
+            or receipt.get("accepted") is not True
+            or receipt.get("relation") != relation
+            or receipt.get("snapshot_id") != config.snapshot_id
+            or not config.canonical_target_inventory_source_identity
+            or receipt.get("source_identity")
+            != config.canonical_target_inventory_source_identity
+        ):
+            return ""
+
+        edge_path = edge_paths[0]
+        evidence_path = evidence_paths[0]
+        edge_frame = pd.read_parquet(edge_path)
+        evidence_frame = pd.read_parquet(evidence_path)
+        required_columns = {"edge_key", "relation"}
+        if (
+            edge_frame.empty
+            or evidence_frame.empty
+            or not required_columns.issubset(edge_frame.columns)
+            or not required_columns.issubset(evidence_frame.columns)
+            or set(edge_frame["relation"].astype(str)) != {relation}
+            or set(evidence_frame["relation"].astype(str)) != {relation}
+        ):
+            return ""
+        edge_keys = set(edge_frame["edge_key"].astype(str))
+        evidence_keys = set(evidence_frame["edge_key"].astype(str))
+        supported = edge_keys & evidence_keys
+        orphans = evidence_keys - edge_keys
+        gaps = edge_keys - evidence_keys
+        expected = {
+            "receipt_version": CANONICAL_TARGET_INVENTORY_RECEIPT_VERSION,
+            "accepted": True,
+            "relation": relation,
+            "snapshot_id": config.snapshot_id,
+            "source_identity": config.canonical_target_inventory_source_identity,
+            "edges": {
+                "path": str(edge_path.resolve().relative_to(config.input_root.resolve())),
+                "file_sha256": _file_sha(edge_path),
+                "edge_key_count": len(edge_keys),
+                "edge_key_set_sha256": _inventory_key_sha256(edge_keys),
+            },
+            "evidence": {
+                "path": str(
+                    evidence_path.resolve().relative_to(config.input_root.resolve())
+                ),
+                "file_sha256": _file_sha(evidence_path),
+                "edge_key_count": len(evidence_keys),
+                "edge_key_set_sha256": _inventory_key_sha256(evidence_keys),
+            },
+            "coverage": {
+                "supported_edge_key_count": len(supported),
+                "orphan_evidence_edge_key_count": len(orphans),
+                "gap_edge_key_count": len(gaps),
+            },
+        }
+        if unsigned != expected or orphans or gaps or supported != edge_keys:
+            return ""
+        return claimed_hash
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return ""
+
+
 def _target_pairs(
     config: BuildConfig, relation: str
-) -> tuple[set[tuple[str, str]], set[tuple[str, str]], bool]:
+) -> tuple[set[tuple[str, str]], set[tuple[str, str]], bool, str]:
     canonical_paths = _discover_file((config.input_root,), "edges", relation)
+    canonical_evidence_paths = _discover_file(
+        (config.input_root,), "evidence", relation
+    )
     canonical = _read_files(canonical_paths, relation, config.max_rows_per_file)
     staged = _read_files(
         _discover_file(config.staged_input_roots, "edges", relation),
         relation,
         config.max_rows_per_file,
     )
+    inventory_receipt_sha256 = ""
+    inventory_complete = bool(canonical_paths)
+    if relation == "molecule_contraindicates_disease":
+        inventory_receipt_sha256 = _validated_inventory_receipt(
+            config, relation, canonical_paths, canonical_evidence_paths
+        )
+        inventory_complete = bool(inventory_receipt_sha256)
     return (
         {(str(row["x_id"]), str(row["y_id"])) for row in canonical},
         {(str(row["x_id"]), str(row["y_id"])) for row in staged},
-        bool(canonical_paths),
+        inventory_complete,
+        inventory_receipt_sha256,
     )
 
 
@@ -1350,6 +1646,8 @@ def _replace_pair(
             "typed_path": row["typed_path"],
             "context_intersection": row["context_intersection"],
             "input_snapshot_id": row["input_snapshot_id"],
+            "input_snapshot_sha256": row["input_snapshot_sha256"],
+            "epistemic_class": row["epistemic_class"],
             "support_multiplicity": row["support_multiplicity"],
             **{
                 key: row[key]
@@ -1365,6 +1663,11 @@ def _replace_pair(
                     "canonical_observed_overlap",
                     "staged_source_native_overlap",
                     "canonical_target_inventory_available",
+                    "canonical_target_inventory_receipt_sha256",
+                    "source_releases",
+                    "context_compatibility",
+                    "sign_computation",
+                    "conflict_state",
                 )
                 if key in row
             },
@@ -1495,22 +1798,35 @@ def build_composition_allowlist(config: BuildConfig) -> dict[str, Any]:
     counts: dict[str, Any] = {}
     samples: dict[str, Any] = {}
     generated_samples: dict[str, Any] = {}
+    rejected_samples: dict[str, Any] = {}
     artifacts: dict[str, Any] = {}
     all_rejections: dict[str, Any] = {}
     pending_outputs: list[tuple[Path, Path, list[dict[str, Any]]]] = []
     for template in requested:
         rejected: Counter[str] = Counter()
+        template_rejected_samples: list[dict[str, Any]] = []
         generated = _deduplicate(
-            _generate(template, loaded, rejected, config.max_paths_per_template)
+            _generate(
+                template,
+                loaded,
+                rejected,
+                config.max_paths_per_template,
+                template_rejected_samples,
+                config.sample_limit,
+            )
         )
         for row in generated:
             row["input_snapshot_id"] = config.snapshot_id
+            row["input_snapshot_sha256"] = input_manifest["manifest_sha256"]
         generated_count = len(generated)
         generated_before_antijoin = generated
         if template.output_class == "inferred_edge":
-            observed, staged, canonical_inventory_available = _target_pairs(
-                config, template.target
-            )
+            (
+                observed,
+                staged,
+                canonical_inventory_available,
+                canonical_inventory_receipt_sha256,
+            ) = _target_pairs(config, template.target)
             retained = []
             for row in generated:
                 pair = (row["x_id"], row["y_id"])
@@ -1518,6 +1834,9 @@ def build_composition_allowlist(config: BuildConfig) -> dict[str, Any]:
                 row["staged_source_native_overlap"] = pair in staged
                 row["canonical_target_inventory_available"] = (
                     canonical_inventory_available
+                )
+                row["canonical_target_inventory_receipt_sha256"] = (
+                    canonical_inventory_receipt_sha256
                 )
                 if (
                     config.require_canonical_target_inventory
@@ -1571,6 +1890,7 @@ def build_composition_allowlist(config: BuildConfig) -> dict[str, Any]:
                     "canonical_observed_overlap",
                     "staged_source_native_overlap",
                     "canonical_target_inventory_available",
+                    "canonical_target_inventory_receipt_sha256",
                 )
                 if key in row
             }
@@ -1589,6 +1909,7 @@ def build_composition_allowlist(config: BuildConfig) -> dict[str, Any]:
             "output_class": template.output_class,
         }
         all_rejections[template.template_id] = dict(sorted(rejected.items()))
+        rejected_samples[template.template_id] = template_rejected_samples
         samples[template.template_id] = [
             {
                 key: row[key]
@@ -1614,6 +1935,7 @@ def build_composition_allowlist(config: BuildConfig) -> dict[str, Any]:
         "counts_by_template": counts,
         "rejection_reason_counts": all_rejections,
         "generated_path_samples_before_antijoin": generated_samples,
+        "rejected_path_samples": rejected_samples,
         "sampled_examples": samples,
         "artifacts": artifacts,
         "rejected_motifs": REJECTED_MOTIFS,
