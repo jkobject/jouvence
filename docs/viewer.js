@@ -9,6 +9,8 @@
   let trail = [];
   let searchItems = [];
   let searchIndex = -1;
+  let searchGeneration = 0;
+  let activeSearch = Promise.resolve();
   let toastTimer;
   let dataSource = null;
 
@@ -177,19 +179,27 @@
   function bindNodeLinks() { $$('.js-node-link').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();navigate(a.dataset.nodeType,a.dataset.nodeId,'link',a.dataset.via);})); }
 
   async function search(query) {
+    const generation = ++searchGeneration;
     const q=query.trim();
     const box=$('#search-results');
     searchIndex = -1;
-    if (!q) { box.hidden=true; $('#global-search').setAttribute('aria-expanded','false'); return; }
+    if (!q) { searchItems=[];box.replaceChildren();box.hidden=true;$('#global-search').setAttribute('aria-expanded','false');return; }
     try {
       const payload = await dataSource.search(q,12);
+      if (generation !== searchGeneration) return;
       searchItems = payload.results;
       box.innerHTML=searchItems.map((n,i)=>`<button class="search-result" role="option" data-search-index="${i}" aria-selected="false"><span class="mini-type">${esc(n.node_type.toUpperCase())}</span><span><strong>${esc(n.display_name)}</strong><small>${esc(n.alias_kind)}: ${esc(n.matched_alias)} · ${esc(n.description)}</small></span><code>${esc(n.node_id)}</code></button>`).join('') || '<div class="search-result"><span></span><span><strong>No fixture match</strong><small>Try BRCA1, TP53, breast cancer, EFO:0000305 or CHEMBL1201585.</small></span></div>';
       $$('[data-search-index]').forEach(b=>b.addEventListener('click',()=>{const item=searchItems[Number(b.dataset.searchIndex)];navigate(item.node_type,item.node_id,'search');box.hidden=true;$('#global-search').value='';}));
     } catch (error) {
+      if (generation !== searchGeneration) return;
+      searchItems = [];
       box.innerHTML=`<div class="search-result"><span></span><span><strong>Backend unavailable</strong><small>${esc(error.message)}. Start it with: uv run jouvence-viewer</small></span></div>`;
     }
     box.hidden=false; $('#global-search').setAttribute('aria-expanded','true');
+  }
+  async function waitForActiveSearch() {
+    let pending;
+    do { pending=activeSearch;await pending; } while (pending !== activeSearch);
   }
   function moveSearch(delta) {
     const buttons = $$('[data-search-index]');
@@ -254,8 +264,8 @@
   function download(name, blob) { const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},0); }
 
   function wireEvents() {
-    $('#global-search').addEventListener('input',e=>search(e.target.value));
-    $('#global-search').addEventListener('keydown',e=>{if(e.key==='Escape'){$('#search-results').hidden=true;e.target.blur();} else if(e.key==='ArrowDown'){e.preventDefault();moveSearch(1);} else if(e.key==='ArrowUp'){e.preventDefault();moveSearch(-1);} else if(e.key==='Enter'){const item=searchItems[Math.max(searchIndex,0)];if(item){navigate(item.node_type,item.node_id,'search');$('#search-results').hidden=true;e.target.value='';}}});
+    $('#global-search').addEventListener('input',e=>{activeSearch=search(e.target.value);});
+    $('#global-search').addEventListener('keydown',async e=>{if(e.key==='Escape'){searchGeneration+=1;activeSearch=Promise.resolve();searchItems=[];searchIndex=-1;$('#search-results').hidden=true;e.target.blur();} else if(e.key==='ArrowDown'){e.preventDefault();await waitForActiveSearch();moveSearch(1);} else if(e.key==='ArrowUp'){e.preventDefault();await waitForActiveSearch();moveSearch(-1);} else if(e.key==='Enter'){e.preventDefault();await waitForActiveSearch();const item=searchItems[Math.max(searchIndex,0)];if(item){navigate(item.node_type,item.node_id,'search');$('#search-results').hidden=true;e.target.value='';}}});
     document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement.tagName!=='INPUT'){e.preventDefault();$('#global-search').focus();}});
     document.addEventListener('click',e=>{if(!e.target.closest('.viewer-search-wrap'))$('#search-results').hidden=true;});
     $('#evidence-filter').addEventListener('change',e=>renderEvidence(e.target.value));

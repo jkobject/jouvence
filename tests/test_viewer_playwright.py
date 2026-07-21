@@ -122,6 +122,39 @@ def test_search_link_history_and_exports(page: Page, viewer_server: str) -> None
     assert csv_download.value.suggested_filename.endswith(".zip")
 
 
+def test_immediate_keyboard_search_is_deterministic(page: Page, viewer_server: str) -> None:
+    page.goto(viewer_server)
+
+    search = page.locator("#global-search")
+    for expected in ("TP53", "BRCA1") * 5:
+        search.fill(expected)
+        page.keyboard.press("ArrowDown")
+        page.keyboard.press("Enter")
+        expect(page.locator("#entity-name")).to_have_text(expected)
+
+
+def test_stale_search_response_cannot_replace_newer_results(page: Page, viewer_server: str) -> None:
+    page.add_init_script(
+        """
+        const realFetch = window.fetch.bind(window);
+        window.fetch = (resource, options) => {
+          const url = String(resource);
+          const delay = url.includes('/api/search?') && url.includes('q=TP53') ? 250 : 0;
+          return new Promise(resolve => setTimeout(() => resolve(realFetch(resource, options)), delay));
+        };
+        """
+    )
+    page.goto(viewer_server)
+
+    search = page.locator("#global-search")
+    search.fill("TP53")
+    search.fill("EGFR")
+    expect(page.locator("#search-results")).to_contain_text("EGFR")
+    page.wait_for_timeout(350)
+    expect(page.locator("#search-results")).to_contain_text("EGFR")
+    expect(page.locator("#search-results")).not_to_contain_text("TP53")
+
+
 def test_backend_unavailable_static_fallback_and_missing_search_state(page: Page) -> None:
     page.goto((ROOT / "docs" / "viewer.html").as_uri())
     expect(page.locator("#source-button")).to_contain_text("Embedded fixture fallback")
