@@ -1,7 +1,9 @@
 # Jouvence-Graph Viewer — product and architecture proposal
 
-**Status:** product proposal + fixture-backed interaction prototype  
-**Public preview:** [`viewer.html`](viewer.html)  
+**Status:** product proposal + fixture-backed interaction prototype
+
+**Public preview:** [`viewer.html`](viewer.html)
+
 **Canonical data:** unchanged under `gs://jouvencekb/kg/v2`
 
 ## 1. Product goal
