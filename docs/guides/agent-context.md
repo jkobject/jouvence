@@ -7,7 +7,7 @@
 
 ## Current operating posture
 
-`work/txgnn` is the canonical local worktree for `https://github.com/jkobject/jouvence` and the project-level review surface. The local path is retained for compatibility. It also holds ignored local artifacts/caches, so reviewers must inspect the explicit Git diff rather than infer scope from directory contents. Parallel task worktrees belong under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`; do not create a second canonical checkout under `~/code`.
+`work/txgnn` is the canonical local worktree for `https://github.com/jkobject/jouvence-graph` and the project-level review surface. The local path is retained for compatibility. It also holds ignored local artifacts/caches, so reviewers must inspect the explicit Git diff rather than infer scope from directory contents. Parallel task worktrees belong under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`; do not create a second canonical checkout under `~/code`.
 
 Default KG access:
 

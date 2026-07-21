@@ -21,7 +21,7 @@ Jouvence is a biomedical knowledge-graph and zero-shot drug-repurposing project 
 
 ## Reviewability rule
 
-`/Users/jkobject/Documents/jouvence` is the canonical local Jouvence checkout for `https://github.com/jkobject/jouvence`. Task worktrees live under `/Users/jkobject/Documents/jouvence/.worktrees/` unless a card names another verified Git worktree. The checkout also contains ignored local artifacts/caches; those do not make the Git diff reviewable by themselves.
+`/Users/jkobject/Documents/jouvence` is the canonical local Jouvence checkout for `https://github.com/jkobject/jouvence-graph`. Task worktrees live under `/Users/jkobject/Documents/jouvence/.worktrees/` unless a card names another verified Git worktree. The checkout also contains ignored local artifacts/caches; those do not make the Git diff reviewable by themselves.
 
 Run project-level Git commands from this root and verify `git rev-parse --show-toplevel` resolves to it. Never `git init` another Jouvence directory or commit ignored artifacts, caches, credentials, GCS/FUSE mirrors, or unrelated workspace state.
 
