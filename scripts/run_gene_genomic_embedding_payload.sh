@@ -51,14 +51,15 @@ export PYTHONPATH="$REPO"
 export OMP_NUM_THREADS=4
 export MKL_NUM_THREADS=4
 cd "$REPO"
-[[ "$(git rev-parse HEAD)" == "$EXPECTED_COMMIT" ]]
-[[ "$(.venv/bin/python -c 'import transformers; print(transformers.__version__)')" == "4.55.4" ]]
 
 PAYLOAD_PID=$$
 write_heartbeat
 heartbeat_loop &
 HEARTBEAT_PID=$!
 trap 'kill "$HEARTBEAT_PID" 2>/dev/null || true; wait "$HEARTBEAT_PID" 2>/dev/null || true' EXIT
+
+[[ "$(git rev-parse HEAD)" == "$EXPECTED_COMMIT" ]]
+[[ "$(.venv/bin/python -c 'import transformers; print(transformers.__version__)')" == "4.55.4" ]]
 
 rm -rf "$CANDIDATE_DIR" "$TASK_ROOT/readback"
 .venv/bin/python -m manage_db.build_gene_genomic_sequence_embeddings \

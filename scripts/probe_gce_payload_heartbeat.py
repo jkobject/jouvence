@@ -26,7 +26,7 @@ def main() -> None:
     parser.add_argument("--heartbeat-path", required=True)
     args = parser.parse_args()
     remote = (
-        f"for i in {{1..25}}; do if [[ -s {args.heartbeat_path} ]]; then "
+        f"for i in {{1..90}}; do if [[ -s {args.heartbeat_path} ]]; then "
         f"cat {args.heartbeat_path}; exit 0; fi; sleep 1; done; exit 1"
     )
     result = subprocess.run(
@@ -44,7 +44,7 @@ def main() -> None:
         ],
         text=True,
         capture_output=True,
-        timeout=35,
+        timeout=110,
         check=False,
     )
     if result.returncode:
