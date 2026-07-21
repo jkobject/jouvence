@@ -60,7 +60,7 @@ heartbeat_loop &
 HEARTBEAT_PID=$!
 trap 'kill "$HEARTBEAT_PID" 2>/dev/null || true; wait "$HEARTBEAT_PID" 2>/dev/null || true' EXIT
 
-rm -rf "$BUILDER_OUT" "$CANDIDATE_DIR" "$TASK_ROOT/readback"
+rm -rf "$CANDIDATE_DIR" "$TASK_ROOT/readback"
 .venv/bin/python -m manage_db.build_gene_genomic_sequence_embeddings \
   --source-root "$TASK_ROOT/source" \
   --output-dir "$BUILDER_OUT" \
@@ -70,7 +70,7 @@ rm -rf "$BUILDER_OUT" "$CANDIDATE_DIR" "$TASK_ROOT/readback"
   --max-nucleotides-per-window 1000 \
   --window-stride 1000 \
   --device cpu \
-  --clean
+  --resume
 
 .venv/bin/python -m manage_db.finalize_gene_genomic_embedding_candidate \
   --task-root "$TASK_ROOT" \
