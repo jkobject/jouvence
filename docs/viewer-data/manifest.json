@@ -1,0 +1,25 @@
+{
+  "bundle_version": "viewer-fixture-schema-v1",
+  "data_mode": "fixture-static-bundle",
+  "entity_count": 9,
+  "entity_shards": {
+    "disease:EFO:0000305": "entities/disease--EFO_0000305.json",
+    "disease:EFO:0000616": "entities/disease--EFO_0000616.json",
+    "gene:ENSG00000012048": "entities/gene--ENSG00000012048.json",
+    "gene:ENSG00000139618": "entities/gene--ENSG00000139618.json",
+    "gene:ENSG00000141510": "entities/gene--ENSG00000141510.json",
+    "gene:ENSG00000146648": "entities/gene--ENSG00000146648.json",
+    "molecule:CHEMBL1201585": "entities/molecule--CHEMBL1201585.json",
+    "molecule:CHEMBL25": "entities/molecule--CHEMBL25.json",
+    "phenotype:HP:0003011": "entities/phenotype--HP_0003011.json"
+  },
+  "fixture_only": true,
+  "row_kinds": [
+    "observed",
+    "ranked",
+    "inferred"
+  ],
+  "schema_version": "jouvence-viewer-static-v1",
+  "search_shard": "search.json",
+  "snapshot_id": "fixture-v1"
+}

@@ -180,9 +180,12 @@ def create_app(static_docs_root: Path | None = None) -> FastAPI:
         viewer = docs_root / "viewer.html"
         if viewer.exists():
             html = viewer.read_text()
-            return html.replace('href="viewer.css"', 'href="/static/viewer.css"').replace(
-                'src="viewer.js"', 'src="/static/viewer.js"'
-            ).replace('href="site.css"', 'href="/static/site.css"')
+            return (
+                html.replace('href="viewer.css"', 'href="/static/viewer.css"')
+                .replace('src="viewer-data/fixture.js"', 'src="/static/viewer-data/fixture.js"')
+                .replace('src="viewer.js"', 'src="/static/viewer.js"')
+                .replace('href="site.css"', 'href="/static/site.css"')
+            )
         return "<h1>Jouvence-Graph viewer</h1>"
 
     @app.get("/api/session")

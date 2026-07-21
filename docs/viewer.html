@@ -27,7 +27,7 @@
     <a class="viewer-site-link" href="index.html">Project site ↗</a>
   </header>
 
-  <div class="prototype-banner"><strong>Phase 1 local viewer</strong><span>Uses deterministic fixture data through a localhost read-only API; static Pages falls back to the same demo fixture and is not live KG data.</span><a href="viewer-proposal.md">Read architecture</a></div>
+  <div class="prototype-banner"><strong>Phase 1 fixture viewer</strong><span>Uses a reviewed static fixture bundle or the localhost fixture API; neither is live KG data.</span><a href="getting-started-data.md">Access the full database locally →</a><a href="viewer-proposal.md">Read architecture</a></div>
 
   <main class="viewer-shell">
     <nav class="viewer-toc" aria-label="Dossier sections">
@@ -107,6 +107,7 @@
   </dialog>
 
   <div id="toast" class="viewer-toast" role="status" aria-live="polite"></div>
+  <script src="viewer-data/fixture.js"></script>
   <script src="viewer.js"></script>
 </body>
 </html>

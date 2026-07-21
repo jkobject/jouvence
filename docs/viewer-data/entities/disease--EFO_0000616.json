@@ -1,0 +1,122 @@
+{
+  "edges": [
+    {
+      "anchor_role": "y",
+      "credibility": 2,
+      "display_relation": "disease associated gene",
+      "edge_key": "fixture:edge:4",
+      "effect_direction": "risk",
+      "kind": "observed",
+      "neighbor_id": "ENSG00000141510",
+      "neighbor_name": "TP53",
+      "neighbor_type": "gene",
+      "relation": "disease_associated_gene",
+      "row_kind": "observed",
+      "score": 0.81,
+      "source": "OpenTargets fixture",
+      "x_id": "ENSG00000141510",
+      "x_type": "gene",
+      "y_id": "EFO:0000616",
+      "y_type": "disease"
+    },
+    {
+      "anchor_role": "y",
+      "credibility": 3,
+      "display_relation": "disease associated gene",
+      "edge_key": "fixture:edge:5",
+      "effect_direction": "risk",
+      "kind": "observed",
+      "neighbor_id": "ENSG00000146648",
+      "neighbor_name": "EGFR",
+      "neighbor_type": "gene",
+      "relation": "disease_associated_gene",
+      "row_kind": "observed",
+      "score": 0.74,
+      "source": "OpenTargets fixture",
+      "x_id": "ENSG00000146648",
+      "x_type": "gene",
+      "y_id": "EFO:0000616",
+      "y_type": "disease"
+    }
+  ],
+  "evidence": [
+    {
+      "edge_key": "fixture:edge:4",
+      "evidence_score": 0.81,
+      "license": "CC BY 4.0 fixture metadata",
+      "paper_id": "PMID:0000004",
+      "predicate": "associated_with",
+      "relation": "disease_associated_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "OpenTargets fixture",
+      "source_dataset": "associationByDatasourceDirect",
+      "source_record_id": "fixture:ot:tp53-lung",
+      "x_id": "ENSG00000141510",
+      "x_type": "gene",
+      "y_id": "EFO:0000616",
+      "y_type": "disease"
+    }
+  ],
+  "features": [
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "description",
+      "feature_kind": "identity_summary",
+      "node_id": "EFO:0000616",
+      "node_type": "disease",
+      "release": "fixture-v1",
+      "source": "OpenTargets fixture",
+      "value": "A malignant neoplasm originating in lung tissue."
+    }
+  ],
+  "long_range": [],
+  "meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "snapshot_id": "fixture-v1",
+    "truncated": false
+  },
+  "node": {
+    "aliases": [
+      {
+        "kind": "name",
+        "source": "EFO fixture",
+        "value": "lung cancer"
+      },
+      {
+        "kind": "external_id",
+        "source": "MONDO fixture",
+        "value": "MONDO:0004992"
+      },
+      {
+        "kind": "external_id",
+        "source": "MeSH fixture",
+        "value": "D008545"
+      }
+    ],
+    "attributes": {
+      "disease_group": "neoplasm",
+      "ontology": "EFO"
+    },
+    "description": "A malignant neoplasm originating in lung tissue.",
+    "display_name": "lung carcinoma",
+    "external_links": [
+      {
+        "kind": "external_id",
+        "label": "MONDO:0004992",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=MONDO:0004992"
+      },
+      {
+        "kind": "external_id",
+        "label": "D008545",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=D008545"
+      }
+    ],
+    "node_id": "EFO:0000616",
+    "node_type": "disease",
+    "source": "OpenTargets fixture"
+  },
+  "putative_links": []
+}

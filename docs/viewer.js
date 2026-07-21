@@ -1,8 +1,6 @@
 (() => {
   'use strict';
 
-  const API = (location.protocol === 'http:' || location.protocol === 'https:') ? location.origin : 'http://127.0.0.1:8765';
-  const FALLBACK = location.protocol === 'file:' || location.hostname.endsWith('github.io') || location.hostname === 'www.jkobject.com';
   const TYPE_LABEL = {gene:'GN',disease:'DS',molecule:'MO',phenotype:'PH'};
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
@@ -12,37 +10,16 @@
   let searchItems = [];
   let searchIndex = -1;
   let toastTimer;
-  let apiMode = 'api';
-
-  const DEMO = {
-    nodes: {
-      'gene:ENSG00000012048': {node_type:'gene',node_id:'ENSG00000012048',display_name:'BRCA1',description:'DNA repair associated protein 1; a tumor suppressor involved in homologous recombination and genome integrity.',source:'Ensembl fixture',aliases:[{kind:'symbol',value:'BRCA1',source:'HGNC fixture'},{kind:'external_id',value:'HGNC:1100',source:'HGNC fixture'},{kind:'external_id',value:'672',source:'NCBI Gene fixture'},{kind:'external_id',value:'P38398',source:'UniProt fixture'}],attributes:{biotype:'protein_coding',chromosome:'17q21.31'}},
-      'gene:ENSG00000141510': {node_type:'gene',node_id:'ENSG00000141510',display_name:'TP53',description:'Tumor protein p53; a transcription factor coordinating DNA-damage responses, cell-cycle arrest and apoptosis.',source:'Ensembl fixture',aliases:[{kind:'symbol',value:'TP53',source:'HGNC fixture'},{kind:'external_id',value:'P04637',source:'UniProt fixture'}],attributes:{biotype:'protein_coding'}},
-      'gene:ENSG00000146648': {node_type:'gene',node_id:'ENSG00000146648',display_name:'EGFR',description:'Epidermal growth factor receptor; a receptor tyrosine kinase involved in proliferation and survival signaling.',source:'Ensembl fixture',aliases:[{kind:'symbol',value:'EGFR',source:'HGNC fixture'},{kind:'external_id',value:'P00533',source:'UniProt fixture'}],attributes:{biotype:'protein_coding'}},
-      'disease:EFO:0000305': {node_type:'disease',node_id:'EFO:0000305',display_name:'breast carcinoma',description:'A malignant neoplasm arising from breast tissue.',source:'OpenTargets fixture',aliases:[{kind:'name',value:'breast cancer',source:'EFO fixture'},{kind:'external_id',value:'MONDO:0007254',source:'MONDO fixture'}],attributes:{ontology:'EFO'}},
-      'disease:EFO:0000616': {node_type:'disease',node_id:'EFO:0000616',display_name:'lung carcinoma',description:'A malignant neoplasm originating in lung tissue.',source:'OpenTargets fixture',aliases:[{kind:'name',value:'lung cancer',source:'EFO fixture'}],attributes:{ontology:'EFO'}},
-      'molecule:CHEMBL1201585': {node_type:'molecule',node_id:'CHEMBL1201585',display_name:'gefitinib',description:'A small-molecule EGFR tyrosine kinase inhibitor.',source:'ChEMBL fixture',aliases:[{kind:'name',value:'IRESSA',source:'ChEMBL fixture'},{kind:'external_id',value:'DB00317',source:'DrugBank fixture'}],attributes:{chembl_phase:'4'}},
-      'phenotype:HP:0003011': {node_type:'phenotype',node_id:'HP:0003011',display_name:'Abnormal cell proliferation',description:'A phenotype involving altered regulation or rate of cellular proliferation.',source:'HPO fixture',aliases:[{kind:'name',value:'abnormal proliferation',source:'HPO fixture'}],attributes:{ontology:'HPO'}}
-    },
-    features: {'gene:ENSG00000012048': [{feature_kind:'identity_summary',feature_key:'description',value:'DNA repair and homologous recombination context.',source:'fixture summaries',epistemic_kind:'source-backed'},{feature_kind:'model_context',feature_key:'fixture_embedding_family',value:'text-neighborhood-demo',source:'fixture ranker',epistemic_kind:'model/fallback'}]},
-    edges: {'gene:ENSG00000012048': [
-      {edge_key:'fixture:edge:1',relation:'disease_associated_gene',display_relation:'disease associated gene',neighbor_type:'disease',neighbor_id:'EFO:0000305',neighbor_name:'breast carcinoma',anchor_role:'x',source:'OpenTargets fixture',score:.92,row_kind:'observed'},
-      {edge_key:'fixture:edge:9',relation:'gene_interacts_gene',display_relation:'gene interacts gene',neighbor_type:'gene',neighbor_id:'ENSG00000141510',neighbor_name:'TP53',anchor_role:'x',source:'BioGRID fixture',score:.79,row_kind:'observed'},
-      {edge_key:'fixture:edge:10',relation:'molecule_targets_gene',display_relation:'molecule targets gene',neighbor_type:'molecule',neighbor_id:'CHEMBL1201585',neighbor_name:'gefitinib',anchor_role:'y',source:'ChEMBL fixture',score:.65,row_kind:'observed'}]},
-    evidence: {'gene:ENSG00000012048': [{edge_key:'fixture:edge:1',relation:'disease_associated_gene',source:'OpenTargets fixture',predicate:'associated_with',evidence_score:.92,source_record_id:'fixture:ot:brca1-breast',paper_id:'PMID:0000001',row_kind:'observed'}]},
-    long: {'gene:ENSG00000012048': [{target_type:'disease',target_id:'EFO:0000305',target_name:'breast carcinoma',score:.94,rank:1,ranker_id:'fixture_path_ranker',path_length:1,support_path:'BRCA1 → breast carcinoma',caveats:'Ranked context; not causal.',row_kind:'ranked'},{target_type:'molecule',target_id:'CHEMBL1201585',target_name:'gefitinib',score:.65,rank:1,ranker_id:'fixture_path_ranker',path_length:3,support_path:'BRCA1 → TP53 → EGFR → gefitinib',caveats:'Ranked retrieval only.',row_kind:'ranked'}]},
-    putative: {'gene:ENSG00000012048': [{target_type:'disease',target_id:'EFO:0000616',target_name:'lung carcinoma',policy_class:'inferred_weak',template_id:'gene_disease_path_v1',support_path:'BRCA1 → TP53 → lung carcinoma',leakage_caveat:'Association path is not causal.',row_kind:'inferred'}]}
-  };
+  let dataSource = null;
 
   function esc(value) { return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
   function keyOf(type, id) { return `${type}:${id}`; }
-  function rows(map, type, id) { return map[keyOf(type,id)] || []; }
   function typeGlyph(type) { return TYPE_LABEL[type] || type.slice(0,2).toUpperCase(); }
   function showToast(text){clearTimeout(toastTimer);const t=$('#toast');t.textContent=text;t.classList.add('show');toastTimer=setTimeout(()=>t.classList.remove('show'),2600);}
   function setSource(label, ok=true) { const pill=$('#source-button'); pill.innerHTML=`<span></span> ${esc(label)} <b>⌄</b>`; pill.classList.toggle('source-error', !ok); }
 
-  async function api(path, options = {}) {
-    const response = await fetch(`${API}${path}`, options);
+  async function checkedFetch(path, options = {}) {
+    const response = await fetch(path, options);
     if (!response.ok) {
       let detail = response.statusText;
       try { detail = (await response.json()).detail || detail; } catch (_) {}
@@ -50,28 +27,77 @@
     }
     return response;
   }
-  async function json(path) { return (await api(path)).json(); }
+  async function fetchJson(path) { return (await checkedFetch(path)).json(); }
 
-  function fallbackSearch(q, limit=10) {
+  function fixtureSearch(nodes, q, limit=10) {
     const needle = q.trim().toLowerCase();
-    const results = Object.values(DEMO.nodes).filter(n => [n.node_id,n.display_name,...n.aliases.map(a=>a.value)].some(v => String(v).toLowerCase().includes(needle))).slice(0, limit).map((n,i)=>({node_type:n.node_type,node_id:n.node_id,display_name:n.display_name,description:n.description,matched_alias:n.display_name,alias_kind:'fixture_fallback',source:n.source,rank:i}));
-    return {meta:{snapshot_id:'fixture-v1',data_mode:'fixture-demo-fallback',truncated:false},results};
+    const candidates = nodes.map(node => {
+      const aliases = [{kind:'canonical_id',value:node.node_id,source:node.source},{kind:'display_name',value:node.display_name,source:node.source},...node.aliases];
+      const alias = aliases.find(item => String(item.value).toLowerCase().includes(needle));
+      if (!alias) return null;
+      const value = String(alias.value).toLowerCase();
+      const rank = value === needle ? 0 : value.startsWith(needle) ? 1 : 2;
+      return {node_type:node.node_type,node_id:node.node_id,display_name:node.display_name,description:node.description,matched_alias:alias.value,alias_kind:alias.kind,source:alias.source,rank};
+    }).filter(Boolean).sort((a,b)=>a.rank-b.rank||a.node_type.localeCompare(b.node_type)||a.display_name.localeCompare(b.display_name));
+    return {meta:{snapshot_id:'fixture-v1',data_mode:'fixture-static',truncated:candidates.length>limit},results:candidates.slice(0,limit)};
   }
-  async function loadDossier(type, id) {
-    if (apiMode === 'fallback') {
-      const node = DEMO.nodes[keyOf(type,id)];
-      if (!node) throw new Error('Unknown fixture fallback node');
-      return {node,features:rows(DEMO.features,type,id),edges:rows(DEMO.edges,type,id),evidence:rows(DEMO.evidence,type,id),long_range:rows(DEMO.long,type,id),putative_links:rows(DEMO.putative,type,id),meta:{snapshot_id:'fixture-v1',data_mode:'fixture-demo-fallback'}};
+
+  class ApiDataSource {
+    async connect() { this.session=await fetchJson('/api/session'); return this; }
+    label() { return `${this.session.source.label} · ${this.session.snapshot.snapshot_id}`; }
+    search(q,limit) { return fetchJson(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`); }
+    async dossier(type,id) {
+      const root=`/api/nodes/${encodeURIComponent(type)}/${encodeURIComponent(id)}`;
+      const [node,features,edges,evidence,longRange,putative]=await Promise.all([fetchJson(root),fetchJson(`${root}/features`),fetchJson(`${root}/edges`),fetchJson(`${root}/evidence`),fetchJson(`${root}/long-range`),fetchJson(`${root}/putative`)]);
+      return {node:node.node,features:features.rows,edges:edges.rows,evidence:evidence.rows,long_range:longRange.rows,putative_links:putative.rows,meta:node.meta};
     }
-    const [node, features, edges, evidence, longRange, putative] = await Promise.all([
-      json(`/api/nodes/${encodeURIComponent(type)}/${encodeURIComponent(id)}`),
-      json(`/api/nodes/${encodeURIComponent(type)}/${encodeURIComponent(id)}/features`),
-      json(`/api/nodes/${encodeURIComponent(type)}/${encodeURIComponent(id)}/edges`),
-      json(`/api/nodes/${encodeURIComponent(type)}/${encodeURIComponent(id)}/evidence`),
-      json(`/api/nodes/${encodeURIComponent(type)}/${encodeURIComponent(id)}/long-range`),
-      json(`/api/nodes/${encodeURIComponent(type)}/${encodeURIComponent(id)}/putative`),
-    ]);
-    return {node:node.node,features:features.rows,edges:edges.rows,evidence:evidence.rows,long_range:longRange.rows,putative_links:putative.rows,meta:node.meta};
+    export(request) { return checkedFetch('/api/export',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(request)}); }
+  }
+
+  class StaticBundleDataSource {
+    constructor(root='viewer-data') { this.root=root; }
+    async connect() {
+      this.manifest=await fetchJson(`${this.root}/manifest.json`);
+      if (this.manifest.schema_version !== 'jouvence-viewer-static-v1' || !this.manifest.fixture_only) throw new Error('Unsupported or non-fixture static viewer manifest');
+      this.searchShard=await fetchJson(`${this.root}/${this.manifest.search_shard}`);
+      return this;
+    }
+    label() { return `Static fixture bundle · ${this.manifest.snapshot_id}`; }
+    search(q,limit) { return Promise.resolve(fixtureSearch(this.searchShard.nodes,q,limit)); }
+    dossier(type,id) {
+      const shard=this.manifest.entity_shards[keyOf(type,id)];
+      if (!shard) return Promise.reject(new Error('Unknown static fixture node'));
+      return fetchJson(`${this.root}/${shard}`);
+    }
+  }
+
+  class EmbeddedFixtureDataSource {
+    async connect() {
+      this.bundle=window.JOUVENCE_FIXTURE_BUNDLE;
+      if (!this.bundle?.manifest?.fixture_only) throw new Error('Embedded fixture unavailable');
+      return this;
+    }
+    label() { return `Embedded fixture fallback · ${this.bundle.manifest.snapshot_id}`; }
+    search(q,limit) { return Promise.resolve(fixtureSearch(this.bundle.search.nodes,q,limit)); }
+    dossier(type,id) {
+      const result=this.bundle.entities[keyOf(type,id)];
+      return result ? Promise.resolve(result) : Promise.reject(new Error('Unknown embedded fixture node'));
+    }
+  }
+
+  async function chooseDataSource() {
+    const failures=[];
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      for (const candidate of [new ApiDataSource(),new StaticBundleDataSource()]) {
+        try { return await candidate.connect(); } catch (error) { failures.push(error.message); }
+      }
+    }
+    try { return await new EmbeddedFixtureDataSource().connect(); }
+    catch (error) { failures.push(error.message); throw new Error(failures.join('; ')); }
+  }
+
+  async function loadDossier(type, id) {
+    return dataSource.dossier(type,id);
   }
 
   function nodeLink(label,type,id,via) {
@@ -118,7 +144,7 @@
       return;
     }
     $('#entity-type').textContent = current.node_type.toUpperCase();
-    $('#entity-source').textContent = `${current.source} · ${dossier.meta.snapshot_id || 'fixture-v1'} · ${dossier.meta.data_mode || apiMode}`;
+    $('#entity-source').textContent = `${current.source} · ${dossier.meta.snapshot_id || 'fixture-v1'} · ${dossier.meta.data_mode || 'fixture'}`;
     $('#entity-name').textContent = current.display_name;
     $('#entity-description').textContent = current.description;
     $('#entity-ids').innerHTML = [`<span><b>canonical</b> ${esc(current.node_id)}</span>`, ...current.aliases.map(alias => `<span><b>${esc(alias.kind)}</b> ${esc(alias.value)}</span>`)].join('');
@@ -156,7 +182,7 @@
     searchIndex = -1;
     if (!q) { box.hidden=true; $('#global-search').setAttribute('aria-expanded','false'); return; }
     try {
-      const payload = apiMode === 'fallback' ? fallbackSearch(q,12) : await json(`/api/search?q=${encodeURIComponent(q)}&limit=12`);
+      const payload = await dataSource.search(q,12);
       searchItems = payload.results;
       box.innerHTML=searchItems.map((n,i)=>`<button class="search-result" role="option" data-search-index="${i}" aria-selected="false"><span class="mini-type">${esc(n.node_type.toUpperCase())}</span><span><strong>${esc(n.display_name)}</strong><small>${esc(n.alias_kind)}: ${esc(n.matched_alias)} · ${esc(n.description)}</small></span><code>${esc(n.node_id)}</code></button>`).join('') || '<div class="search-result"><span></span><span><strong>No fixture match</strong><small>Try BRCA1, TP53, breast cancer, EFO:0000305 or CHEMBL1201585.</small></span></div>';
       $$('[data-search-index]').forEach(b=>b.addEventListener('click',()=>{const item=searchItems[Number(b.dataset.searchIndex)];navigate(item.node_type,item.node_id,'search');box.hidden=true;$('#global-search').value='';}));
@@ -176,17 +202,55 @@
   async function exportDossier(kind) {
     const slug=current.display_name.toLowerCase().replace(/\W+/g,'-');
     if (kind === 'pdf') { window.print(); showToast('Print dialog opened — choose Save as PDF.'); return; }
-    if (apiMode === 'api') {
-      const response = await api('/api/export', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({node_type:current.node_type,node_id:current.node_id,trail,format:kind === 'csv' ? 'csv' : 'markdown'})});
+    if (dataSource instanceof ApiDataSource) {
+      const response = await dataSource.export({node_type:current.node_type,node_id:current.node_id,trail,format:kind === 'csv' ? 'csv' : 'markdown'});
       const blob = await response.blob();
       download(`${slug}-dossier.${kind === 'csv' ? 'zip' : 'md'}`, blob);
+    } else if (kind === 'csv') {
+      download(`${slug}-dossier.zip`, staticCsvZip());
     } else {
-      const text = fallbackMarkdown();
-      download(`${slug}-dossier.md`, new Blob([text], {type:'text/markdown'}));
+      download(`${slug}-dossier.md`, new Blob([staticMarkdown()], {type:'text/markdown'}));
     }
     showToast(`${kind.toUpperCase()} export created.`);
   }
-  function fallbackMarkdown() { return `---\nsnapshot_id: fixture-v1\ndata_mode: fixture-demo-fallback\nnode: ${current.node_type}:${current.node_id}\n---\n\n# ${current.display_name}\n\n${current.description}\n\n## Navigation trail\n${trail.map((s,i)=>`${i+1}. ${s.display_name} (${s.node_type}:${s.node_id}) — ${s.via}`).join('\n')}\n`; }
+  function staticMarkdown() {
+    const lines=['---',`snapshot_id: ${dossier.meta.snapshot_id}`,`data_mode: ${dossier.meta.data_mode || 'fixture'}`,`node_type: ${current.node_type}`,`node_id: ${current.node_id}`,'ranker_versions: [fixture_path_ranker:v1]','---','',`# ${current.display_name}`,'',current.description,'','## Identity',`- Canonical ID: \`${current.node_id}\``,`- Type: \`${current.node_type}\``,`- Source: ${current.source}`,'','## Features'];
+    lines.push(...dossier.features.map(row=>`- ${row.feature_kind} / ${row.feature_key}: ${row.value} (${row.epistemic_kind}; ${row.source})`));
+    lines.push('','## Direct observed edges',...dossier.edges.map(row=>`- observed \`${row.relation}\` → ${row.neighbor_name} (${row.neighbor_type}:${row.neighbor_id}); score=${row.score}`));
+    lines.push('','## Evidence',...dossier.evidence.map(row=>`- observed \`${row.relation}\` ${row.source} / ${row.predicate} / ${row.source_record_id} / score=${row.evidence_score}`));
+    lines.push('','## Long-range ranked connections',...dossier.long_range.map(row=>`- ranked ${row.target_type}:${row.target_id} ${row.target_name} score=${row.score} path=${row.support_path} caveat=${row.caveats}`));
+    lines.push('','## Putative inferred links',...dossier.putative_links.map(row=>`- inferred ${row.target_type}:${row.target_id} ${row.target_name} (${row.policy_class}) template=${row.template_id} caveat=${row.leakage_caveat}`));
+    lines.push('','## Navigation trail',...trail.map((row,index)=>`${index+1}. ${row.display_name} (${row.node_type}:${row.node_id}) — ${row.via}`));
+    return `${lines.join('\n')}\n`;
+  }
+  function csvText(items) {
+    if (!items.length) return '\n';
+    const fields=[...new Set(items.flatMap(row=>Object.keys(row)))].sort();
+    const quote=value=>`"${String(value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : value).replaceAll('"','""')}"`;
+    return `${[fields,...items.map(row=>fields.map(field=>row[field]))].map(row=>row.map(quote).join(',')).join('\r\n')}\r\n`;
+  }
+  const CRC_TABLE=Array.from({length:256},(_,n)=>{let c=n;for(let k=0;k<8;k++)c=(c&1)?0xedb88320^(c>>>1):c>>>1;return c>>>0;});
+  function crc32(bytes) { let crc=0xffffffff;for(const byte of bytes)crc=CRC_TABLE[(crc^byte)&255]^(crc>>>8);return (crc^0xffffffff)>>>0; }
+  function zipBytes(files) {
+    const encoder=new TextEncoder(),locals=[],centrals=[];let offset=0;
+    for (const [name,text] of Object.entries(files)) {
+      const filename=encoder.encode(name),data=encoder.encode(text),crc=crc32(data);
+      const local=new Uint8Array(30+filename.length+data.length),lv=new DataView(local.buffer);
+      lv.setUint32(0,0x04034b50,true);lv.setUint16(4,20,true);lv.setUint16(6,0x800,true);lv.setUint16(8,0,true);lv.setUint16(10,0,true);lv.setUint16(12,33,true);lv.setUint32(14,crc,true);lv.setUint32(18,data.length,true);lv.setUint32(22,data.length,true);lv.setUint16(26,filename.length,true);filename.forEach((v,i)=>local[30+i]=v);data.forEach((v,i)=>local[30+filename.length+i]=v);locals.push(local);
+      const central=new Uint8Array(46+filename.length),cv=new DataView(central.buffer);
+      cv.setUint32(0,0x02014b50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);cv.setUint16(8,0x800,true);cv.setUint16(10,0,true);cv.setUint16(12,0,true);cv.setUint16(14,33,true);cv.setUint32(16,crc,true);cv.setUint32(20,data.length,true);cv.setUint32(24,data.length,true);cv.setUint16(28,filename.length,true);cv.setUint32(42,offset,true);filename.forEach((v,i)=>central[46+i]=v);centrals.push(central);offset+=local.length;
+    }
+    const centralSize=centrals.reduce((n,row)=>n+row.length,0),end=new Uint8Array(22),ev=new DataView(end.buffer);
+    ev.setUint32(0,0x06054b50,true);ev.setUint16(8,centrals.length,true);ev.setUint16(10,centrals.length,true);ev.setUint32(12,centralSize,true);ev.setUint32(16,offset,true);
+    const output=new Uint8Array(offset+centralSize+end.length);let cursor=0;for(const part of [...locals,...centrals,end]){output.set(part,cursor);cursor+=part.length;}return output;
+  }
+  function staticCsvZip() {
+    const files={
+      'node.csv':csvText([dossier.node]),'features.csv':csvText(dossier.features),'edges.csv':csvText(dossier.edges),'evidence.csv':csvText(dossier.evidence),'long_range.csv':csvText(dossier.long_range),'putative_links.csv':csvText(dossier.putative_links),'history.csv':csvText(trail),
+      'manifest.json':JSON.stringify({snapshot_id:dossier.meta.snapshot_id,data_mode:dossier.meta.data_mode || 'fixture',row_kinds:['observed','ranked','inferred']},null,2),
+    };
+    return new Blob([zipBytes(files)],{type:'application/zip'});
+  }
   function download(name, blob) { const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},0); }
 
   function wireEvents() {
@@ -207,14 +271,14 @@
   async function boot() {
     wireEvents();
     try {
-      if (FALLBACK) throw new Error('static preview uses demo fallback');
-      const session = await json('/api/session');
-      apiMode = 'api';
-      setSource(`${session.source.label} · ${session.snapshot.snapshot_id}`);
+      dataSource=await chooseDataSource();
+      setSource(dataSource.label());
+      if (dataSource instanceof EmbeddedFixtureDataSource) showToast('Using the generated embedded fixture because HTTP bundle loading is unavailable.');
     } catch (error) {
-      apiMode = 'fallback';
-      setSource('Demo fallback · backend unavailable', false);
-      showToast('Using static fixture fallback. Run `uv run jouvence-viewer` for the local API.');
+      setSource('Viewer data unavailable', false);
+      $('#entity-name').textContent='Viewer data unavailable';
+      $('#entity-description').textContent=`No API, static bundle, or embedded fixture could be loaded. ${error.message}`;
+      return;
     }
     const params=new URLSearchParams(location.hash.replace(/^#/, ''));
     const type=params.get('node_type') || 'gene';

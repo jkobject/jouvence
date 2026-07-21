@@ -1,0 +1,113 @@
+{
+  "edges": [
+    {
+      "anchor_role": "x",
+      "credibility": 3,
+      "display_relation": "disease associated gene",
+      "edge_key": "fixture:edge:2",
+      "effect_direction": "risk",
+      "kind": "observed",
+      "neighbor_id": "EFO:0000305",
+      "neighbor_name": "breast carcinoma",
+      "neighbor_type": "disease",
+      "relation": "disease_associated_gene",
+      "row_kind": "observed",
+      "score": 0.89,
+      "source": "OpenTargets fixture",
+      "x_id": "ENSG00000139618",
+      "x_type": "gene",
+      "y_id": "EFO:0000305",
+      "y_type": "disease"
+    }
+  ],
+  "evidence": [
+    {
+      "edge_key": "fixture:edge:2",
+      "evidence_score": 0.89,
+      "license": "CC BY 4.0 fixture metadata",
+      "paper_id": "PMID:0000003",
+      "predicate": "associated_with",
+      "relation": "disease_associated_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "OpenTargets fixture",
+      "source_dataset": "associationByDatasourceDirect",
+      "source_record_id": "fixture:ot:brca2-breast",
+      "x_id": "ENSG00000139618",
+      "x_type": "gene",
+      "y_id": "EFO:0000305",
+      "y_type": "disease"
+    }
+  ],
+  "features": [
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "description",
+      "feature_kind": "identity_summary",
+      "node_id": "ENSG00000139618",
+      "node_type": "gene",
+      "release": "fixture-v1",
+      "source": "Ensembl fixture",
+      "value": "DNA repair associated protein 2; a mediator of homologous recombination."
+    }
+  ],
+  "long_range": [],
+  "meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "snapshot_id": "fixture-v1",
+    "truncated": false
+  },
+  "node": {
+    "aliases": [
+      {
+        "kind": "symbol",
+        "source": "HGNC fixture",
+        "value": "BRCA2"
+      },
+      {
+        "kind": "external_id",
+        "source": "HGNC fixture",
+        "value": "HGNC:1101"
+      },
+      {
+        "kind": "external_id",
+        "source": "NCBI Gene fixture",
+        "value": "675"
+      },
+      {
+        "kind": "external_id",
+        "source": "UniProt fixture",
+        "value": "P51587"
+      }
+    ],
+    "attributes": {
+      "biotype": "protein_coding",
+      "chromosome": "13q13.1"
+    },
+    "description": "DNA repair associated protein 2; a mediator of homologous recombination.",
+    "display_name": "BRCA2",
+    "external_links": [
+      {
+        "kind": "external_id",
+        "label": "HGNC:1101",
+        "url": "https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/HGNC:1101"
+      },
+      {
+        "kind": "external_id",
+        "label": "675",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=675"
+      },
+      {
+        "kind": "external_id",
+        "label": "P51587",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=P51587"
+      }
+    ],
+    "node_id": "ENSG00000139618",
+    "node_type": "gene",
+    "source": "Ensembl fixture"
+  },
+  "putative_links": []
+}

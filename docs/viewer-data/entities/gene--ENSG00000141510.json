@@ -1,0 +1,223 @@
+{
+  "edges": [
+    {
+      "anchor_role": "x",
+      "credibility": 2,
+      "display_relation": "disease associated gene",
+      "edge_key": "fixture:edge:3",
+      "effect_direction": "risk",
+      "kind": "observed",
+      "neighbor_id": "EFO:0000305",
+      "neighbor_name": "breast carcinoma",
+      "neighbor_type": "disease",
+      "relation": "disease_associated_gene",
+      "row_kind": "observed",
+      "score": 0.86,
+      "source": "OpenTargets fixture",
+      "x_id": "ENSG00000141510",
+      "x_type": "gene",
+      "y_id": "EFO:0000305",
+      "y_type": "disease"
+    },
+    {
+      "anchor_role": "x",
+      "credibility": 2,
+      "display_relation": "disease associated gene",
+      "edge_key": "fixture:edge:4",
+      "effect_direction": "risk",
+      "kind": "observed",
+      "neighbor_id": "EFO:0000616",
+      "neighbor_name": "lung carcinoma",
+      "neighbor_type": "disease",
+      "relation": "disease_associated_gene",
+      "row_kind": "observed",
+      "score": 0.81,
+      "source": "OpenTargets fixture",
+      "x_id": "ENSG00000141510",
+      "x_type": "gene",
+      "y_id": "EFO:0000616",
+      "y_type": "disease"
+    },
+    {
+      "anchor_role": "y",
+      "credibility": 1,
+      "display_relation": "molecule targets gene",
+      "edge_key": "fixture:edge:7",
+      "kind": "observed",
+      "neighbor_id": "CHEMBL1201585",
+      "neighbor_name": "gefitinib",
+      "neighbor_type": "molecule",
+      "pharmacological_action": "binding evidence only",
+      "relation": "molecule_targets_gene",
+      "row_kind": "observed",
+      "score": 0.54,
+      "source": "ChEMBL fixture",
+      "x_id": "CHEMBL1201585",
+      "x_type": "molecule",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    },
+    {
+      "anchor_role": "y",
+      "credibility": 1,
+      "display_relation": "molecule targets gene",
+      "edge_key": "fixture:edge:8",
+      "kind": "observed",
+      "neighbor_id": "CHEMBL25",
+      "neighbor_name": "aspirin",
+      "neighbor_type": "molecule",
+      "pharmacological_action": "weak fixture support",
+      "relation": "molecule_targets_gene",
+      "row_kind": "observed",
+      "score": 0.46,
+      "source": "ChEMBL fixture",
+      "x_id": "CHEMBL25",
+      "x_type": "molecule",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    },
+    {
+      "anchor_role": "y",
+      "credibility": 2,
+      "display_relation": "gene interacts gene",
+      "edge_key": "fixture:edge:9",
+      "interaction_kind": "physical_interaction",
+      "kind": "observed",
+      "neighbor_id": "ENSG00000012048",
+      "neighbor_name": "BRCA1",
+      "neighbor_type": "gene",
+      "relation": "gene_interacts_gene",
+      "row_kind": "observed",
+      "score": 0.79,
+      "source": "BioGRID fixture",
+      "x_id": "ENSG00000012048",
+      "x_type": "gene",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    }
+  ],
+  "evidence": [
+    {
+      "edge_key": "fixture:edge:4",
+      "evidence_score": 0.81,
+      "license": "CC BY 4.0 fixture metadata",
+      "paper_id": "PMID:0000004",
+      "predicate": "associated_with",
+      "relation": "disease_associated_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "OpenTargets fixture",
+      "source_dataset": "associationByDatasourceDirect",
+      "source_record_id": "fixture:ot:tp53-lung",
+      "x_id": "ENSG00000141510",
+      "x_type": "gene",
+      "y_id": "EFO:0000616",
+      "y_type": "disease"
+    },
+    {
+      "edge_key": "fixture:edge:7",
+      "evidence_score": 0.54,
+      "license": "fixture only",
+      "paper_id": "CHEMBL-ACT:fixture:2",
+      "predicate": "binding_support",
+      "relation": "molecule_targets_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "ChEMBL fixture",
+      "source_dataset": "activity",
+      "source_record_id": "fixture:chembl:gefitinib-tp53",
+      "x_id": "CHEMBL1201585",
+      "x_type": "molecule",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    },
+    {
+      "edge_key": "fixture:edge:9",
+      "evidence_score": 0.79,
+      "license": "fixture only",
+      "paper_id": "BIOGRID:fixture:12",
+      "predicate": "physical_interaction",
+      "relation": "gene_interacts_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "BioGRID fixture",
+      "source_dataset": "physical_interactions",
+      "source_record_id": "fixture:biogrid:brca1-tp53",
+      "x_id": "ENSG00000012048",
+      "x_type": "gene",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    }
+  ],
+  "features": [
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "description",
+      "feature_kind": "identity_summary",
+      "node_id": "ENSG00000141510",
+      "node_type": "gene",
+      "release": "fixture-v1",
+      "source": "Ensembl fixture",
+      "value": "Tumor protein p53; a transcription factor coordinating DNA-damage responses, cell-cycle arrest and apoptosis."
+    }
+  ],
+  "long_range": [],
+  "meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "snapshot_id": "fixture-v1",
+    "truncated": false
+  },
+  "node": {
+    "aliases": [
+      {
+        "kind": "symbol",
+        "source": "HGNC fixture",
+        "value": "TP53"
+      },
+      {
+        "kind": "external_id",
+        "source": "HGNC fixture",
+        "value": "HGNC:11998"
+      },
+      {
+        "kind": "external_id",
+        "source": "NCBI Gene fixture",
+        "value": "7157"
+      },
+      {
+        "kind": "external_id",
+        "source": "UniProt fixture",
+        "value": "P04637"
+      }
+    ],
+    "attributes": {
+      "biotype": "protein_coding",
+      "chromosome": "17p13.1"
+    },
+    "description": "Tumor protein p53; a transcription factor coordinating DNA-damage responses, cell-cycle arrest and apoptosis.",
+    "display_name": "TP53",
+    "external_links": [
+      {
+        "kind": "external_id",
+        "label": "HGNC:11998",
+        "url": "https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/HGNC:11998"
+      },
+      {
+        "kind": "external_id",
+        "label": "7157",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=7157"
+      },
+      {
+        "kind": "external_id",
+        "label": "P04637",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=P04637"
+      }
+    ],
+    "node_id": "ENSG00000141510",
+    "node_type": "gene",
+    "source": "Ensembl fixture"
+  },
+  "putative_links": []
+}

@@ -1,0 +1,149 @@
+{
+  "edges": [
+    {
+      "anchor_role": "x",
+      "credibility": 3,
+      "display_relation": "molecule targets gene",
+      "edge_key": "fixture:edge:6",
+      "kind": "observed",
+      "neighbor_id": "ENSG00000146648",
+      "neighbor_name": "EGFR",
+      "neighbor_type": "gene",
+      "pharmacological_action": "inhibitor",
+      "relation": "molecule_targets_gene",
+      "row_kind": "observed",
+      "score": 0.94,
+      "source": "ChEMBL fixture",
+      "x_id": "CHEMBL1201585",
+      "x_type": "molecule",
+      "y_id": "ENSG00000146648",
+      "y_type": "gene"
+    },
+    {
+      "anchor_role": "x",
+      "credibility": 1,
+      "display_relation": "molecule targets gene",
+      "edge_key": "fixture:edge:7",
+      "kind": "observed",
+      "neighbor_id": "ENSG00000141510",
+      "neighbor_name": "TP53",
+      "neighbor_type": "gene",
+      "pharmacological_action": "binding evidence only",
+      "relation": "molecule_targets_gene",
+      "row_kind": "observed",
+      "score": 0.54,
+      "source": "ChEMBL fixture",
+      "x_id": "CHEMBL1201585",
+      "x_type": "molecule",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    }
+  ],
+  "evidence": [
+    {
+      "edge_key": "fixture:edge:6",
+      "evidence_score": 0.94,
+      "license": "fixture only",
+      "paper_id": "CHEMBL-ACT:fixture:1",
+      "predicate": "inhibits",
+      "relation": "molecule_targets_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "ChEMBL fixture",
+      "source_dataset": "mechanism",
+      "source_record_id": "fixture:chembl:gefitinib-egfr",
+      "x_id": "CHEMBL1201585",
+      "x_type": "molecule",
+      "y_id": "ENSG00000146648",
+      "y_type": "gene"
+    },
+    {
+      "edge_key": "fixture:edge:7",
+      "evidence_score": 0.54,
+      "license": "fixture only",
+      "paper_id": "CHEMBL-ACT:fixture:2",
+      "predicate": "binding_support",
+      "relation": "molecule_targets_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "ChEMBL fixture",
+      "source_dataset": "activity",
+      "source_record_id": "fixture:chembl:gefitinib-tp53",
+      "x_id": "CHEMBL1201585",
+      "x_type": "molecule",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    }
+  ],
+  "features": [
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "description",
+      "feature_kind": "identity_summary",
+      "node_id": "CHEMBL1201585",
+      "node_type": "molecule",
+      "release": "fixture-v1",
+      "source": "ChEMBL fixture",
+      "value": "A small-molecule EGFR tyrosine kinase inhibitor."
+    },
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "action",
+      "feature_kind": "chemical",
+      "node_id": "CHEMBL1201585",
+      "node_type": "molecule",
+      "release": "fixture-v1",
+      "source": "ChEMBL fixture",
+      "value": "EGFR inhibitor in fixture mechanism row"
+    }
+  ],
+  "long_range": [],
+  "meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "snapshot_id": "fixture-v1",
+    "truncated": false
+  },
+  "node": {
+    "aliases": [
+      {
+        "kind": "name",
+        "source": "ChEMBL fixture",
+        "value": "IRESSA"
+      },
+      {
+        "kind": "external_id",
+        "source": "DrugBank fixture",
+        "value": "DB00317"
+      },
+      {
+        "kind": "external_id",
+        "source": "PubChem fixture",
+        "value": "123631"
+      }
+    ],
+    "attributes": {
+      "canonical_smiles": "COC1=NC=NC2=C1C=CN2",
+      "chembl_phase": "4"
+    },
+    "description": "A small-molecule EGFR tyrosine kinase inhibitor.",
+    "display_name": "gefitinib",
+    "external_links": [
+      {
+        "kind": "external_id",
+        "label": "DB00317",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=DB00317"
+      },
+      {
+        "kind": "external_id",
+        "label": "123631",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=123631"
+      }
+    ],
+    "node_id": "CHEMBL1201585",
+    "node_type": "molecule",
+    "source": "ChEMBL fixture"
+  },
+  "putative_links": []
+}

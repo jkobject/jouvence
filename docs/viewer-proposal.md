@@ -21,7 +21,8 @@ The useful pattern from GeneCards is the **entity dossier**: stable identity at 
 - observed edges, long-range retrieval and inferred hypotheses are visually and semantically separate;
 - a right-hand trail records only navigation through node links, not unrelated search jumps;
 - data access is local-first and read-only;
-- the public site hosts product documentation and a fixture demo, while real data stays behind a user-run localhost backend.
+- the public site hosts product documentation and a reviewed static viewer bundle over ordinary HTTPS, with an embedded generated fixture only for direct-file fallback;
+- a user-run localhost backend remains the path for arbitrary local bundles and future authenticated requester-pays access, but the useful public path does not require a remote backend.
 
 ## 3. State-of-the-art comparison
 
@@ -282,6 +283,7 @@ Do not route remote reads through macOS GCS-FUSE. Do not scan full canonical rel
 ### Phase 1 — fixture-complete local viewer
 
 - backend reads the existing deterministic public fixture;
+- generated manifest/search/entity shards provide the same fixture semantics on static hosting, with parity tests preventing drift;
 - all endpoints, page sections, history and exports work;
 - Playwright validates search-vs-link history behavior;
 - no fixture result is presented as live KG evidence.
