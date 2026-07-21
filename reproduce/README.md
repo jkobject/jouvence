@@ -29,8 +29,16 @@ This directory contains the notebooks and scripts that create, ingest, audit, or
 23. [`23_txdata_explore_legacy.ipynb`](23_txdata_explore_legacy.ipynb) — legacy TxData exploration retained as build history.
 24. [`24_txgnn_model_demo.ipynb`](24_txgnn_model_demo.ipynb) — upstream TxGNN model demonstration.
 25. [`25_gather_txgnn_paper_results.ipynb`](25_gather_txgnn_paper_results.ipynb) — reproduce paper-result plots.
+26. [`26_source_reproduction_index.ipynb`](26_source_reproduction_index.ipynb) — reconcile the canonical source denominator and explain the base Open Targets/TxData-derived lanes.
+27. [`27_source_native_protein_context_reproduction.ipynb`](27_source_native_protein_context_reproduction.ipynb) — explain BioGRID, IntAct, HPA, UniProt, Reactome, ChEMBL, and deferred miRNA paths, with a bounded IntAct mapping illustration.
+28. [`28_cell_line_pharmacology_clinical_reproduction.ipynb`](28_cell_line_pharmacology_clinical_reproduction.ipynb) — explain DepMap/Project Score, GDSC, PRISM 20Q2, Cellosaurus, and ClinicalTrials.gov, with bounded parser illustrations.
+29. [`29_official_features_exports_reproduction.ipynb`](29_official_features_exports_reproduction.ipynb) — explain Ensembl/HPO/RDKit features, Cell Ontology and UBERON textual-feature sources, embeddings, PyG export, and the partial Lamin status surface, with a bounded schema/hash illustration.
 
 Executed historical copies are isolated under [`executed/`](executed/) and use the same numeric identity as their source notebook. The numeric prefix is the canonical order; new notebooks must use the next two-digit number rather than letter suffixes or unnumbered filenames.
+
+## Authoritative source-family inventory
+
+[`source_family_inventory.json`](source_family_inventory.json) contains 26 source/pipeline families: 12 that contributed canonical nodes, edges, or evidence; five official feature-source families (including canonical Cellosaurus where it also backs official text features); six staged families (including the bounded PyG export/runtime smoke); and four deferred families. Artifact status is kept separate from replay completeness: a canonical family can be explanatorily complete while lacking a bounded source-native fixture. Every row records its release or historical snapshot, access and licence, cache template, preprocessing entrypoint, mapping/rejection policy, outputs, accepted validation evidence, notebook anchor, and exact residual gap. Regenerate the four deterministic notebooks with `uv run python reproduce/generate_source_reproduction_notebooks.py`.
 
 ## Paper scripts
 
@@ -40,4 +48,4 @@ Executed historical copies are isolated under [`executed/`](executed/) and use t
 
 ## Safety
 
-Notebooks call existing `manage_db`, `txdata_download`, and `txgnn` code; they should not duplicate production builders inline. Heavy full-KG, LaminDB, embedding, ReMap, or PyG operations are worker-only and remain gated by explicit environment variables and review. Canonical writes are never an implicit notebook default.
+The four source-reproduction notebooks are not command runners. Production commands appear only as Markdown text. Executable cells use synthetic inputs, temporary directories, and pure tracked parser/schema functions; they do not invoke a shell, subprocess, network, cloud/GCS, LaminDB, canonical paths, or production builders. Heavy and canonical work remains outside notebooks and requires its own reviewed worker card.
