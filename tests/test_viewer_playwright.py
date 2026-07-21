@@ -20,7 +20,7 @@ STATIC_BASE = f"http://127.0.0.1:{STATIC_PORT}"
 @pytest.fixture(scope="module")
 def viewer_server() -> Iterator[str]:
     proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "manage_db.viewer.app:app", "--host", "127.0.0.1", "--port", str(PORT)],
+        ["uv", "run", "jouvence-viewer", "--host", "127.0.0.1", "--port", str(PORT)],
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -29,11 +29,16 @@ def viewer_server() -> Iterator[str]:
     try:
         import urllib.request
 
+        launch_url = ""
         for _ in range(80):
+            if not launch_url and proc.stdout:
+                line = proc.stdout.readline()
+                if line.startswith("Local URL: "):
+                    launch_url = line.removeprefix("Local URL: ").strip()
             try:
-                with urllib.request.urlopen(f"{BASE}/api/session", timeout=0.25) as response:
-                    if response.status == 200:
-                        yield BASE
+                with urllib.request.urlopen(BASE, timeout=0.25) as response:
+                    if response.status == 200 and launch_url:
+                        yield launch_url
                         return
             except Exception:
                 if proc.poll() is not None:
@@ -93,8 +98,17 @@ def test_search_link_history_and_exports(page: Page, viewer_server: str) -> None
     page.goto(viewer_server)
     expect(page.locator("#entity-name")).to_have_text("BRCA1")
     expect(page.locator("#source-button")).to_contain_text("Deterministic fixture")
+    expect(page.locator("#mode-status")).to_have_text("fixture")
+    expect(page.locator("#snapshot-status")).to_have_text("fixture-v1")
+    expect(page.locator("#cache-status")).to_have_text("in-memory")
+    expect(page.locator("#cost-warning")).to_contain_text("read-only")
+
+    page.reload()
+    expect(page.locator("#source-button")).to_contain_text("Deterministic fixture")
+    expect(page.locator("#mode-status")).to_have_text("fixture")
 
     page.locator("#global-search").fill("TP53")
+    expect(page.locator("[data-search-index='0']")).to_contain_text("TP53")
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
     expect(page.locator("#entity-name")).to_have_text("TP53")
@@ -135,8 +149,8 @@ def test_relative_static_bundle_loads_and_preserves_semantics(page: Page, static
     page.goto(f"{static_server}/viewer.html")
 
     expect(page.locator("#source-button")).to_contain_text("Static fixture bundle")
-    expect(page.get_by_role("link", name="Access the full database locally")).to_have_attribute(
-        "href", "getting-started-data.md"
+    expect(page.get_by_role("link", name="Full-data installation guide")).to_have_attribute(
+        "href", "viewer-install.html"
     )
     assert any(url.endswith("/viewer-data/manifest.json") for url in responses)
     assert any("/viewer-data/entities/gene--ENSG00000012048.json" in url for url in responses)

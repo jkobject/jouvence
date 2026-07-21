@@ -9,6 +9,7 @@ from typing import Any
 
 from . import fixture
 from .app import _full_dossier, _node_payload
+from .bundle import FIXTURE_DATA
 
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[2] / "docs" / "viewer-data"
 
@@ -28,7 +29,7 @@ def build_bundle() -> dict[str, Any]:
         payload = _node_payload(node)
         payload["entity_shard"] = f"entities/{entity_filename(node_type, node_id)}"
         search_nodes.append(payload)
-        entities[key] = _full_dossier(node)
+        entities[key] = _full_dossier(FIXTURE_DATA, node)
         entity_shards[key] = payload["entity_shard"]
 
     manifest = {

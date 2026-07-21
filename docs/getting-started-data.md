@@ -26,6 +26,13 @@ Fixture mode is deterministic, creates only a temporary local KG, needs no
 cloud account, and is the right first check for a clean clone or coding agent.
 The public notebooks also default to fixture mode.
 
+For the interactive product, run the independent no-cloud viewer smoke with
+`uv run jouvence-viewer --fixture-smoke`. A manifest-verified local bundle or
+reviewed requester-pays viewer bundle is launched with `--data-root`; see the
+[bilingual local viewer installation guide](viewer-install.html). The viewer
+rejects the raw canonical `kg/v2` root rather than scanning full tables on a
+laptop.
+
 Mode detection:
 
 - unset or `JOUVENCE_DATA_MODE=fixture`: local fixture/notebook path;

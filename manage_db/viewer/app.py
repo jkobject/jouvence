@@ -1,4 +1,4 @@
-"""FastAPI app for the fixture-backed Phase 1 viewer."""
+"""Read-only localhost API for fixture or immutable viewer-bundle data."""
 
 from __future__ import annotations
 
@@ -8,14 +8,16 @@ import json
 import zipfile
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import fixture
+from .bundle import FIXTURE_DATA
 
 MAX_SEARCH_LIMIT = 25
 MAX_EDGE_LIMIT = 50
@@ -23,14 +25,17 @@ MAX_EVIDENCE_LIMIT = 100
 MAX_FEATURE_LIMIT = 100
 MAX_PUTATIVE_LIMIT = 25
 LONG_RANGE_PER_TYPE_LIMIT = 5
-VALID_NODE_TYPES = {node.node_type for node in fixture.NODES.values()}
+MAX_LONG_RANGE_ROWS = 20
+MAX_EXPORT_REQUEST_BYTES = 64 * 1024
+MAX_EXPORT_RESPONSE_BYTES = 16 * 1024 * 1024
+MAX_API_RESPONSE_BYTES = 16 * 1024 * 1024
 DOCS_ROOT = Path(__file__).resolve().parents[2] / "docs"
 
 
 class Meta(BaseModel):
-    snapshot_id: str = fixture.SNAPSHOT_ID
-    data_mode: str = fixture.DATA_MODE
-    bundle_version: str = fixture.BUNDLE_VERSION
+    snapshot_id: str
+    data_mode: str
+    bundle_version: str
     truncated: bool = False
     next_cursor: str | None = None
 
@@ -61,15 +66,32 @@ class RowsResponse(BaseModel):
     rows: list[dict[str, Any]]
 
 
+class TrailStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    node_type: str = Field(min_length=1, max_length=32)
+    node_id: str = Field(min_length=1, max_length=256)
+    display_name: str | None = Field(default=None, max_length=512)
+    via: str = Field(min_length=1, max_length=512)
+
+
 class ExportRequest(BaseModel):
-    node_type: str
-    node_id: str
-    trail: list[dict[str, str]] = Field(default_factory=list, max_length=50)
+    model_config = ConfigDict(extra="forbid")
+
+    node_type: str = Field(min_length=1, max_length=32)
+    node_id: str = Field(min_length=1, max_length=256)
+    trail: list[TrailStep] = Field(default_factory=list, max_length=50)
     format: Literal["markdown", "csv", "html"] = "markdown"
 
 
-def _meta(*, truncated: bool = False, next_cursor: str | None = None) -> Meta:
-    return Meta(truncated=truncated, next_cursor=next_cursor)
+def _meta(data: Any, *, truncated: bool = False, next_cursor: str | None = None) -> Meta:
+    return Meta(
+        snapshot_id=data.snapshot_id,
+        data_mode=data.mode,
+        bundle_version=data.bundle_version,
+        truncated=truncated,
+        next_cursor=next_cursor,
+    )
 
 
 def _bounded_limit(limit: int, maximum: int) -> int:
@@ -86,10 +108,10 @@ def _cursor_index(cursor: str | None) -> int:
     return int(cursor)
 
 
-def _node_or_404(node_type: str, node_id: str) -> fixture.Node:
-    if node_type.strip().lower() not in VALID_NODE_TYPES:
+def _node_or_404(data: Any, valid_node_types: set[str], node_type: str, node_id: str) -> fixture.Node:
+    if node_type.strip().lower() not in valid_node_types:
         raise HTTPException(status_code=404, detail="unknown node type")
-    node = fixture.NODES.get(fixture.node_key(node_type, node_id))
+    node = data.NODES.get(data.node_key(node_type, node_id))
     if node is None:
         raise HTTPException(status_code=404, detail="unknown node")
     return node
@@ -126,12 +148,12 @@ def _external_link(value: str, kind: str) -> dict[str, str]:
     return {"label": value, "kind": kind, "url": url}
 
 
-def _with_neighbor(edge: dict[str, Any], anchor_type: str, anchor_id: str) -> dict[str, Any]:
+def _with_neighbor(data: Any, edge: dict[str, Any], anchor_type: str, anchor_id: str) -> dict[str, Any]:
     if edge["x_type"] == anchor_type and edge["x_id"] == anchor_id:
         neighbor_type, neighbor_id, anchor_role = edge["y_type"], edge["y_id"], "x"
     else:
         neighbor_type, neighbor_id, anchor_role = edge["x_type"], edge["x_id"], "y"
-    neighbor = fixture.NODES.get((neighbor_type, neighbor_id))
+    neighbor = data.NODES.get((neighbor_type, neighbor_id))
     return {
         **edge,
         "anchor_role": anchor_role,
@@ -148,28 +170,96 @@ def _matches_anchor(row: dict[str, Any], node_type: str, node_id: str) -> bool:
     )
 
 
-def _page(rows: list[dict[str, Any]], limit: int, cursor: str | None) -> tuple[list[dict[str, Any]], Meta]:
+def _page(data: Any, rows: list[dict[str, Any]], limit: int, cursor: str | None) -> tuple[list[dict[str, Any]], Meta]:
     start = _cursor_index(cursor)
     stop = start + limit
     selected = rows[start:stop]
     next_cursor = str(stop) if stop < len(rows) else None
-    return selected, _meta(truncated=next_cursor is not None, next_cursor=next_cursor)
+    return selected, _meta(data, truncated=next_cursor is not None, next_cursor=next_cursor)
 
 
-def create_app(static_docs_root: Path | None = None) -> FastAPI:
+def _capped_long_range(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
+    truncated = False
+    capped: list[dict[str, Any]] = []
+    for endpoint in sorted({row["target_type"] for row in rows}):
+        endpoint_rows = [row for row in rows if row["target_type"] == endpoint]
+        remaining = MAX_LONG_RANGE_ROWS - len(capped)
+        if remaining <= 0:
+            truncated = True
+            break
+        capped.extend(endpoint_rows[: min(LONG_RANGE_PER_TYPE_LIMIT, remaining)])
+        truncated = truncated or len(endpoint_rows) > LONG_RANGE_PER_TYPE_LIMIT
+    truncated = truncated or len(capped) < len(rows)
+    return capped, truncated
+
+
+def create_app(
+    static_docs_root: Path | None = None,
+    *,
+    data_source: Any | None = None,
+    session_token: str | None = None,
+) -> FastAPI:
+    if not isinstance(session_token, str) or not 8 <= len(session_token) <= 256:
+        raise ValueError("a non-empty local session token is required")
+    data = data_source or FIXTURE_DATA
+    valid_node_types = {node.node_type for node in data.NODES.values()}
     app = FastAPI(
-        title="Jouvence-Graph fixture viewer API",
-        version="0.1.0",
+        title="Jouvence-Graph local viewer API",
+        version="0.2.0",
         docs_url="/api/docs",
         redoc_url=None,
     )
     app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://127.0.0.1", "http://127.0.0.1:8000"],
-        allow_credentials=False,
-        allow_methods=["GET", "POST"],
-        allow_headers=["content-type"],
+        TrustedHostMiddleware,
+        allowed_hosts=["127.0.0.1", "localhost"],
     )
+
+    @app.middleware("http")
+    async def local_request_guard(request: Request, call_next):
+        origin = request.headers.get("origin")
+        if origin:
+            parsed_origin = urlsplit(origin)
+            if parsed_origin.scheme != "http" or parsed_origin.hostname not in {"127.0.0.1", "localhost"}:
+                return JSONResponse(status_code=403, content={"detail": "non-local origin rejected"})
+        if request.url.path.startswith("/api"):
+            if request.headers.get("x-jouvence-session") != session_token:
+                return JSONResponse(status_code=401, content={"detail": "invalid local session"})
+        if request.method == "POST" and request.url.path == "/api/export":
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    declared_length = int(content_length)
+                except ValueError:
+                    return JSONResponse(status_code=400, content={"detail": "invalid content length"})
+                if declared_length < 0 or declared_length > MAX_EXPORT_REQUEST_BYTES:
+                    return JSONResponse(status_code=413, content={"detail": "export request too large"})
+            body = bytearray()
+            async for chunk in request.stream():
+                if len(body) + len(chunk) > MAX_EXPORT_REQUEST_BYTES:
+                    return JSONResponse(status_code=413, content={"detail": "export request too large"})
+                body.extend(chunk)
+            request._body = bytes(body)
+        response = await call_next(request)
+        if not request.url.path.startswith("/api"):
+            return response
+        body = bytearray()
+        async for chunk in response.body_iterator:
+            if len(body) + len(chunk) > MAX_API_RESPONSE_BYTES:
+                return JSONResponse(status_code=413, content={"detail": "API response too large"})
+            body.extend(chunk)
+        headers = dict(response.headers)
+        headers.pop("content-length", None)
+        return Response(
+            content=bytes(body),
+            status_code=response.status_code,
+            headers=headers,
+            media_type=response.media_type,
+            background=response.background,
+        )
+
+    @app.exception_handler(Exception)
+    async def sanitized_error(_request: Request, _error: Exception):
+        return JSONResponse(status_code=500, content={"detail": "internal viewer error"})
 
     docs_root = static_docs_root or DOCS_ROOT
     if docs_root.exists():
@@ -185,15 +275,25 @@ def create_app(static_docs_root: Path | None = None) -> FastAPI:
                 .replace('src="viewer-data/fixture.js"', 'src="/static/viewer-data/fixture.js"')
                 .replace('src="viewer.js"', 'src="/static/viewer.js"')
                 .replace('href="site.css"', 'href="/static/site.css"')
+                .replace('href="index.html"', 'href="/static/index.html"')
+                .replace('href="viewer-install.html"', 'href="/static/viewer-install.html"')
+                .replace('href="viewer-proposal.md"', 'href="/static/viewer-proposal.md"')
             )
         return "<h1>Jouvence-Graph viewer</h1>"
 
     @app.get("/api/session")
     def session() -> dict[str, Any]:
         return {
-            "meta": _meta(),
-            "source": {"mode": fixture.DATA_MODE, "label": "Deterministic fixture", "localhost_only": True},
-            "snapshot": {"snapshot_id": fixture.SNAPSHOT_ID, "bundle_version": fixture.BUNDLE_VERSION},
+            "meta": _meta(data),
+            "source": {
+                "mode": data.mode,
+                "label": data.label,
+                "localhost_only": True,
+                "credential_transport": "host-only",
+                "requester_pays_warning": data.requester_pays_warning,
+            },
+            "snapshot": {"snapshot_id": data.snapshot_id, "bundle_version": data.bundle_version},
+            "cache": {"status": data.cache_status, "bounded": True},
             "capabilities": ["search", "dossier", "features", "edges", "evidence", "long_range", "putative", "export"],
         }
 
@@ -204,12 +304,12 @@ def create_app(static_docs_root: Path | None = None) -> FastAPI:
         limit: int = Query(default=10),
     ) -> SearchResponse:
         limit = _bounded_limit(limit, MAX_SEARCH_LIMIT)
-        allowed = {item.strip().lower() for item in types.split(",")} if types else VALID_NODE_TYPES
-        if not allowed.issubset(VALID_NODE_TYPES):
+        allowed = {item.strip().lower() for item in types.split(",")} if types else valid_node_types
+        if not allowed.issubset(valid_node_types):
             raise HTTPException(status_code=422, detail="types contains an unsupported node type")
         needle = q.strip().lower()
         candidates: list[tuple[int, SearchItem]] = []
-        for node in fixture.NODES.values():
+        for node in data.NODES.values():
             if node.node_type not in allowed:
                 continue
             aliases = [
@@ -245,111 +345,191 @@ def create_app(static_docs_root: Path | None = None) -> FastAPI:
                 )
                 break
         ordered = [item for _, item in sorted(candidates, key=lambda pair: (pair[0], pair[1].node_type, pair[1].display_name.lower()))]
-        return SearchResponse(meta=_meta(truncated=len(ordered) > limit), results=ordered[:limit])
+        return SearchResponse(meta=_meta(data, truncated=len(ordered) > limit), results=ordered[:limit])
 
     @app.get("/api/nodes/{node_type}/{node_id}", response_model=NodeResponse)
     def node(node_type: str, node_id: str) -> NodeResponse:
-        return NodeResponse(meta=_meta(), node=_node_payload(_node_or_404(node_type, node_id)))
+        selected = _node_or_404(data, valid_node_types, node_type, node_id)
+        return NodeResponse(meta=_meta(data), node=_node_payload(selected))
 
     @app.get("/api/nodes/{node_type}/{node_id}/features", response_model=RowsResponse)
     def features(node_type: str, node_id: str, limit: int = Query(default=100)) -> RowsResponse:
-        _node_or_404(node_type, node_id)
+        _node_or_404(data, valid_node_types, node_type, node_id)
         limit = _bounded_limit(limit, MAX_FEATURE_LIMIT)
-        rows = [row for row in fixture.FEATURE_ROWS if row["node_type"] == node_type and row["node_id"] == node_id]
-        return RowsResponse(meta=_meta(truncated=len(rows) > limit), rows=rows[:limit])
+        rows = [row for row in data.FEATURE_ROWS if row["node_type"] == node_type and row["node_id"] == node_id]
+        return RowsResponse(meta=_meta(data, truncated=len(rows) > limit), rows=rows[:limit])
 
     @app.get("/api/nodes/{node_type}/{node_id}/edges", response_model=RowsResponse)
     def edges(node_type: str, node_id: str, limit: int = Query(default=50), cursor: str | None = None) -> RowsResponse:
-        node = _node_or_404(node_type, node_id)
+        node = _node_or_404(data, valid_node_types, node_type, node_id)
         limit = _bounded_limit(limit, MAX_EDGE_LIMIT)
-        rows = [_with_neighbor(row, node.node_type, node.node_id) for row in fixture.EDGE_ROWS if _matches_anchor(row, node.node_type, node.node_id)]
-        selected, meta = _page(rows, limit, cursor)
+        rows = [_with_neighbor(data, row, node.node_type, node.node_id) for row in data.EDGE_ROWS if _matches_anchor(row, node.node_type, node.node_id)]
+        selected, meta = _page(data, rows, limit, cursor)
         return RowsResponse(meta=meta, rows=selected)
 
     @app.get("/api/edges/{edge_key}/evidence", response_model=RowsResponse)
     def edge_evidence(edge_key: str, limit: int = Query(default=100), cursor: str | None = None) -> RowsResponse:
         limit = _bounded_limit(limit, MAX_EVIDENCE_LIMIT)
-        rows = [row for row in fixture.EVIDENCE_ROWS if row["edge_key"] == edge_key]
-        selected, meta = _page(rows, limit, cursor)
+        rows = [row for row in data.EVIDENCE_ROWS if row["edge_key"] == edge_key]
+        selected, meta = _page(data, rows, limit, cursor)
         return RowsResponse(meta=meta, rows=selected)
 
     @app.get("/api/nodes/{node_type}/{node_id}/evidence", response_model=RowsResponse)
     def node_evidence(node_type: str, node_id: str, limit: int = Query(default=100), cursor: str | None = None) -> RowsResponse:
-        node = _node_or_404(node_type, node_id)
+        node = _node_or_404(data, valid_node_types, node_type, node_id)
         limit = _bounded_limit(limit, MAX_EVIDENCE_LIMIT)
-        rows = [row for row in fixture.EVIDENCE_ROWS if _matches_anchor(row, node.node_type, node.node_id)]
-        selected, meta = _page(rows, limit, cursor)
+        rows = [row for row in data.EVIDENCE_ROWS if _matches_anchor(row, node.node_type, node.node_id)]
+        selected, meta = _page(data, rows, limit, cursor)
         return RowsResponse(meta=meta, rows=selected)
 
     @app.get("/api/nodes/{node_type}/{node_id}/long-range", response_model=RowsResponse)
     def long_range(node_type: str, node_id: str, target_type: str | None = None) -> RowsResponse:
-        node = _node_or_404(node_type, node_id)
-        rows = [row for row in fixture.LONG_RANGE_ROWS if row["anchor_type"] == node.node_type and row["anchor_id"] == node.node_id]
+        node = _node_or_404(data, valid_node_types, node_type, node_id)
+        rows = [row for row in data.LONG_RANGE_ROWS if row["anchor_type"] == node.node_type and row["anchor_id"] == node.node_id]
         if target_type:
-            if target_type not in VALID_NODE_TYPES | {"phenotype"}:
+            if target_type not in valid_node_types | {"phenotype"}:
                 raise HTTPException(status_code=422, detail="unsupported target_type")
             rows = [row for row in rows if row["target_type"] == target_type]
         rows = sorted(rows, key=lambda row: (row["target_type"], row["rank"]))
-        truncated = False
-        capped: list[dict[str, Any]] = []
-        for endpoint in sorted({row["target_type"] for row in rows}):
-            endpoint_rows = [row for row in rows if row["target_type"] == endpoint]
-            capped.extend(endpoint_rows[:LONG_RANGE_PER_TYPE_LIMIT])
-            truncated = truncated or len(endpoint_rows) > LONG_RANGE_PER_TYPE_LIMIT
-        return RowsResponse(meta=_meta(truncated=truncated), rows=capped)
+        capped, truncated = _capped_long_range(rows)
+        return RowsResponse(meta=_meta(data, truncated=truncated), rows=capped)
 
     @app.get("/api/nodes/{node_type}/{node_id}/putative", response_model=RowsResponse)
     def putative(node_type: str, node_id: str, limit: int = Query(default=25)) -> RowsResponse:
-        node = _node_or_404(node_type, node_id)
+        node = _node_or_404(data, valid_node_types, node_type, node_id)
         limit = _bounded_limit(limit, MAX_PUTATIVE_LIMIT)
-        rows = [row for row in fixture.PUTATIVE_ROWS if row["anchor_type"] == node.node_type and row["anchor_id"] == node.node_id]
-        return RowsResponse(meta=_meta(truncated=len(rows) > limit), rows=rows[:limit])
+        rows = [row for row in data.PUTATIVE_ROWS if row["anchor_type"] == node.node_type and row["anchor_id"] == node.node_id]
+        return RowsResponse(meta=_meta(data, truncated=len(rows) > limit), rows=rows[:limit])
 
     @app.post("/api/export")
     def export(request: ExportRequest) -> Response:
-        node = _node_or_404(request.node_type, request.node_id)
-        dossier = _full_dossier(node)
-        trail = [_trail_row(step) for step in request.trail]
+        node = _node_or_404(data, valid_node_types, request.node_type, request.node_id)
+        dossier = _full_dossier(data, node)
+        trail = [_trail_row(data, valid_node_types, step) for step in request.trail]
         if request.format == "markdown":
-            return Response(_markdown_export(dossier, trail), media_type="text/markdown")
+            return Response(
+                _bounded_export_payload(_markdown_export(data, dossier, trail)),
+                media_type="text/markdown",
+            )
         if request.format == "html":
-            return Response(_html_export(dossier, trail), media_type="text/html")
-        return Response(_csv_zip_export(dossier, trail), media_type="application/zip", headers={"Content-Disposition": "attachment; filename=jouvence-viewer-export.zip"})
+            return Response(
+                _bounded_export_payload(_html_export(data, dossier, trail)),
+                media_type="text/html",
+            )
+        return Response(
+            _bounded_export_payload(_csv_zip_export(data, dossier, trail)),
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=jouvence-viewer-export.zip"},
+        )
 
     return app
 
 
-def _full_dossier(node: fixture.Node) -> dict[str, Any]:
+def _bounded_matches(
+    rows: list[dict[str, Any]],
+    predicate: Any,
+    maximum: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    selected: list[dict[str, Any]] = []
+    truncated = False
+    for row in rows:
+        if not predicate(row):
+            continue
+        if len(selected) < maximum:
+            selected.append(row)
+        else:
+            truncated = True
+    return selected, truncated
+
+
+def _bounded_long_range_matches(
+    rows: list[dict[str, Any]],
+    node: fixture.Node,
+) -> tuple[list[dict[str, Any]], bool]:
+    by_target: dict[str, list[dict[str, Any]]] = {}
+    truncated = False
+    selected_count = 0
+    for row in rows:
+        if row["anchor_type"] != node.node_type or row["anchor_id"] != node.node_id:
+            continue
+        if selected_count >= MAX_LONG_RANGE_ROWS:
+            truncated = True
+            continue
+        selected = by_target.get(row["target_type"])
+        if selected is None:
+            selected = by_target.setdefault(row["target_type"], [])
+        if len(selected) < LONG_RANGE_PER_TYPE_LIMIT:
+            selected.append(row)
+            selected_count += 1
+        else:
+            truncated = True
+    return [row for target in sorted(by_target) for row in by_target[target]], truncated
+
+
+def _full_dossier(data: Any, node: fixture.Node) -> dict[str, Any]:
     node_payload = _node_payload(node)
-    edges = [_with_neighbor(row, node.node_type, node.node_id) for row in fixture.EDGE_ROWS if _matches_anchor(row, node.node_type, node.node_id)]
+    raw_edges, edges_truncated = _bounded_matches(
+        data.EDGE_ROWS,
+        lambda row: _matches_anchor(row, node.node_type, node.node_id),
+        MAX_EDGE_LIMIT,
+    )
+    edges = [
+        _with_neighbor(data, row, node.node_type, node.node_id)
+        for row in raw_edges
+    ]
+    features, features_truncated = _bounded_matches(
+        data.FEATURE_ROWS,
+        lambda row: row["node_type"] == node.node_type and row["node_id"] == node.node_id,
+        MAX_FEATURE_LIMIT,
+    )
+    evidence, evidence_truncated = _bounded_matches(
+        data.EVIDENCE_ROWS,
+        lambda row: _matches_anchor(row, node.node_type, node.node_id),
+        MAX_EVIDENCE_LIMIT,
+    )
+    long_range, long_range_truncated = _bounded_long_range_matches(data.LONG_RANGE_ROWS, node)
+    putative, putative_truncated = _bounded_matches(
+        data.PUTATIVE_ROWS,
+        lambda row: row["anchor_type"] == node.node_type and row["anchor_id"] == node.node_id,
+        MAX_PUTATIVE_LIMIT,
+    )
+    truncated = any(
+        (features_truncated, edges_truncated, evidence_truncated, long_range_truncated, putative_truncated)
+    )
     return {
-        "meta": _meta().model_dump(),
+        "meta": _meta(data, truncated=truncated).model_dump(),
         "node": node_payload,
-        "features": [row for row in fixture.FEATURE_ROWS if row["node_type"] == node.node_type and row["node_id"] == node.node_id],
+        "features": features,
         "edges": edges,
-        "evidence": [row for row in fixture.EVIDENCE_ROWS if _matches_anchor(row, node.node_type, node.node_id)],
-        "long_range": [row for row in fixture.LONG_RANGE_ROWS if row["anchor_type"] == node.node_type and row["anchor_id"] == node.node_id],
-        "putative_links": [row for row in fixture.PUTATIVE_ROWS if row["anchor_type"] == node.node_type and row["anchor_id"] == node.node_id],
+        "evidence": evidence,
+        "long_range": long_range,
+        "putative_links": putative,
     }
 
 
-def _trail_row(step: dict[str, str]) -> dict[str, str]:
+def _trail_row(data: Any, valid_node_types: set[str], step: TrailStep) -> dict[str, str]:
     try:
-        node = _node_or_404(step.get("node_type", ""), step.get("node_id", ""))
-    except HTTPException:
-        return {"node_type": step.get("node_type", "unknown"), "node_id": step.get("node_id", "unknown"), "display_name": step.get("display_name", "Unknown"), "via": step.get("via", "unknown")}
-    return {"node_type": node.node_type, "node_id": node.node_id, "display_name": node.display_name, "via": step.get("via", "linked node")}
+        node = _node_or_404(data, valid_node_types, step.node_type, step.node_id)
+    except HTTPException as exc:
+        raise HTTPException(status_code=422, detail="unknown trail node") from exc
+    return {"node_type": node.node_type, "node_id": node.node_id, "display_name": node.display_name, "via": step.via}
 
 
-def _markdown_export(dossier: dict[str, Any], trail: list[dict[str, str]]) -> str:
+def _markdown_export(data: Any, dossier: dict[str, Any], trail: list[dict[str, str]]) -> str:
     node = dossier["node"]
+    ranker_versions = sorted(
+        {
+            f"{row['ranker_id']}:{row['ranker_version']}"
+            for row in dossier["long_range"]
+        }
+    )
     lines = [
         "---",
-        f"snapshot_id: {fixture.SNAPSHOT_ID}",
-        f"data_mode: {fixture.DATA_MODE}",
+        f"snapshot_id: {data.snapshot_id}",
+        f"data_mode: {data.mode}",
         f"node_type: {node['node_type']}",
         f"node_id: {node['node_id']}",
-        "ranker_versions: [fixture_path_ranker:v1]",
+        f"ranker_versions: {json.dumps(ranker_versions)}",
         "---",
         "",
         f"# {node['display_name']}",
@@ -377,13 +557,13 @@ def _markdown_export(dossier: dict[str, Any], trail: list[dict[str, str]]) -> st
     return "\n".join(lines) + "\n"
 
 
-def _html_export(dossier: dict[str, Any], trail: list[dict[str, str]]) -> str:
-    markdown = _markdown_export(dossier, trail)
+def _html_export(data: Any, dossier: dict[str, Any], trail: list[dict[str, str]]) -> str:
+    markdown = _markdown_export(data, dossier, trail)
     escaped = markdown.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return f"<!doctype html><title>Jouvence-Graph export</title><pre>{escaped}</pre>"
 
 
-def _csv_zip_export(dossier: dict[str, Any], trail: list[dict[str, str]]) -> bytes:
+def _csv_zip_export(data: Any, dossier: dict[str, Any], trail: list[dict[str, str]]) -> bytes:
     tables = {
         "node.csv": [dossier["node"]],
         "features.csv": dossier["features"],
@@ -395,10 +575,39 @@ def _csv_zip_export(dossier: dict[str, Any], trail: list[dict[str, str]]) -> byt
     }
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps({"snapshot_id": fixture.SNAPSHOT_ID, "data_mode": fixture.DATA_MODE, "row_kinds": ["observed", "ranked", "inferred"]}, indent=2))
+        ranker_versions = sorted(
+            {
+                f"{row['ranker_id']}:{row['ranker_version']}"
+                for row in dossier["long_range"]
+            }
+        )
+        archive.writestr(
+            "manifest.json",
+            json.dumps(
+                {
+                    "snapshot_id": data.snapshot_id,
+                    "data_mode": data.mode,
+                    "row_kinds": ["observed", "ranked", "inferred"],
+                    "ranker_versions": ranker_versions,
+                },
+                indent=2,
+            ),
+        )
+        uncompressed_bytes = 0
         for name, rows in tables.items():
-            archive.writestr(name, _csv_text(rows))
+            payload = _csv_text(rows)
+            uncompressed_bytes += len(payload.encode("utf-8"))
+            if uncompressed_bytes > MAX_EXPORT_RESPONSE_BYTES:
+                raise HTTPException(status_code=413, detail="export response too large")
+            archive.writestr(name, payload)
     return buffer.getvalue()
+
+
+def _bounded_export_payload(payload: str | bytes) -> str | bytes:
+    size = len(payload.encode("utf-8")) if isinstance(payload, str) else len(payload)
+    if size > MAX_EXPORT_RESPONSE_BYTES:
+        raise HTTPException(status_code=413, detail="export response too large")
+    return payload
 
 
 def _csv_text(rows: list[dict[str, Any]]) -> str:
@@ -410,6 +619,3 @@ def _csv_text(rows: list[dict[str, Any]]) -> str:
     writer.writeheader()
     writer.writerows(rows)
     return out.getvalue()
-
-
-app = create_app()

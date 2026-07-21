@@ -1,6 +1,16 @@
 (() => {
   'use strict';
 
+  const SESSION_TOKEN_KEY = 'jouvence-viewer-session-token';
+  const bootParams = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const bootstrapToken = bootParams.get('token') || '';
+  if (bootstrapToken) {
+    sessionStorage.setItem(SESSION_TOKEN_KEY, bootstrapToken);
+    bootParams.delete('token');
+    const cleanHash = bootParams.toString();
+    history.replaceState(history.state, '', `${location.pathname}${location.search}${cleanHash ? `#${cleanHash}` : ''}`);
+  }
+  const SESSION_TOKEN = bootstrapToken || sessionStorage.getItem(SESSION_TOKEN_KEY) || '';
   const TYPE_LABEL = {gene:'GN',disease:'DS',molecule:'MO',phenotype:'PH'};
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
@@ -19,7 +29,9 @@
   function setSource(label, ok=true) { const pill=$('#source-button'); pill.innerHTML=`<span></span> ${esc(label)} <b>⌄</b>`; pill.classList.toggle('source-error', !ok); }
 
   async function checkedFetch(path, options = {}) {
-    const response = await fetch(path, options);
+    const headers = {...(options.headers || {})};
+    if (SESSION_TOKEN && path.startsWith('/api')) headers['x-jouvence-session'] = SESSION_TOKEN;
+    const response = await fetch(path, {...options, headers});
     if (!response.ok) {
       let detail = response.statusText;
       try { detail = (await response.json()).detail || detail; } catch (_) {}
@@ -264,7 +276,7 @@
     $$('[data-copy-section]').forEach(b=>b.addEventListener('click',async()=>{await navigator.clipboard.writeText(dossier.features.map(x=>`${x.feature_kind}: ${x.value} (${x.epistemic_kind}; ${x.source})`).join('\n'));showToast('Features copied.');}));
     const dialog=$('#source-dialog');
     $('#source-button').addEventListener('click',()=>dialog.showModal());
-    $('#connect-source').addEventListener('click',e=>{const value=$('input[name=source]:checked').value;if(value!=='demo'){e.preventDefault();showToast('Phase 1 only serves the deterministic local fixture API.');}else showToast('Fixture selected.');});
+    $('#connect-source').addEventListener('click',e=>{const value=$('input[name=source]:checked').value;if(value!=='demo'){e.preventDefault();showToast('Data source is fixed at launch. Restart with the CLI command in the installation guide.');}else showToast('Fixture selected.');});
     window.addEventListener('popstate',()=>{const params=new URLSearchParams(location.hash.replace(/^#/, ''));const type=params.get('node_type'), id=params.get('node_id');if(type&&id)navigate(type,id,'history','Browser navigation',false);});
   }
 
@@ -273,6 +285,13 @@
     try {
       dataSource=await chooseDataSource();
       setSource(dataSource.label());
+      const session=dataSource instanceof ApiDataSource ? dataSource.session : null;
+      const staticMode=dataSource instanceof StaticBundleDataSource ? 'static subset' : 'embedded subset';
+      $('#mode-status').textContent=session?.source.mode || staticMode;
+      $('#snapshot-status').textContent=session?.snapshot.snapshot_id || dataSource.manifest?.snapshot_id || dataSource.bundle?.manifest.snapshot_id || 'fixture-v1';
+      $('#cache-status').textContent=session?.cache.status || 'browser fixture';
+      $('#cost-warning').textContent=session?.source.requester_pays_warning || (session ? 'Local read-only mode; no cloud charge.' : 'Public static subset only — follow the local installation guide for a reviewed full query bundle.');
+      $('#cost-warning').hidden=false;
       if (dataSource instanceof EmbeddedFixtureDataSource) showToast('Using the generated embedded fixture because HTTP bundle loading is unavailable.');
     } catch (error) {
       setSource('Viewer data unavailable', false);

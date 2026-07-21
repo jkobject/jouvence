@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Install the read-only Jouvence-Graph localhost viewer for a verified local or requester-pays query bundle.">
+  <link rel="stylesheet" href="site.css">
+  <title>Local full-data viewer installation — Jouvence-Graph</title>
+  <style>
+    .guide{max-width:980px;margin:0 auto;padding:7rem 1.5rem 5rem}.guide h1{font-size:clamp(2.4rem,6vw,5rem);max-width:14ch}.guide h2{margin-top:3.5rem}.guide h3{margin-top:2rem}.guide p,.guide li{max-width:78ch;line-height:1.7}.guide pre{overflow:auto;padding:1.2rem;border-radius:8px;background:#10211d;color:#f4f1e8}.guide code{font-size:.9em}.guide-callout{padding:1.2rem 1.4rem;border-left:5px solid #ff8068;background:#fff3ee;margin:1.5rem 0}.guide-ok{border-color:#719b33;background:#f2f7e8}.guide-nav{display:flex;gap:1rem;flex-wrap:wrap;margin:1.5rem 0 3rem}.guide-nav a{font-weight:700}.guide hr{margin:5rem 0;border:0;border-top:1px solid #c9c6bb}
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html"><span>Jouvence-Graph</span></a>
+    <nav aria-label="Guide navigation"><a href="#english">English</a><a href="#francais" lang="fr">Français</a><a href="viewer.html">Viewer</a></nav>
+    <a class="header-github" href="https://github.com/jkobject/jouvence-graph">GitHub ↗</a>
+  </header>
+
+  <main class="guide">
+    <section id="english">
+      <p class="eyebrow"><span></span> READ-ONLY · LOCALHOST · YOUR CLOUD IDENTITY</p>
+      <h1>Browse a complete reviewed query bundle locally.</h1>
+      <p>The public website is a small static demonstration. Complete local mode is a separate localhost application: Python reads one immutable, manifest-verified viewer bundle; the browser receives bounded JSON responses. Google Application Default Credentials stay in the host process and are never sent to browser JavaScript.</p>
+      <div class="guide-nav"><a href="#quick-smoke">No-cloud smoke</a><a href="#local-bundle">Local bundle</a><a href="#gcs-bundle">Requester-pays GCS</a><a href="#troubleshooting">Troubleshooting</a></div>
+
+      <div class="guide-callout"><strong>Bundle required.</strong> Raw <code>gs://jouvencekb/kg/v2</code> is not a viewer bundle. The command refuses it rather than scanning 100M+ canonical rows on a laptop. Use an explicitly reviewed bundle URI published by the maintainers, or a locally generated compatible bundle.</div>
+
+      <h2>Prerequisites</h2>
+      <ul>
+        <li>Git; Python 3.11 or newer; <a href="https://docs.astral.sh/uv/">uv</a>.</li>
+        <li>For GCS only: the Google Cloud CLI (<code>gcloud</code>), a Google identity, and a consumer Cloud project with billing enabled.</li>
+        <li>For the private/requester-pays bucket: a maintainer must grant your exact identity read-only object access. This guide does not make the bucket public.</li>
+      </ul>
+
+      <h2 id="quick-smoke">1. Clone and run the no-cloud smoke</h2>
+      <pre><code>git clone https://github.com/jkobject/jouvence-graph.git
+cd jouvence-graph
+uv sync --group dev
+uv run jouvence-viewer --fixture-smoke</code></pre>
+      <p>Expected output is one JSON object ending in <code>"status": "pass"</code>. The command creates a temporary deterministic bundle, verifies its manifest and all checksums, resolves BRCA1, and removes the temporary directory. It needs no bucket access.</p>
+
+      <h2 id="local-bundle">2. Launch a downloaded or generated local bundle</h2>
+      <pre><code>uv run jouvence-viewer \
+  --data-root /absolute/path/to/viewer-bundle \
+  --open</code></pre>
+      <p>The root must contain <code>viewer-manifest.json</code> and exactly the supported manifest-declared query sidecars. Every relative path, object size, SHA-256 checksum, schema version, snapshot ID, and read-only declaration is checked before the server starts. Symlinks and manifest paths cannot escape the bundle root.</p>
+      <p>To exercise local mode with the repository fixture:</p>
+      <pre><code>uv run python -c "from manage_db.viewer.bundle import build_fixture_bundle; build_fixture_bundle('viewer-fixture-bundle')"
+uv run jouvence-viewer --data-root "$PWD/viewer-fixture-bundle" --open</code></pre>
+
+      <h2 id="gcs-bundle">3. Launch a reviewed requester-pays GCS bundle</h2>
+      <p>Your consumer project must have billing enabled, the Cloud Storage JSON API enabled, and your identity must have <code>serviceusage.services.use</code> (normally <code>roles/serviceusage.serviceUsageConsumer</code>) on that consumer project. Separately, the same identity needs a read grant such as <code>roles/storage.objectViewer</code> on <code>gs://jouvencekb</code>.</p>
+      <pre><code>export JOUVENCE_CONSUMER_PROJECT='your-billed-project'
+
+gcloud services enable storage.googleapis.com \
+  --project="$JOUVENCE_CONSUMER_PROJECT"
+gcloud auth application-default login
+gcloud auth application-default print-access-token &gt;/dev/null</code></pre>
+      <p>Ask the maintainers for both the exact reviewed bundle ID and its independently published manifest SHA-256. The external digest is the trust anchor: a replaced manifest is rejected even if all internal checksums were recomputed. Do not replace the URI with the raw canonical root.</p>
+      <pre><code>export JOUVENCE_VIEWER_BUNDLE_URI='gs://jouvencekb/kg/v2/viewer-bundles/&lt;reviewed-bundle-id&gt;'
+export JOUVENCE_VIEWER_MANIFEST_SHA256='&lt;published-64-character-sha256&gt;'
+
+uv run jouvence-viewer \
+  --data-root "$JOUVENCE_VIEWER_BUNDLE_URI" \
+  --billing-project "$JOUVENCE_CONSUMER_PROJECT" \
+  --manifest-sha256 "$JOUVENCE_VIEWER_MANIFEST_SHA256" \
+  --open</code></pre>
+      <div class="guide-callout"><strong>Costs:</strong> requester-pays charges your consumer project for GCS requests, bytes read, and possible egress. The loader reads only the manifest and its bounded, checksum-declared objects, then reuses an immutable cache keyed by snapshot and bundle checksum. It never writes to GCS.</div>
+
+      <h2>Security and read-only guarantees</h2>
+      <ul>
+        <li>The server always binds to <code>127.0.0.1</code>; <code>0.0.0.0</code>, LAN addresses, and IPv6-any are rejected.</li>
+        <li>Each launch creates a random local session token. Host and Origin are restricted to localhost.</li>
+        <li>ADC and requester-pays configuration exist only in Python. No Google token, credential file, billing-project input, filesystem path, or bucket browser is exposed by the web API.</li>
+        <li>There is no arbitrary SQL, file, path, URL, or bucket-proxy endpoint. The selected data root is fixed before the server starts.</li>
+        <li>The application opens query sidecars read-only. It cannot promote canonical data or write GCS/LaminDB.</li>
+      </ul>
+
+      <h2 id="troubleshooting">Troubleshooting</h2>
+      <h3>ADC is missing or expired</h3>
+      <pre><code>gcloud auth application-default login
+gcloud auth application-default print-access-token &gt;/dev/null</code></pre>
+      <h3>Requester-pays or serviceusage error</h3>
+      <p>Confirm <code>--billing-project</code> names your billed consumer project, the Storage JSON API is enabled there, and your identity has <code>serviceusage.services.use</code>. A project you can view is not necessarily a project you can bill.</p>
+      <h3>403 / object access denied</h3>
+      <p>Ask the maintainer to grant your exact ADC identity read-only object access to the bucket. Also request the manifest SHA-256 through the project's publication channel. Do not request or share maintainer credentials.</p>
+      <h3>Manifest SHA, snapshot, checksum, or schema mismatch</h3>
+      <p>Do not edit the bundle or bypass validation. Remove the affected cached snapshot and download the exact reviewed immutable bundle again. A mismatch can mean a partial download, wrong bundle version, or mutated object.</p>
+      <h3>“Not a compatible viewer query bundle”</h3>
+      <p>You pointed at raw canonical data or another directory. Use a reviewed <code>viewer-bundles/&lt;bundle-id&gt;</code> URI, a downloaded bundle root, or the fixture producer shown above. The viewer intentionally has no laptop raw-table fallback.</p>
+    </section>
+
+    <hr>
+
+    <section id="francais" lang="fr">
+      <p class="eyebrow"><span></span> LECTURE SEULE · LOCALHOST · VOTRE IDENTITÉ CLOUD</p>
+      <h1>Explorer localement un bundle complet et revu.</h1>
+      <p>Le site public est une petite démonstration statique. Le mode local complet est une application localhost séparée : Python lit un bundle immuable vérifié par manifeste, puis le navigateur reçoit uniquement des réponses JSON bornées. Les Application Default Credentials Google restent dans le processus hôte et ne sont jamais transmises au JavaScript du navigateur.</p>
+      <div class="guide-callout"><strong>Bundle obligatoire.</strong> Le chemin brut <code>gs://jouvencekb/kg/v2</code> n’est pas un bundle viewer. La commande le refuse plutôt que de scanner plus de 100 millions de lignes canoniques sur un Mac.</div>
+
+      <h2>Prérequis et smoke sans cloud</h2>
+      <p>Git, Python 3.11+, <code>uv</code> ; et pour GCS uniquement, <code>gcloud</code>, une identité Google et un projet consommateur avec facturation activée.</p>
+      <pre><code>git clone https://github.com/jkobject/jouvence-graph.git
+cd jouvence-graph
+uv sync --group dev
+uv run jouvence-viewer --fixture-smoke</code></pre>
+      <p>La sortie attendue contient <code>"status": "pass"</code>. Le smoke construit un bundle temporaire, vérifie manifeste et checksums, résout BRCA1 puis supprime le répertoire.</p>
+
+      <h2>Bundle local</h2>
+      <pre><code>uv run jouvence-viewer \
+  --data-root /chemin/absolu/vers/viewer-bundle \
+  --open</code></pre>
+      <p>Le manifeste, les chemins relatifs, tailles, SHA-256, version de schéma, snapshot et contrat read-only sont vérifiés avant le démarrage. Aucun lien symbolique ne peut sortir de la racine.</p>
+
+      <h2>Bundle GCS requester-pays revu</h2>
+      <p>Votre projet consommateur doit avoir la facturation et l’API Cloud Storage JSON activées. Votre identité doit avoir <code>serviceusage.services.use</code> sur ce projet et un droit de lecture objet sur le bucket accordé séparément par le mainteneur.</p>
+      <pre><code>export JOUVENCE_CONSUMER_PROJECT='votre-projet-facture'
+gcloud services enable storage.googleapis.com \
+  --project="$JOUVENCE_CONSUMER_PROJECT"
+gcloud auth application-default login
+
+export JOUVENCE_VIEWER_BUNDLE_URI='gs://jouvencekb/kg/v2/viewer-bundles/&lt;id-bundle-revu&gt;'
+export JOUVENCE_VIEWER_MANIFEST_SHA256='&lt;sha256-publie-sur-64-caracteres&gt;'
+uv run jouvence-viewer \
+  --data-root "$JOUVENCE_VIEWER_BUNDLE_URI" \
+  --billing-project "$JOUVENCE_CONSUMER_PROJECT" \
+  --manifest-sha256 "$JOUVENCE_VIEWER_MANIFEST_SHA256" \
+  --open</code></pre>
+      <div class="guide-callout"><strong>Coûts :</strong> les requêtes GCS, octets lus et un éventuel egress sont facturés à votre projet. Le chargeur ne lit que le manifeste et ses objets déclarés et bornés, puis réutilise un cache immuable indexé par snapshot et checksum. Il n’écrit jamais sur GCS.</div>
+
+      <h2>Garanties et dépannage</h2>
+      <ul>
+        <li>Bind strict sur <code>127.0.0.1</code>, token aléatoire par session, validation Host/Origin.</li>
+        <li>Aucun credential ADC, projet de facturation, chemin, SQL ou proxy de bucket n’est exposé au navigateur.</li>
+        <li>ADC expiré : relancer <code>gcloud auth application-default login</code>.</li>
+        <li>Erreur requester-pays : vérifier facturation, API Storage JSON et rôle Service Usage Consumer sur votre projet.</li>
+        <li>Erreur 403 : demander au mainteneur un droit objet en lecture pour l’identité ADC exacte ; ne jamais partager ses credentials.</li>
+        <li>Demander au mainteneur l’ID exact et le SHA-256 du manifeste publié indépendamment ; ce digest externe bloque le remplacement cohérent du manifeste et de ses objets.</li>
+        <li>Mismatch SHA de manifeste/snapshot/checksum : ne pas contourner le contrôle ; retélécharger le bundle immuable exact.</li>
+        <li>Bundle incompatible : utiliser un URI <code>viewer-bundles/&lt;id&gt;</code> revu, pas la racine canonique brute.</li>
+      </ul>
+      <p class="guide-ok guide-callout">Le sous-ensemble statique public reste utile pour découvrir l’interface. Seul le mode localhost avec un bundle compatible fournit le contenu complet de ce bundle.</p>
+    </section>
+  </main>
+</body>
+</html>

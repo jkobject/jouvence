@@ -87,29 +87,29 @@ remains the source of truth.  Public embedding URIs are not assumed while the
 immutable release/license contract remains pending; set
 `JOUVENCE_EMBEDDING_URI` only to an accepted published shard.
 
-## Jouvence-Graph fixture viewer
+## Jouvence-Graph local viewer
 
-Phase 1 of the entity viewer is a deterministic fixture/local API only. It does
-not read canonical GCS, LaminDB, VMs, requester-pays data, credentials, or
-arbitrary local files. Run it from a clean clone with:
+The entity viewer supports the deterministic fixture and immutable,
+manifest-verified local or requester-pays query bundles. It binds only to
+`127.0.0.1`, keeps ADC in the host process, and exposes no arbitrary file,
+bucket, or SQL surface. Run the no-cloud smoke from a clean clone with:
 
 ```bash
 uv sync --group dev
-uv run jouvence-viewer --host 127.0.0.1 --port 8765
+uv run jouvence-viewer --fixture-smoke
 ```
 
-Then open <http://127.0.0.1:8765/>. The public preview at
+The public preview at
 [`docs/viewer.html`](docs/viewer.html) first loads a reviewed relative static
 bundle (`manifest.json`, search shard, and per-entity shards) over ordinary
 HTTPS. Opening the HTML directly from disk uses an embedded copy generated from
 that same fixture. Both zero-backend paths have the same dossier/export
 semantics as the fixture API and are explicitly labeled as non-live data.
 
-To access the full database today, follow the bounded requester-pays and local
-read prerequisites in [`docs/getting-started-data.md`](docs/getting-started-data.md).
-That guide is separate from the Phase 1 viewer command above: raw local/GCS
-Parquet is **not yet** connected to the viewer. The future full-data viewer will
-consume a reviewed query bundle rather than scan canonical relations per click.
+For a complete compatible bundle, follow the bilingual
+[local full-data viewer installation guide](docs/viewer-install.html). The
+viewer refuses raw `kg/v2` roots rather than scanning canonical 100M+ row tables
+on a laptop.
 
 The committed static assets are reproducible from the backend fixture:
 

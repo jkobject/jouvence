@@ -27,7 +27,8 @@
     <a class="viewer-site-link" href="index.html">Project site ↗</a>
   </header>
 
-  <div class="prototype-banner"><strong>Phase 1 fixture viewer</strong><span>Uses a reviewed static fixture bundle or the localhost fixture API; neither is live KG data.</span><a href="getting-started-data.md">Access the full database locally →</a><a href="viewer-proposal.md">Read architecture</a></div>
+  <div class="prototype-banner"><strong>Local-first viewer</strong><span>Mode: <b id="mode-status">loading</b> · Snapshot: <b id="snapshot-status">loading</b> · Cache: <b id="cache-status">loading</b></span><a href="viewer-install.html">Full-data installation guide</a><a href="viewer-proposal.md">Architecture</a></div>
+  <p id="cost-warning" class="section-note" hidden></p>
 
   <main class="viewer-shell">
     <nav class="viewer-toc" aria-label="Dossier sections">
@@ -99,9 +100,9 @@
     <form method="dialog">
       <div class="dialog-head"><div><p class="viewer-kicker">DATA CONNECTION</p><h2>Choose a data source</h2></div><button value="cancel" aria-label="Close">×</button></div>
       <label class="source-option selected"><input type="radio" name="source" value="demo" checked><span><strong>Demo fixture</strong><small>Deterministic, zero-cost data bundled with the preview.</small></span><em>READY</em></label>
-      <label class="source-option"><input type="radio" name="source" value="local"><span><strong>Local Jouvence root</strong><small>Future read-only query bundle mode; disabled in Phase 1.</small><input id="local-path" type="text" placeholder="/path/to/kg/v2" disabled></span><em>FUTURE</em></label>
-      <label class="source-option"><input type="radio" name="source" value="gcs"><span><strong>GCS requester-pays</strong><small>Future host-ADC mode; no credentials enter the browser.</small><input id="billing-project" type="text" placeholder="consumer-billing-project" disabled></span><em>FUTURE</em></label>
-      <div id="source-message" class="source-message">Phase 1 connects only to a deterministic local fixture API. It never reads canonical GCS, LaminDB, VMs, or arbitrary local files.</div>
+      <label class="source-option"><input type="radio" name="source" value="local"><span><strong>Local verified bundle</strong><small>Launch from the terminal with <code>--data-root /path/to/viewer-bundle</code>.</small></span><em>CLI</em></label>
+      <label class="source-option"><input type="radio" name="source" value="gcs"><span><strong>GCS requester-pays</strong><small>Launch with host ADC and your consumer billing project. No Google credential enters the browser.</small></span><em>CLI</em></label>
+      <div id="source-message" class="source-message">Data sources are fixed at process start. The browser cannot submit paths, buckets, SQL, billing projects, or credentials. <a href="viewer-install.html">Read the installation guide.</a></div>
       <div class="dialog-actions"><button value="cancel" class="dialog-secondary">Cancel</button><button id="connect-source" value="default" class="dialog-primary">Use demo fixture</button></div>
     </form>
   </dialog>
