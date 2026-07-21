@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Interactive proposal for the Jouvence-Graph biomedical entity viewer.">
+  <meta name="theme-color" content="#10211d">
+  <link rel="canonical" href="https://www.jkobject.com/jouvence/viewer.html">
+  <link rel="stylesheet" href="site.css">
+  <link rel="stylesheet" href="viewer.css">
+  <title>Data viewer preview — Jouvence-Graph</title>
+</head>
+<body class="viewer-body">
+  <a class="skip-link" href="#dossier">Skip to entity dossier</a>
+  <header class="viewer-header">
+    <a class="brand" href="index.html" aria-label="Jouvence-Graph home">
+      <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true"><circle cx="10" cy="24" r="5"></circle><circle cx="30" cy="10" r="4"></circle><circle cx="32" cy="32" r="7"></circle><path d="m14 21 12-8M15 27l10 3m6-16 1 11"></path></svg>
+      <span>Jouvence-Graph</span>
+    </a>
+    <div class="viewer-search-wrap">
+      <label class="sr-only" for="global-search">Search all nodes</label>
+      <input id="global-search" type="search" autocomplete="off" placeholder="Search nodes, symbols or reference IDs…" aria-expanded="false" aria-controls="search-results">
+      <kbd>/</kbd>
+      <div id="search-results" class="search-results" role="listbox" hidden></div>
+    </div>
+    <button class="source-pill" id="source-button" type="button"><span></span> Demo fixture <b>⌄</b></button>
+    <a class="viewer-site-link" href="index.html">Project site ↗</a>
+  </header>
+
+  <div class="prototype-banner"><strong>Interactive product proposal</strong><span>Uses deterministic fixture data. Local Parquet and requester-pays GCS modes are specified but not connected in this preview.</span><a href="viewer-proposal.md">Read architecture</a></div>
+
+  <main class="viewer-shell">
+    <nav class="viewer-toc" aria-label="Dossier sections">
+      <span>ON THIS PAGE</span>
+      <a href="#identity" class="active">Identity</a>
+      <a href="#features">Features</a>
+      <a href="#connections">Connections</a>
+      <a href="#long-range">Long range</a>
+      <a href="#putative">Putative links</a>
+      <a href="#evidence">Evidence</a>
+    </nav>
+
+    <article id="dossier" class="dossier" aria-live="polite">
+      <section class="entity-hero" id="identity">
+        <div class="entity-type-line"><span id="entity-type" class="type-badge">GENE</span><span id="entity-source">Ensembl · fixture-v1</span></div>
+        <h1 id="entity-name">BRCA1</h1>
+        <p id="entity-description" class="entity-description">DNA repair associated protein 1; a tumor suppressor involved in homologous recombination and genome integrity.</p>
+        <div id="entity-ids" class="entity-ids"></div>
+        <div class="entity-stats">
+          <div><strong id="stat-direct">4</strong><span>direct neighbors</span></div>
+          <div><strong id="stat-evidence">7</strong><span>evidence rows</span></div>
+          <div><strong id="stat-putative">3</strong><span>putative links</span></div>
+          <div><strong>fixture-v1</strong><span>snapshot</span></div>
+        </div>
+      </section>
+
+      <section class="dossier-section" id="features">
+        <div class="section-title-row"><div><p class="viewer-kicker">NODE ATTRIBUTES + SIDECARS</p><h2>Features</h2></div><button class="section-action" type="button" data-copy-section="features">Copy section</button></div>
+        <div id="feature-grid" class="feature-grid"></div>
+      </section>
+
+      <section class="dossier-section" id="connections">
+        <div class="section-title-row"><div><p class="viewer-kicker">OBSERVED CANONICAL EDGES</p><h2>Direct connections</h2></div><div class="legend"><span class="dot observed"></span> observed</div></div>
+        <div id="connections-list" class="connection-groups"></div>
+      </section>
+
+      <section class="dossier-section" id="long-range">
+        <div class="section-title-row"><div><p class="viewer-kicker">RANKED 2–3 HOP CONTEXT</p><h2>Long-range connections</h2></div><div class="legend"><span class="dot ranked"></span> ranked, not causal</div></div>
+        <p class="section-note">Top five are computed separately by endpoint family. Every score must name its ranker and preserve the support path.</p>
+        <div id="long-range-grid" class="long-range-grid"></div>
+      </section>
+
+      <section class="dossier-section putative-section" id="putative">
+        <div class="section-title-row"><div><p class="viewer-kicker">GRAPH-DERIVED HYPOTHESES</p><h2>Putative new links</h2></div><div class="legend"><span class="dot inferred"></span> not observed</div></div>
+        <p class="section-note">Candidates remain separate from source-backed assertions. Expand a row to inspect its template, path and leakage caveat.</p>
+        <div id="putative-list" class="putative-list"></div>
+      </section>
+
+      <section class="dossier-section" id="evidence">
+        <div class="section-title-row"><div><p class="viewer-kicker">SOURCE-LEVEL SUPPORT</p><h2>Evidence</h2></div><select id="evidence-filter" aria-label="Filter evidence by relation"><option value="all">All relations</option></select></div>
+        <div class="table-scroll"><table class="evidence-table"><thead><tr><th>Relation</th><th>Source</th><th>Predicate</th><th>Score</th><th>Reference</th></tr></thead><tbody id="evidence-body"></tbody></table></div>
+      </section>
+    </article>
+
+    <aside class="history-panel" aria-label="Navigation history">
+      <div class="history-head"><div><span>RESEARCH TRAIL</span><strong id="history-count">1 node</strong></div><button id="clear-history" type="button">Clear</button></div>
+      <ol id="history-list" class="history-list"></ol>
+      <p class="history-help">Search starts a new trail. Following links appends nodes. Selecting an earlier step rewinds the trail.</p>
+      <div class="export-box">
+        <span>EXPORT DOSSIER + TRAIL</span>
+        <button type="button" data-export="markdown">Markdown <b>↓</b></button>
+        <button type="button" data-export="csv">CSV <b>↓</b></button>
+        <button type="button" data-export="pdf">PDF <b>↗</b></button>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="source-dialog" class="source-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><div><p class="viewer-kicker">DATA CONNECTION</p><h2>Choose a data source</h2></div><button value="cancel" aria-label="Close">×</button></div>
+      <label class="source-option selected"><input type="radio" name="source" value="demo" checked><span><strong>Demo fixture</strong><small>Deterministic, zero-cost data bundled with the preview.</small></span><em>READY</em></label>
+      <label class="source-option"><input type="radio" name="source" value="local"><span><strong>Local Jouvence root</strong><small>Read a canonical KG root or generated viewer bundle.</small><input id="local-path" type="text" placeholder="/path/to/kg/v2" disabled></span><em>PROPOSED</em></label>
+      <label class="source-option"><input type="radio" name="source" value="gcs"><span><strong>GCS requester-pays</strong><small>Uses host ADC; credentials never enter the browser.</small><input id="billing-project" type="text" placeholder="consumer-billing-project" disabled></span><em>PROPOSED</em></label>
+      <div id="source-message" class="source-message">This preview can connect only to its fixture. See the architecture proposal for the real backend contract.</div>
+      <div class="dialog-actions"><button value="cancel" class="dialog-secondary">Cancel</button><button id="connect-source" value="default" class="dialog-primary">Use demo fixture</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="viewer-toast" role="status" aria-live="polite"></div>
+  <script src="viewer.js"></script>
+</body>
+</html>
