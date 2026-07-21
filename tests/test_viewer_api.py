@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import zipfile
 from copy import copy
 from dataclasses import replace
@@ -77,6 +78,74 @@ def test_node_dossier_sections_and_empty_unknown_states() -> None:
     assert c.get("/api/nodes/gene/ENSG00000012048/edges", params={"cursor": "bad"}).status_code == 422
 
 
+def test_evidence_defaults_to_ten_and_rejects_limits_above_fifty() -> None:
+    source = copy(FIXTURE_DATA)
+    template = FIXTURE_DATA.EVIDENCE_ROWS[0]
+    source.EVIDENCE_ROWS = [
+        {**template, "source_record_id": f"record-{index:03d}"}
+        for index in reversed(range(75))
+    ]
+    c = TestClient(
+        create_app(data_source=source, session_token=TEST_TOKEN),
+        base_url="http://127.0.0.1:8765",
+        headers={"x-jouvence-session": TEST_TOKEN},
+    )
+
+    for path in (
+        f"/api/edges/{template['edge_key']}/evidence",
+        "/api/nodes/gene/ENSG00000012048/evidence",
+    ):
+        response = c.get(path)
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload["rows"]) == 10
+        assert payload["meta"] == {
+            "snapshot_id": "fixture-v1",
+            "data_mode": "fixture",
+            "bundle_version": "viewer-fixture-schema-v1",
+            "truncated": True,
+            "next_cursor": "10",
+            "total": 75,
+            "returned": 10,
+        }
+        assert c.get(path, params={"limit": 51}).status_code == 422
+
+
+def test_evidence_pagination_is_stable_without_duplicates_or_omissions() -> None:
+    source = copy(FIXTURE_DATA)
+    template = FIXTURE_DATA.EVIDENCE_ROWS[0]
+    expected = [f"record-{index:03d}" for index in range(53)]
+    source.EVIDENCE_ROWS = [
+        {**template, "source_record_id": source_record_id}
+        for source_record_id in reversed(expected)
+    ]
+    c = TestClient(
+        create_app(data_source=source, session_token=TEST_TOKEN),
+        base_url="http://127.0.0.1:8765",
+        headers={"x-jouvence-session": TEST_TOKEN},
+    )
+
+    received: list[str] = []
+    cursor = None
+    while True:
+        response = c.get(
+            "/api/nodes/gene/ENSG00000012048/evidence",
+            params={"limit": 17, **({"cursor": cursor} if cursor else {})},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        received.extend(row["source_record_id"] for row in payload["rows"])
+        assert payload["meta"]["total"] == len(expected)
+        assert payload["meta"]["returned"] == len(payload["rows"])
+        cursor = payload["meta"]["next_cursor"]
+        if cursor is None:
+            assert payload["meta"]["truncated"] is False
+            break
+
+    assert received == expected
+    assert len(received) == len(set(received))
+
+
 def test_long_range_putative_and_exports_label_row_kinds() -> None:
     c = client()
     long_range = c.get("/api/nodes/gene/ENSG00000012048/long-range").json()
@@ -123,7 +192,11 @@ def test_no_arbitrary_file_or_sql_surface() -> None:
 def test_export_is_bounded_even_for_high_degree_bundle_nodes() -> None:
     source = copy(FIXTURE_DATA)
     source.EDGE_ROWS = FIXTURE_DATA.EDGE_ROWS * 100
-    source.EVIDENCE_ROWS = FIXTURE_DATA.EVIDENCE_ROWS * 100
+    evidence_template = FIXTURE_DATA.EVIDENCE_ROWS[0]
+    source.EVIDENCE_ROWS = [
+        {**evidence_template, "source_record_id": f"export-record-{index:03d}"}
+        for index in range(100)
+    ]
     source.FEATURE_ROWS = FIXTURE_DATA.FEATURE_ROWS * 100
     source.LONG_RANGE_ROWS = FIXTURE_DATA.LONG_RANGE_ROWS * 100
     source.PUTATIVE_ROWS = FIXTURE_DATA.PUTATIVE_ROWS * 100
@@ -144,9 +217,28 @@ def test_export_is_bounded_even_for_high_degree_bundle_nodes() -> None:
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         assert len(archive.read("features.csv").decode().splitlines()) <= 101
         assert len(archive.read("edges.csv").decode().splitlines()) <= 51
-        assert len(archive.read("evidence.csv").decode().splitlines()) <= 101
+        assert len(archive.read("evidence.csv").decode().splitlines()) <= 51
         assert len(archive.read("putative_links.csv").decode().splitlines()) <= 26
         assert len(archive.read("long_range.csv").decode().splitlines()) <= 21
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["evidence"] == {
+            "scope": "bounded-summary",
+            "total": len(source.EVIDENCE_ROWS),
+            "returned": 50,
+            "truncated": True,
+        }
+
+    markdown = c.post(
+        "/api/export",
+        json={
+            "node_type": "gene",
+            "node_id": "ENSG00000012048",
+            "format": "markdown",
+        },
+    )
+    assert markdown.status_code == 200
+    assert "Evidence export: bounded summary" in markdown.text
+    assert f"50 of {len(source.EVIDENCE_ROWS)} rows; truncated: true" in markdown.text
 
 
 def test_every_api_response_has_a_global_byte_ceiling() -> None:

@@ -31,7 +31,10 @@ For the interactive product, run the independent no-cloud viewer smoke with
 reviewed requester-pays viewer bundle is launched with `--data-root`; see the
 [bilingual local viewer installation guide](viewer-install.html). The viewer
 rejects the raw canonical `kg/v2` root rather than scanning full tables on a
-laptop.
+laptop. The public/static viewer shows only a top-evidence summary. A compatible
+localhost bundle exposes complete evidence through stable 10-row pages (hard
+maximum 50 rows per request); dossier exports remain bounded to 50 evidence
+rows and state their total/returned/truncated status.
 
 Mode detection:
 

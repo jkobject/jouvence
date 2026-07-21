@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import time
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from playwright.sync_api import Page, expect, sync_playwright
@@ -212,12 +214,167 @@ def test_relative_static_bundle_loads_and_preserves_semantics(page: Page, static
     assert any("/viewer-data/entities/gene--ENSG00000012048.json" in url for url in responses)
     expect(page.locator("#connections-list")).not_to_contain_text("gefitinib")
     expect(page.locator("#long-range-grid")).to_contain_text("gefitinib")
+    expect(page.locator("#evidence-scope")).to_contain_text("Static top-evidence summary")
+
+
+def test_local_evidence_reports_counts_and_loads_all_bounded_pages(page: Page, viewer_server: str) -> None:
+    rows = [
+        {
+            "edge_key": "fixture:edge:brca1-disease",
+            "relation": "disease_associated_gene",
+            "x_id": "ENSG00000012048",
+            "x_type": "gene",
+            "y_id": "EFO:0000305",
+            "y_type": "disease",
+            "source": "test",
+            "source_dataset": "pagination",
+            "source_record_id": f"record-{index:03d}",
+            "paper_id": f"PMID:{index}",
+            "predicate": "associated_with",
+            "evidence_score": 0.9,
+            "row_kind": "observed",
+        }
+        for index in range(12)
+    ]
+
+    def evidence_route(route) -> None:
+        params = parse_qs(urlsplit(route.request.url).query)
+        start = int(params.get("cursor", ["0"])[0])
+        selected = rows[start : start + 10]
+        stop = start + len(selected)
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "meta": {
+                        "snapshot_id": "fixture-v1",
+                        "data_mode": "fixture",
+                        "bundle_version": "viewer-fixture-schema-v1",
+                        "truncated": stop < len(rows),
+                        "next_cursor": str(stop) if stop < len(rows) else None,
+                        "total": len(rows),
+                        "returned": len(selected),
+                    },
+                    "rows": selected,
+                }
+            ),
+        )
+
+    page.route("**/api/nodes/gene/ENSG00000012048/evidence*", evidence_route)
+    page.goto(viewer_server)
+
+    expect(page.locator("#evidence-scope")).to_contain_text("Complete local evidence")
+    expect(page.locator("#evidence-state")).to_have_text("Returned 10 of 12 · more available")
+    expect(page.locator("#stat-evidence")).to_have_text("12")
+    expect(page.locator("#evidence-body tr")).to_have_count(10)
+    expect(page.locator("#load-more-evidence")).to_be_visible()
+
+    page.locator("#load-more-evidence").click()
+
+    expect(page.locator("#evidence-state")).to_have_text("Returned 12 of 12 · complete")
+    expect(page.locator("#evidence-body tr")).to_have_count(12)
+    expect(page.locator("#load-more-evidence")).to_be_hidden()
+
+
+def test_stale_evidence_page_cannot_append_after_navigation(page: Page, viewer_server: str) -> None:
+    rows = [
+        {
+            "edge_key": "fixture:edge:brca1-disease",
+            "relation": "disease_associated_gene",
+            "x_id": "ENSG00000012048",
+            "x_type": "gene",
+            "y_id": "EFO:0000305",
+            "y_type": "disease",
+            "source": "stale-source",
+            "source_dataset": "pagination",
+            "source_record_id": f"stale-record-{index:03d}",
+            "paper_id": f"STALE:{index}",
+            "predicate": "associated_with",
+            "evidence_score": 0.1,
+            "row_kind": "observed",
+        }
+        for index in range(12)
+    ]
+    target_rows = [
+        {
+            **row,
+            "edge_key": "fixture:edge:tp53-disease",
+            "x_id": "ENSG00000141510",
+            "source_record_id": f"target-record-{index:03d}",
+            "paper_id": f"TARGET:{index}",
+        }
+        for index, row in enumerate(rows)
+    ]
+
+    page.add_init_script(
+        """
+        const realFetch = window.fetch.bind(window);
+        window.fetch = (resource, options) => {
+          const url = String(resource);
+          const isNextPage = url.includes('cursor=10');
+          const delay = url.includes('/ENSG00000012048/evidence') && isNextPage
+            ? 500
+            : (url.includes('/ENSG00000141510/evidence') && isNextPage ? 1000 : 0);
+          return delay
+            ? new Promise(resolve => setTimeout(() => resolve(realFetch(resource, options)), delay))
+            : realFetch(resource, options);
+        };
+        """
+    )
+
+    def evidence_route(route) -> None:
+        params = parse_qs(urlsplit(route.request.url).query)
+        start = int(params.get("cursor", ["0"])[0])
+        available = target_rows if "ENSG00000141510" in route.request.url else rows
+        selected = available[start : start + 10]
+        stop = start + len(selected)
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "meta": {
+                        "snapshot_id": "fixture-v1",
+                        "data_mode": "fixture",
+                        "bundle_version": "viewer-fixture-schema-v1",
+                        "truncated": stop < len(available),
+                        "next_cursor": str(stop) if stop < len(available) else None,
+                        "total": len(available),
+                        "returned": len(selected),
+                    },
+                    "rows": selected,
+                }
+            ),
+        )
+
+    page.route("**/api/nodes/gene/*/evidence*", evidence_route)
+    page.goto(viewer_server)
+    expect(page.locator("#load-more-evidence")).to_be_visible()
+
+    page.evaluate("document.querySelector('#load-more-evidence').click()")
+    page.evaluate("document.querySelector('[data-node-id=\"ENSG00000141510\"]').click()")
+    expect(page.locator("#entity-name")).to_have_text("TP53")
+    expect(page.locator("#load-more-evidence")).to_be_visible()
+    page.evaluate("document.querySelector('#load-more-evidence').click()")
+    page.wait_for_timeout(600)
+
+    expect(page.locator("#entity-name")).to_have_text("TP53")
+    expect(page.locator("#evidence-body")).not_to_contain_text("stale-record-010")
+    expect(page.locator("#load-more-evidence")).to_be_disabled()
+
+    page.wait_for_timeout(500)
+    expect(page.locator("#evidence-state")).to_have_text("Returned 12 of 12 · complete")
+    expect(page.locator("#evidence-body")).to_contain_text("TARGET:11")
 
 
 def test_static_exports_contain_dossier_trail_and_row_kinds(page: Page, static_server: str, tmp_path: Path) -> None:
     page.goto(f"{static_server}/viewer.html")
     page.locator(".js-node-link", has_text="breast carcinoma").first.click()
     expect(page.locator("#history-count")).to_have_text("2 nodes")
+    static_dossier = json.loads(
+        (ROOT / "docs" / "viewer-data" / "entities" / "disease--EFO_0000305.json").read_text()
+    )
 
     with page.expect_download() as markdown_download:
         page.locator("[data-export='markdown']").click()
@@ -230,6 +387,10 @@ def test_static_exports_contain_dossier_trail_and_row_kinds(page: Page, static_s
     assert "## Long-range ranked connections" in text
     assert "## Putative inferred links" in text
     assert "## Navigation trail" in text
+    assert "Evidence export: bounded summary" in text
+    assert "evidence_total:" in text
+    assert "evidence_returned:" in text
+    assert "evidence_truncated:" in text
     assert all(kind in text for kind in ("observed", "ranked", "inferred"))
     assert "breast carcinoma (disease:EFO:0000305) — disease_associated_gene" in text
 
@@ -260,8 +421,14 @@ def test_static_exports_contain_dossier_trail_and_row_kinds(page: Page, static_s
             "manifest.json",
         }
         assert expected.issubset(archive.namelist())
-        manifest = archive.read("manifest.json").decode()
-        assert all(kind in manifest for kind in ("observed", "ranked", "inferred"))
+        manifest = json.loads(archive.read("manifest.json"))
+        assert all(kind in manifest["row_kinds"] for kind in ("observed", "ranked", "inferred"))
+        assert manifest["evidence"] == {
+            "scope": "bounded-summary",
+            "total": static_dossier["evidence_meta"]["total"],
+            "returned": static_dossier["evidence_meta"]["returned"],
+            "truncated": static_dossier["evidence_meta"]["truncated"],
+        }
         history = archive.read("history.csv").decode()
         assert "Search start" in history
         assert "breast carcinoma" in history

@@ -75,6 +75,15 @@
       "y_type": "gene"
     }
   ],
+  "evidence_meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "returned": 2,
+    "snapshot_id": "fixture-v1",
+    "total": 2,
+    "truncated": false
+  },
   "features": [
     {
       "epistemic_kind": "source-backed",

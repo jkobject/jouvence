@@ -21,7 +21,8 @@ from .bundle import FIXTURE_DATA
 
 MAX_SEARCH_LIMIT = 25
 MAX_EDGE_LIMIT = 50
-MAX_EVIDENCE_LIMIT = 100
+DEFAULT_EVIDENCE_LIMIT = 10
+MAX_EVIDENCE_LIMIT = 50
 MAX_FEATURE_LIMIT = 100
 MAX_PUTATIVE_LIMIT = 25
 LONG_RANGE_PER_TYPE_LIMIT = 5
@@ -38,6 +39,11 @@ class Meta(BaseModel):
     bundle_version: str
     truncated: bool = False
     next_cursor: str | None = None
+
+
+class EvidenceMeta(Meta):
+    total: int
+    returned: int
 
 
 class SearchItem(BaseModel):
@@ -66,6 +72,11 @@ class RowsResponse(BaseModel):
     rows: list[dict[str, Any]]
 
 
+class EvidenceRowsResponse(BaseModel):
+    meta: EvidenceMeta
+    rows: list[dict[str, Any]]
+
+
 class TrailStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -91,6 +102,25 @@ def _meta(data: Any, *, truncated: bool = False, next_cursor: str | None = None)
         bundle_version=data.bundle_version,
         truncated=truncated,
         next_cursor=next_cursor,
+    )
+
+
+def _evidence_meta(
+    data: Any,
+    *,
+    total: int,
+    returned: int,
+    truncated: bool = False,
+    next_cursor: str | None = None,
+) -> EvidenceMeta:
+    return EvidenceMeta(
+        snapshot_id=data.snapshot_id,
+        data_mode=data.mode,
+        bundle_version=data.bundle_version,
+        truncated=truncated,
+        next_cursor=next_cursor,
+        total=total,
+        returned=returned,
     )
 
 
@@ -170,12 +200,37 @@ def _matches_anchor(row: dict[str, Any], node_type: str, node_id: str) -> bool:
     )
 
 
+def _evidence_sort_key(row: dict[str, Any]) -> str:
+    """Return the immutable, content-derived order used by evidence cursors."""
+
+    return json.dumps(row, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
 def _page(data: Any, rows: list[dict[str, Any]], limit: int, cursor: str | None) -> tuple[list[dict[str, Any]], Meta]:
     start = _cursor_index(cursor)
     stop = start + limit
     selected = rows[start:stop]
     next_cursor = str(stop) if stop < len(rows) else None
     return selected, _meta(data, truncated=next_cursor is not None, next_cursor=next_cursor)
+
+
+def _evidence_page(
+    data: Any,
+    rows: list[dict[str, Any]],
+    limit: int,
+    cursor: str | None,
+) -> tuple[list[dict[str, Any]], EvidenceMeta]:
+    start = _cursor_index(cursor)
+    stop = start + limit
+    selected = rows[start:stop]
+    next_cursor = str(stop) if stop < len(rows) else None
+    return selected, _evidence_meta(
+        data,
+        truncated=next_cursor is not None,
+        next_cursor=next_cursor,
+        total=len(rows),
+        returned=len(selected),
+    )
 
 
 def _capped_long_range(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
@@ -202,6 +257,7 @@ def create_app(
     if not isinstance(session_token, str) or not 8 <= len(session_token) <= 256:
         raise ValueError("a non-empty local session token is required")
     data = data_source or FIXTURE_DATA
+    evidence_rows = sorted(data.EVIDENCE_ROWS, key=_evidence_sort_key)
     valid_node_types = {node.node_type for node in data.NODES.values()}
     app = FastAPI(
         title="Jouvence-Graph local viewer API",
@@ -367,20 +423,29 @@ def create_app(
         selected, meta = _page(data, rows, limit, cursor)
         return RowsResponse(meta=meta, rows=selected)
 
-    @app.get("/api/edges/{edge_key}/evidence", response_model=RowsResponse)
-    def edge_evidence(edge_key: str, limit: int = Query(default=100), cursor: str | None = None) -> RowsResponse:
+    @app.get("/api/edges/{edge_key}/evidence", response_model=EvidenceRowsResponse)
+    def edge_evidence(
+        edge_key: str,
+        limit: int = Query(default=DEFAULT_EVIDENCE_LIMIT),
+        cursor: str | None = None,
+    ) -> EvidenceRowsResponse:
         limit = _bounded_limit(limit, MAX_EVIDENCE_LIMIT)
-        rows = [row for row in data.EVIDENCE_ROWS if row["edge_key"] == edge_key]
-        selected, meta = _page(data, rows, limit, cursor)
-        return RowsResponse(meta=meta, rows=selected)
+        rows = [row for row in evidence_rows if row["edge_key"] == edge_key]
+        selected, meta = _evidence_page(data, rows, limit, cursor)
+        return EvidenceRowsResponse(meta=meta, rows=selected)
 
-    @app.get("/api/nodes/{node_type}/{node_id}/evidence", response_model=RowsResponse)
-    def node_evidence(node_type: str, node_id: str, limit: int = Query(default=100), cursor: str | None = None) -> RowsResponse:
+    @app.get("/api/nodes/{node_type}/{node_id}/evidence", response_model=EvidenceRowsResponse)
+    def node_evidence(
+        node_type: str,
+        node_id: str,
+        limit: int = Query(default=DEFAULT_EVIDENCE_LIMIT),
+        cursor: str | None = None,
+    ) -> EvidenceRowsResponse:
         node = _node_or_404(data, valid_node_types, node_type, node_id)
         limit = _bounded_limit(limit, MAX_EVIDENCE_LIMIT)
-        rows = [row for row in data.EVIDENCE_ROWS if _matches_anchor(row, node.node_type, node.node_id)]
-        selected, meta = _page(data, rows, limit, cursor)
-        return RowsResponse(meta=meta, rows=selected)
+        rows = [row for row in evidence_rows if _matches_anchor(row, node.node_type, node.node_id)]
+        selected, meta = _evidence_page(data, rows, limit, cursor)
+        return EvidenceRowsResponse(meta=meta, rows=selected)
 
     @app.get("/api/nodes/{node_type}/{node_id}/long-range", response_model=RowsResponse)
     def long_range(node_type: str, node_id: str, target_type: str | None = None) -> RowsResponse:
@@ -404,7 +469,7 @@ def create_app(
     @app.post("/api/export")
     def export(request: ExportRequest) -> Response:
         node = _node_or_404(data, valid_node_types, request.node_type, request.node_id)
-        dossier = _full_dossier(data, node)
+        dossier = _full_dossier(data, node, evidence_rows=evidence_rows)
         trail = [_trail_row(data, valid_node_types, step) for step in request.trail]
         if request.format == "markdown":
             return Response(
@@ -466,7 +531,12 @@ def _bounded_long_range_matches(
     return [row for target in sorted(by_target) for row in by_target[target]], truncated
 
 
-def _full_dossier(data: Any, node: fixture.Node) -> dict[str, Any]:
+def _full_dossier(
+    data: Any,
+    node: fixture.Node,
+    *,
+    evidence_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     node_payload = _node_payload(node)
     raw_edges, edges_truncated = _bounded_matches(
         data.EDGE_ROWS,
@@ -482,10 +552,18 @@ def _full_dossier(data: Any, node: fixture.Node) -> dict[str, Any]:
         lambda row: row["node_type"] == node.node_type and row["node_id"] == node.node_id,
         MAX_FEATURE_LIMIT,
     )
+    ordered_evidence = (
+        evidence_rows
+        if evidence_rows is not None
+        else sorted(data.EVIDENCE_ROWS, key=_evidence_sort_key)
+    )
     evidence, evidence_truncated = _bounded_matches(
-        data.EVIDENCE_ROWS,
+        ordered_evidence,
         lambda row: _matches_anchor(row, node.node_type, node.node_id),
         MAX_EVIDENCE_LIMIT,
+    )
+    evidence_total = sum(
+        1 for row in ordered_evidence if _matches_anchor(row, node.node_type, node.node_id)
     )
     long_range, long_range_truncated = _bounded_long_range_matches(data.LONG_RANGE_ROWS, node)
     putative, putative_truncated = _bounded_matches(
@@ -502,6 +580,12 @@ def _full_dossier(data: Any, node: fixture.Node) -> dict[str, Any]:
         "features": features,
         "edges": edges,
         "evidence": evidence,
+        "evidence_meta": _evidence_meta(
+            data,
+            truncated=evidence_truncated,
+            total=evidence_total,
+            returned=len(evidence),
+        ).model_dump(),
         "long_range": long_range,
         "putative_links": putative,
     }
@@ -530,6 +614,9 @@ def _markdown_export(data: Any, dossier: dict[str, Any], trail: list[dict[str, s
         f"node_type: {node['node_type']}",
         f"node_id: {node['node_id']}",
         f"ranker_versions: {json.dumps(ranker_versions)}",
+        f"evidence_total: {dossier['evidence_meta']['total']}",
+        f"evidence_returned: {dossier['evidence_meta']['returned']}",
+        f"evidence_truncated: {str(dossier['evidence_meta']['truncated']).lower()}",
         "---",
         "",
         f"# {node['display_name']}",
@@ -547,6 +634,11 @@ def _markdown_export(data: Any, dossier: dict[str, Any], trail: list[dict[str, s
     lines.append("\n## Direct observed edges")
     lines.extend(f"- observed `{row['relation']}` → {row['neighbor_name']} ({row['neighbor_type']}:{row['neighbor_id']}); score={row['score']}" for row in dossier["edges"])
     lines.append("\n## Evidence")
+    lines.append(
+        "Evidence export: bounded summary — "
+        f"{dossier['evidence_meta']['returned']} of {dossier['evidence_meta']['total']} rows; "
+        f"truncated: {str(dossier['evidence_meta']['truncated']).lower()}."
+    )
     lines.extend(f"- observed `{row['relation']}` {row['source']} / {row['predicate']} / {row['source_record_id']} / score={row['evidence_score']}" for row in dossier["evidence"])
     lines.append("\n## Long-range ranked connections")
     lines.extend(f"- ranked {row['target_type']}:{row['target_id']} {row['target_name']} score={row['score']} path={row['support_path']} caveat={row['caveats']}" for row in dossier["long_range"])
@@ -589,6 +681,12 @@ def _csv_zip_export(data: Any, dossier: dict[str, Any], trail: list[dict[str, st
                     "data_mode": data.mode,
                     "row_kinds": ["observed", "ranked", "inferred"],
                     "ranker_versions": ranker_versions,
+                    "evidence": {
+                        "scope": "bounded-summary",
+                        "total": dossier["evidence_meta"]["total"],
+                        "returned": dossier["evidence_meta"]["returned"],
+                        "truncated": dossier["evidence_meta"]["truncated"],
+                    },
                 },
                 indent=2,
             ),

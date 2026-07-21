@@ -63,9 +63,15 @@
     async dossier(type,id) {
       const root=`/api/nodes/${encodeURIComponent(type)}/${encodeURIComponent(id)}`;
       const [node,features,edges,evidence,longRange,putative]=await Promise.all([fetchJson(root),fetchJson(`${root}/features`),fetchJson(`${root}/edges`),fetchJson(`${root}/evidence`),fetchJson(`${root}/long-range`),fetchJson(`${root}/putative`)]);
-      return {node:node.node,features:features.rows,edges:edges.rows,evidence:evidence.rows,long_range:longRange.rows,putative_links:putative.rows,meta:node.meta};
+      return {node:node.node,features:features.rows,edges:edges.rows,evidence:evidence.rows,evidence_meta:evidence.meta,evidence_access:'complete-local',long_range:longRange.rows,putative_links:putative.rows,meta:node.meta};
     }
+    evidencePage(type,id,cursor) { const root=`/api/nodes/${encodeURIComponent(type)}/${encodeURIComponent(id)}/evidence`; return fetchJson(`${root}?limit=10&cursor=${encodeURIComponent(cursor)}`); }
     export(request) { return checkedFetch('/api/export',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(request)}); }
+  }
+
+  function staticDossier(result) {
+    const evidenceMeta=result.evidence_meta || {total:result.evidence.length,returned:result.evidence.length,truncated:false,next_cursor:null};
+    return {...result,evidence_meta:evidenceMeta,evidence_access:'static-summary'};
   }
 
   class StaticBundleDataSource {
@@ -81,7 +87,7 @@
     dossier(type,id) {
       const shard=this.manifest.entity_shards[keyOf(type,id)];
       if (!shard) return Promise.reject(new Error('Unknown static fixture node'));
-      return fetchJson(`${this.root}/${shard}`);
+      return fetchJson(`${this.root}/${shard}`).then(staticDossier);
     }
   }
 
@@ -95,7 +101,7 @@
     search(q,limit) { return Promise.resolve(fixtureSearch(this.bundle.search.nodes,q,limit)); }
     dossier(type,id) {
       const result=this.bundle.entities[keyOf(type,id)];
-      return result ? Promise.resolve(result) : Promise.reject(new Error('Unknown embedded fixture node'));
+      return result ? Promise.resolve(staticDossier(result)) : Promise.reject(new Error('Unknown embedded fixture node'));
     }
   }
 
@@ -140,6 +146,42 @@
     const evidence = dossier.evidence.filter(row => filter === 'all' || row.relation === filter);
     $('#evidence-body').innerHTML = evidence.length ? evidence.map(row=>`<tr><td><code>${esc(row.relation)}</code><br><small>${esc(row.row_kind || 'observed')}</small></td><td>${esc(row.source)}<br><small>${esc(row.source_dataset || '')}</small></td><td>${esc(row.predicate)}</td><td>${Number(row.evidence_score || 0).toFixed(2)}</td><td><a href="https://www.ncbi.nlm.nih.gov/search/all/?term=${encodeURIComponent(row.paper_id || row.source_record_id)}" target="_blank" rel="noopener">${esc(row.paper_id || row.source_record_id)}</a></td></tr>`).join('') : '<tr><td colspan="5">No evidence rows returned for this relation.</td></tr>';
   }
+  function renderEvidenceState() {
+    const meta=dossier.evidence_meta || {total:dossier.evidence.length,returned:dossier.evidence.length,truncated:false,next_cursor:null};
+    const total=Number(meta.total ?? dossier.evidence.length);
+    const returned=dossier.evidence.length;
+    const complete=dossier.evidence_access === 'complete-local' && !meta.next_cursor;
+    $('#evidence-scope').textContent=dossier.evidence_access === 'complete-local'
+      ? 'Complete local evidence is available through bounded 10-row pages.'
+      : 'Static top-evidence summary only; use the local installation for complete paginated evidence.';
+    $('#evidence-state').textContent=`Returned ${returned} of ${total} · ${dossier.evidence_access === 'complete-local' ? (complete ? 'complete' : 'more available') : 'static summary'}`;
+    $('#load-more-evidence').hidden=!(dossier.evidence_access === 'complete-local' && meta.next_cursor);
+    $('#load-more-evidence').disabled=false;
+  }
+  async function loadMoreEvidence() {
+    const button=$('#load-more-evidence');
+    const cursor=dossier.evidence_meta?.next_cursor;
+    if (!(dataSource instanceof ApiDataSource) || !cursor) return;
+    const requestedDossier=dossier;
+    const requestedNode=keyOf(current.node_type,current.node_id);
+    button.disabled=true;
+    try {
+      const page=await dataSource.evidencePage(current.node_type,current.node_id,cursor);
+      if (dossier !== requestedDossier || keyOf(current.node_type,current.node_id) !== requestedNode) return;
+      dossier.evidence.push(...page.rows);
+      dossier.evidence_meta={...page.meta,returned:dossier.evidence.length};
+      const selected=$('#evidence-filter').value;
+      const relations=[...new Set(dossier.evidence.map(row=>row.relation))];
+      $('#evidence-filter').innerHTML='<option value="all">All relations</option>'+relations.map(r=>`<option value="${esc(r)}">${esc(r.replaceAll('_',' '))}</option>`).join('');
+      $('#evidence-filter').value=relations.includes(selected) ? selected : 'all';
+      renderEvidence($('#evidence-filter').value);
+      renderEvidenceState();
+    } catch (error) {
+      if (dossier === requestedDossier && keyOf(current.node_type,current.node_id) === requestedNode) showToast(`Evidence page failed: ${error.message}`);
+    } finally {
+      if (dossier === requestedDossier && keyOf(current.node_type,current.node_id) === requestedNode) button.disabled=false;
+    }
+  }
 
   function renderTrail() {
     $('#history-list').innerHTML=trail.map((step,i)=>`<li class="history-step ${i===trail.length-1?'current':''}" data-history-index="${i}"><span>${esc(step.via)}</span><strong>${esc(step.display_name)}</strong><small>${esc(step.node_type)}:${esc(step.node_id)}</small></li>`).join('');
@@ -163,7 +205,7 @@
     $('#entity-description').textContent = current.description;
     $('#entity-ids').innerHTML = [`<span><b>canonical</b> ${esc(current.node_id)}</span>`, ...current.aliases.map(alias => `<span><b>${esc(alias.kind)}</b> ${esc(alias.value)}</span>`)].join('');
     $('#stat-direct').textContent = dossier.edges.length;
-    $('#stat-evidence').textContent = dossier.evidence.length;
+    $('#stat-evidence').textContent = dossier.evidence_meta?.total ?? dossier.evidence.length;
     $('#stat-putative').textContent = dossier.putative_links.length;
     $('#feature-grid').innerHTML = renderFeatureCards(dossier.features);
     $('#connections-list').innerHTML = renderConnections(dossier.edges);
@@ -172,6 +214,7 @@
     const relations=[...new Set(dossier.evidence.map(row=>row.relation))];
     $('#evidence-filter').innerHTML='<option value="all">All relations</option>'+relations.map(r=>`<option value="${esc(r)}">${esc(r.replaceAll('_',' '))}</option>`).join('');
     renderEvidence('all');
+    renderEvidenceState();
     renderTrail();
     bindNodeLinks();
     document.title=`${current.display_name} — Jouvence-Graph viewer`;
@@ -237,10 +280,11 @@
     showToast(`${kind.toUpperCase()} export created.`);
   }
   function staticMarkdown() {
-    const lines=['---',`snapshot_id: ${dossier.meta.snapshot_id}`,`data_mode: ${dossier.meta.data_mode || 'fixture'}`,`node_type: ${current.node_type}`,`node_id: ${current.node_id}`,'ranker_versions: [fixture_path_ranker:v1]','---','',`# ${current.display_name}`,'',current.description,'','## Identity',`- Canonical ID: \`${current.node_id}\``,`- Type: \`${current.node_type}\``,`- Source: ${current.source}`,'','## Features'];
+    const evidenceMeta=dossier.evidence_meta || {total:dossier.evidence.length,returned:dossier.evidence.length,truncated:false};
+    const lines=['---',`snapshot_id: ${dossier.meta.snapshot_id}`,`data_mode: ${dossier.meta.data_mode || 'fixture'}`,`node_type: ${current.node_type}`,`node_id: ${current.node_id}`,'ranker_versions: [fixture_path_ranker:v1]',`evidence_total: ${evidenceMeta.total}`,`evidence_returned: ${dossier.evidence.length}`,`evidence_truncated: ${Boolean(evidenceMeta.truncated)}`,'---','',`# ${current.display_name}`,'',current.description,'','## Identity',`- Canonical ID: \`${current.node_id}\``,`- Type: \`${current.node_type}\``,`- Source: ${current.source}`,'','## Features'];
     lines.push(...dossier.features.map(row=>`- ${row.feature_kind} / ${row.feature_key}: ${row.value} (${row.epistemic_kind}; ${row.source})`));
     lines.push('','## Direct observed edges',...dossier.edges.map(row=>`- observed \`${row.relation}\` → ${row.neighbor_name} (${row.neighbor_type}:${row.neighbor_id}); score=${row.score}`));
-    lines.push('','## Evidence',...dossier.evidence.map(row=>`- observed \`${row.relation}\` ${row.source} / ${row.predicate} / ${row.source_record_id} / score=${row.evidence_score}`));
+    lines.push('','## Evidence',`Evidence export: bounded summary — ${dossier.evidence.length} of ${evidenceMeta.total} rows; truncated: ${Boolean(evidenceMeta.truncated)}.`,...dossier.evidence.map(row=>`- observed \`${row.relation}\` ${row.source} / ${row.predicate} / ${row.source_record_id} / score=${row.evidence_score}`));
     lines.push('','## Long-range ranked connections',...dossier.long_range.map(row=>`- ranked ${row.target_type}:${row.target_id} ${row.target_name} score=${row.score} path=${row.support_path} caveat=${row.caveats}`));
     lines.push('','## Putative inferred links',...dossier.putative_links.map(row=>`- inferred ${row.target_type}:${row.target_id} ${row.target_name} (${row.policy_class}) template=${row.template_id} caveat=${row.leakage_caveat}`));
     lines.push('','## Navigation trail',...trail.map((row,index)=>`${index+1}. ${row.display_name} (${row.node_type}:${row.node_id}) — ${row.via}`));
@@ -268,9 +312,10 @@
     const output=new Uint8Array(offset+centralSize+end.length);let cursor=0;for(const part of [...locals,...centrals,end]){output.set(part,cursor);cursor+=part.length;}return output;
   }
   function staticCsvZip() {
+    const evidenceMeta=dossier.evidence_meta || {total:dossier.evidence.length,returned:dossier.evidence.length,truncated:false};
     const files={
       'node.csv':csvText([dossier.node]),'features.csv':csvText(dossier.features),'edges.csv':csvText(dossier.edges),'evidence.csv':csvText(dossier.evidence),'long_range.csv':csvText(dossier.long_range),'putative_links.csv':csvText(dossier.putative_links),'history.csv':csvText(trail),
-      'manifest.json':JSON.stringify({snapshot_id:dossier.meta.snapshot_id,data_mode:dossier.meta.data_mode || 'fixture',row_kinds:['observed','ranked','inferred']},null,2),
+      'manifest.json':JSON.stringify({snapshot_id:dossier.meta.snapshot_id,data_mode:dossier.meta.data_mode || 'fixture',row_kinds:['observed','ranked','inferred'],evidence:{scope:'bounded-summary',total:evidenceMeta.total,returned:dossier.evidence.length,truncated:Boolean(evidenceMeta.truncated)}},null,2),
     };
     return new Blob([zipBytes(files)],{type:'application/zip'});
   }
@@ -282,6 +327,7 @@
     document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement.tagName!=='INPUT'){e.preventDefault();$('#global-search').focus();}});
     document.addEventListener('click',e=>{if(!e.target.closest('.viewer-search-wrap'))$('#search-results').hidden=true;});
     $('#evidence-filter').addEventListener('change',e=>renderEvidence(e.target.value));
+    $('#load-more-evidence').addEventListener('click',loadMoreEvidence);
     $('#clear-history').addEventListener('click',()=>{trail=[{node_type:current.node_type,node_id:current.node_id,display_name:current.display_name,via:'Trail cleared'}];renderTrail();});
     $$('[data-export]').forEach(b=>b.addEventListener('click',()=>exportDossier(b.dataset.export).catch(error=>showToast(`Export failed: ${error.message}`))));
     $$('[data-copy-section]').forEach(b=>b.addEventListener('click',async()=>{await navigator.clipboard.writeText(dossier.features.map(x=>`${x.feature_kind}: ${x.value} (${x.epistemic_kind}; ${x.source})`).join('\n'));showToast('Features copied.');}));

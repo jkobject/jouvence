@@ -184,12 +184,13 @@ All endpoints are read-only and bounded.
 | `GET /api/nodes/{type}/{id}` | Identity, aliases and node attributes | one node |
 | `GET /api/nodes/{type}/{id}/features` | Feature sidecars grouped by feature kind | max 100 rows/kind |
 | `GET /api/nodes/{type}/{id}/edges` | Direct adjacency grouped by relation | max 50/relation, cursor pagination |
-| `GET /api/edges/{edge_key}/evidence` | Evidence rows and references | max 100/page |
+| `GET /api/edges/{edge_key}/evidence` | Evidence rows and references | default 10, max 50/page |
+| `GET /api/nodes/{type}/{id}/evidence` | All matching node evidence | default 10, max 50/page |
 | `GET /api/nodes/{type}/{id}/long-range` | Top-k by requested target type | fixed k ≤ 5/type |
 | `GET /api/nodes/{type}/{id}/putative` | Manifest-enabled inferred hypotheses | max 25 |
 | `POST /api/export` | Markdown, CSV bundle or printable HTML/PDF | current dossier + trail only |
 
-Every response includes `snapshot_id`, `data_mode`, `truncated`, and relevant manifest/ranker versions.
+Every response includes `snapshot_id`, `data_mode`, `truncated`, and relevant manifest/ranker versions. Evidence responses additionally report `total`, `returned`, and a deterministic cursor over immutable content order. Local mode can traverse every evidence page; the static site exposes only a bounded top-evidence summary.
 
 ## 7. Information architecture
 
@@ -225,7 +226,7 @@ Every response includes `snapshot_id`, `data_mode`, `truncated`, and relevant ma
 - **CSV:** a ZIP containing `node.csv`, `features.csv`, `edges.csv`, `evidence.csv`, `long_range.csv`, `putative_links.csv`, `history.csv`, and `manifest.json`. One flattened mega-CSV would destroy semantics.
 - **PDF:** print-optimized rendering of the currently loaded dossier plus history. The first implementation can use browser print-to-PDF; a backend renderer is unnecessary unless deterministic batch exports become a requirement.
 
-All exports label observed, retrieved/ranked and inferred rows distinctly.
+All exports label observed, retrieved/ranked and inferred rows distinctly. Evidence in a dossier export is always a bounded summary of at most 50 rows; Markdown and CSV manifests disclose `total`, `returned`, and `truncated` rather than implying that a capped export is complete.
 
 ## 9. Data-source onboarding states
 
