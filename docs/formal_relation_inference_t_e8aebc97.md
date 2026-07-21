@@ -23,9 +23,9 @@ The allowlisted executor now:
 
 - reads the accepted plural materialized fields (`action_direction`, `target_modulation`, `action_types`, `causal_mechanisms`, and `effect_directions`) without treating compatible representations such as `negative`, `decrease`, and `inhibitor` as a conflict;
 - honors aggregate `action_status`, `mechanism_status`, and `effect_direction_status` fail-closed;
-- emits separate signed treatment and contraindication rules for both gene and protein targets;
+- emits separate signed treatment and contraindication rules for both gene and protein targets using the three-operand algebra `p = action × disease mechanism × disease outcome direction`; `p = -1` is therapeutic and `p = +1` is harmful;
 - preserves source releases, input snapshot hash, context compatibility, sign computation, epistemic class, conflict state, premise paths/evidence IDs, and anti-join receipts in inferred evidence;
-- reconciles alternative disease-sign sources by preserving one/agreeing polarity and rejecting disagreement;
+- keeps disease mechanism and disease outcome direction as distinct required operands: agonist/increase and GoF/risk are `+1`, inhibitor/decrease and LoF/protective are `-1`; missing, unknown, or conflicting operands fail closed with no one-dimensional fallback;
 - records bounded rejected-path samples, including full typed premises, instead of hiding zero-output reasons;
 - treats legacy contraindication edges without direct evidence as an incomplete canonical anti-join inventory;
 - validates contraindication anti-join completeness only from an accepted `canonical-target-inventory-v1` receipt bound to the exact relation, snapshot/source identity, edge/evidence file hashes, edge-key-set hashes, and zero gap/orphan coverage counts.
@@ -75,8 +75,8 @@ The machine report stores typed relation names, all premise edge/evidence IDs, s
 Task-local control artifacts are under `artifacts/staged/t_e8aebc97/manifest/`:
 
 - `input_manifest.json` — SHA-256 `9ac5ffaf591d817f4cbdd82f4085026c5cee83d50e3ac07534801f0b4b8ff878`
-- `pilot_report.json` — SHA-256 `ba2edb4845e46ff033d10038d8829830959de79df6e9740935f4f6405ab940fd`
-- `template_registry_v2.json` — SHA-256 `424e07ffaae8666347c2d24004a8d5c1c314ad720925d34f296495fcb7e3f6ff`
+- `pilot_report.json` — SHA-256 `e5e5223d33feefb7f06b4cb578cd1886b2eb1933de95622d93ac30871be8a7b5`
+- `template_registry_v2.json` — SHA-256 `e23e34dfe51e3a568b2ee9e928ed6ddce4c8395bcac540c2b03dfcf03bb45e1a`
 
 Because every rule emitted zero, `edges_inferred/` and `evidence_inferred/` contain no Parquets and stale outputs are absent.
 
@@ -86,6 +86,8 @@ Focused TDD tests cover:
 
 - compatible plural action representations;
 - treatment versus contraindication sign routing;
+- the complete agonist/inhibitor × GoF/LoF × risk/protective truth table, including `agonist × LoF × risk => treatment` and `agonist × LoF × protective => contraindication`;
+- missing, unknown, or conflicting mechanism/direction aggregate states yielding zero claims;
 - aggregate mechanism conflict failing closed;
 - unknown parent-shaped disease sign yielding zero;
 - source releases and snapshot hash preservation;

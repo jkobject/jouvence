@@ -905,6 +905,7 @@ def test_signed_pharmacology_and_strict_pgx_fail_closed(tmp_path: Path) -> None:
                 "D1",
                 "disease",
                 causal_mechanism="gain_of_function",
+                effect_direction="risk",
                 causal_support_level="causal",
                 population="EUR",
             ),
@@ -915,6 +916,7 @@ def test_signed_pharmacology_and_strict_pgx_fail_closed(tmp_path: Path) -> None:
                 "D2",
                 "disease",
                 causal_mechanism="loss_of_function",
+                effect_direction="risk",
                 causal_support_level="causal",
                 population="EUR",
             ),
@@ -925,6 +927,7 @@ def test_signed_pharmacology_and_strict_pgx_fail_closed(tmp_path: Path) -> None:
                 "D3",
                 "disease",
                 causal_mechanism="gain_of_function",
+                effect_direction="risk",
                 causal_support_level="causal",
                 population="EUR",
             ),
@@ -935,6 +938,7 @@ def test_signed_pharmacology_and_strict_pgx_fail_closed(tmp_path: Path) -> None:
                 "D7",
                 "disease",
                 causal_mechanism="gain_of_function",
+                effect_direction="risk",
                 causal_support_level="associative",
                 population="EUR",
             ),
@@ -945,6 +949,7 @@ def test_signed_pharmacology_and_strict_pgx_fail_closed(tmp_path: Path) -> None:
                 "D8",
                 "disease",
                 causal_mechanism="gain_of_function",
+                effect_direction="risk",
                 causal_support_level="causal",
             ),
         ],
@@ -1040,7 +1045,7 @@ def test_signed_pharmacology_and_strict_pgx_fail_closed(tmp_path: Path) -> None:
         "conflicting_sign": 1,
         "missing_shared_context": 1,
         "noncausal_support": 1,
-        "same_sign": 1,
+        "nontherapeutic_sign_product": 1,
     }
     assert (
         report["rejection_reason_counts"]["pharmacogenomic_efficacy_treatment_v2"][
@@ -1211,17 +1216,18 @@ def test_signed_protein_features_emit_treatment_and_contraindication_with_full_p
     )
     assert set(zip(treatment.x_id, treatment.y_id)) == {
         ("M-TREAT", "D"),
-        ("M-NEGATIVE-DISEASE", "D-NEGATIVE-DISEASE"),
+        ("M-DISAGREE", "D-DISAGREE"),
     }
     assert set(zip(contraindication.x_id, contraindication.y_id)) == {
-        ("M-HARM", "D")
+        ("M-HARM", "D"),
+        ("M-NEGATIVE-DISEASE", "D-NEGATIVE-DISEASE"),
     }
     assert report["rejection_reason_counts"]["signed_protein_target_treatment_v2"][
         "conflicting_sign"
-    ] == 2
+    ] == 1
     assert report["rejection_reason_counts"][
         "signed_protein_target_contraindication_v2"
-    ]["conflicting_sign"] == 2
+    ]["conflicting_sign"] == 1
     evidence = read_output(
         tmp_path / "out",
         "molecule_contraindicates_disease",
@@ -1237,11 +1243,192 @@ def test_signed_protein_features_emit_treatment_and_contraindication_with_full_p
         "effect_direction_sign": 1,
         "net_disease_sign": 1,
         "relation": "molecule_contraindicates_disease",
+        "sign_product": 1,
     }
     assert evidence.conflict_state == "none"
     assert evidence.epistemic_class == "inferred_weak"
     assert not bool(evidence.canonical_observed_overlap)
     assert not bool(evidence.staged_source_native_overlap)
+
+
+@pytest.mark.parametrize(
+    ("action", "mechanism", "direction", "expected_relation"),
+    [
+        ("agonist", "gain_of_function", "risk", "molecule_contraindicates_disease"),
+        ("agonist", "gain_of_function", "protective", "molecule_treats_disease"),
+        ("agonist", "loss_of_function", "risk", "molecule_treats_disease"),
+        (
+            "agonist",
+            "loss_of_function",
+            "protective",
+            "molecule_contraindicates_disease",
+        ),
+        ("inhibitor", "gain_of_function", "risk", "molecule_treats_disease"),
+        (
+            "inhibitor",
+            "gain_of_function",
+            "protective",
+            "molecule_contraindicates_disease",
+        ),
+        (
+            "inhibitor",
+            "loss_of_function",
+            "risk",
+            "molecule_contraindicates_disease",
+        ),
+        ("inhibitor", "loss_of_function", "protective", "molecule_treats_disease"),
+    ],
+)
+def test_signed_target_truth_table_composes_action_mechanism_and_disease_direction(
+    tmp_path: Path,
+    action: str,
+    mechanism: str,
+    direction: str,
+    expected_relation: str,
+) -> None:
+    kg = tmp_path / "kg"
+    write(
+        kg,
+        "molecule_targets_gene",
+        [
+            edge(
+                "molecule_targets_gene",
+                "M",
+                "molecule",
+                "G",
+                "gene",
+                action_types=json.dumps([action]),
+                action_status="single",
+                population="EUR",
+            )
+        ],
+    )
+    write(
+        kg,
+        "disease_associated_gene",
+        [
+            edge(
+                "disease_associated_gene",
+                "G",
+                "gene",
+                "D",
+                "disease",
+                causal_mechanisms=json.dumps([mechanism]),
+                mechanism_status="single",
+                effect_directions=json.dumps([direction]),
+                effect_direction_status="single",
+                causal_support_level="causal",
+                population="EUR",
+            )
+        ],
+    )
+
+    report = build_composition_allowlist(
+        config(
+            kg,
+            tmp_path / "out",
+            "signed_gene_target_treatment_v2",
+            "signed_gene_target_contraindication_v2",
+        )
+    )
+
+    expected_template = (
+        "signed_gene_target_treatment_v2"
+        if expected_relation == "molecule_treats_disease"
+        else "signed_gene_target_contraindication_v2"
+    )
+    other_template = (
+        "signed_gene_target_contraindication_v2"
+        if expected_template == "signed_gene_target_treatment_v2"
+        else "signed_gene_target_treatment_v2"
+    )
+    assert report["counts_by_template"][expected_template]["output_rows"] == 1
+    assert report["counts_by_template"][other_template]["output_rows"] == 0
+    evidence = read_output(
+        tmp_path / "out", expected_relation, expected_template, "evidence_inferred"
+    ).iloc[0]
+    sign_computation = json.loads(evidence.sign_computation)
+    assert sign_computation["sign_product"] == (
+        -1 if expected_relation == "molecule_treats_disease" else 1
+    )
+
+
+@pytest.mark.parametrize(
+    ("mechanism_status", "effect_status", "mechanisms", "directions"),
+    [
+        ("unknown", "single", "[]", '["risk"]'),
+        ("single", "unknown", '["gain_of_function"]', "[]"),
+        ("conflicting", "single", '["gain_of_function"]', '["risk"]'),
+        ("single", "conflicting", '["gain_of_function"]', '["risk"]'),
+        (
+            "single",
+            "single",
+            '["gain_of_function", "loss_of_function"]',
+            '["risk"]',
+        ),
+        ("single", "single", '["gain_of_function"]', '["risk", "protective"]'),
+    ],
+)
+def test_signed_target_unknown_or_conflicting_operand_emits_no_claim(
+    tmp_path: Path,
+    mechanism_status: str,
+    effect_status: str,
+    mechanisms: str,
+    directions: str,
+) -> None:
+    kg = tmp_path / "kg"
+    write(
+        kg,
+        "molecule_targets_gene",
+        [
+            edge(
+                "molecule_targets_gene",
+                "M",
+                "molecule",
+                "G",
+                "gene",
+                action_types='["agonist"]',
+                action_status="single",
+                population="EUR",
+            )
+        ],
+    )
+    write(
+        kg,
+        "disease_associated_gene",
+        [
+            edge(
+                "disease_associated_gene",
+                "G",
+                "gene",
+                "D",
+                "disease",
+                causal_mechanisms=mechanisms,
+                mechanism_status=mechanism_status,
+                effect_directions=directions,
+                effect_direction_status=effect_status,
+                causal_support_level="causal",
+                population="EUR",
+            )
+        ],
+    )
+
+    report = build_composition_allowlist(
+        config(
+            kg,
+            tmp_path / "out",
+            "signed_gene_target_treatment_v2",
+            "signed_gene_target_contraindication_v2",
+        )
+    )
+
+    assert all(
+        report["counts_by_template"][template]["output_rows"] == 0
+        for template in (
+            "signed_gene_target_treatment_v2",
+            "signed_gene_target_contraindication_v2",
+        )
+    )
 
 
 def test_sign_resolution_accepts_synonyms_but_fails_closed_on_unknown_or_opposite_tokens() -> None:
@@ -1253,6 +1440,12 @@ def test_sign_resolution_accepts_synonyms_but_fails_closed_on_unknown_or_opposit
     ) == ("unknown", None)
     assert composition._action_sign(
         {"action_types": '["inhibitor", "agonist"]'}
+    ) == ("conflicting", None)
+    assert composition._action_sign(
+        {"action_types": '["inhibitor"]', "action_status": "unknown"}
+    ) == ("unknown", None)
+    assert composition._action_sign(
+        {"action_types": '["inhibitor"]', "action_status": "conflicting"}
     ) == ("conflicting", None)
 
     status, sign, _ = composition._disease_sign(
@@ -1269,6 +1462,12 @@ def test_sign_resolution_accepts_synonyms_but_fails_closed_on_unknown_or_opposit
             "effect_directions": '["risk"]',
         }
     )
+    assert (status, sign) == ("unknown", None)
+    status, sign, _ = composition._disease_sign(
+        {"causal_mechanisms": '["gain_of_function"]'}
+    )
+    assert (status, sign) == ("unknown", None)
+    status, sign, _ = composition._disease_sign({"effect_directions": '["risk"]'})
     assert (status, sign) == ("unknown", None)
 
 
@@ -1816,6 +2015,14 @@ def test_zero_rerun_removes_stale_pair_and_deterministic_hashes_ignore_wall_cloc
     build_composition_allowlist(
         config(populated, second_out, "mutation_transcript_gene_attribution_v2")
     )
+    first_report = (out / "manifest" / "pilot_report.json").read_bytes()
+    repeated_report = (second_out / "manifest" / "pilot_report.json").read_bytes()
+    assert b'"created_at"' not in first_report
+    first_report_payload = json.loads(first_report)
+    repeated_report_payload = json.loads(repeated_report)
+    first_report_payload.pop("artifacts")
+    repeated_report_payload.pop("artifacts")
+    assert first_report_payload == repeated_report_payload
     repeated = read_output(
         second_out,
         "mutation_associated_gene",

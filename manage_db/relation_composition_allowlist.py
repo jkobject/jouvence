@@ -16,7 +16,6 @@ import tempfile
 import uuid
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -317,8 +316,8 @@ TEMPLATES: tuple[Template, ...] = (
         "molecule_treats_disease",
         "inferred_edge",
         "inferred_weak",
-        ("known_opposite_signs", "causal_support", "context_compatible"),
-        ("missing_sign", "conflicting_sign", "same_sign", "context_mismatch"),
+        ("known_action_mechanism_direction", "negative_sign_product", "causal_support", "context_compatible"),
+        ("missing_sign", "conflicting_sign", "nontherapeutic_sign_product", "context_mismatch"),
     ),
     Template(
         "signed_protein_target_treatment_v2",
@@ -326,8 +325,8 @@ TEMPLATES: tuple[Template, ...] = (
         "molecule_treats_disease",
         "inferred_edge",
         "inferred_weak",
-        ("known_opposite_signs", "causal_support", "context_compatible"),
-        ("missing_sign", "conflicting_sign", "same_sign", "isoform_mismatch"),
+        ("known_action_mechanism_direction", "negative_sign_product", "causal_support", "context_compatible"),
+        ("missing_sign", "conflicting_sign", "nontherapeutic_sign_product", "isoform_mismatch"),
     ),
     Template(
         "signed_gene_target_contraindication_v2",
@@ -335,8 +334,8 @@ TEMPLATES: tuple[Template, ...] = (
         "molecule_contraindicates_disease",
         "inferred_edge",
         "inferred_weak",
-        ("known_same_signs", "causal_support", "context_compatible"),
-        ("missing_sign", "conflicting_sign", "opposite_sign", "context_mismatch"),
+        ("known_action_mechanism_direction", "positive_sign_product", "causal_support", "context_compatible"),
+        ("missing_sign", "conflicting_sign", "nonharmful_sign_product", "context_mismatch"),
     ),
     Template(
         "signed_protein_target_contraindication_v2",
@@ -344,8 +343,8 @@ TEMPLATES: tuple[Template, ...] = (
         "molecule_contraindicates_disease",
         "inferred_edge",
         "inferred_weak",
-        ("known_same_signs", "causal_support", "context_compatible"),
-        ("missing_sign", "conflicting_sign", "opposite_sign", "isoform_mismatch"),
+        ("known_action_mechanism_direction", "positive_sign_product", "causal_support", "context_compatible"),
+        ("missing_sign", "conflicting_sign", "nonharmful_sign_product", "isoform_mismatch"),
     ),
     Template(
         "allelic_triangulation_treatment_v2",
@@ -761,6 +760,7 @@ def _sign(row: Mapping[str, Any], *fields: str) -> tuple[str, int | None]:
 
 
 def _disease_sign(row: Mapping[str, Any]) -> tuple[str, int | None, dict[str, Any]]:
+    """Compose distinct disease mechanism and outcome-direction operands."""
     mechanism_fields = (
         "causal_mechanisms",
         "causal_mechanism",
@@ -769,16 +769,6 @@ def _disease_sign(row: Mapping[str, Any]) -> tuple[str, int | None, dict[str, An
     effect_fields = ("effect_directions", "effect_direction")
     mechanism_status, mechanism = _sign(row, *mechanism_fields)
     effect_status, effect = _sign(row, *effect_fields)
-    mechanism_present = bool(
-        _values(row, *mechanism_fields)
-        or _values(row, *(f"{field}_status" for field in mechanism_fields))
-        or _values(row, "mechanism_status")
-    )
-    effect_present = bool(
-        _values(row, *effect_fields)
-        or _values(row, *(f"{field}_status" for field in effect_fields))
-        or _values(row, "effect_direction_status")
-    )
     mechanism_aggregate_status = _values(row, "mechanism_status")
     effect_aggregate_status = _values(row, "effect_direction_status")
     if "conflicting" in mechanism_aggregate_status:
@@ -795,16 +785,11 @@ def _disease_sign(row: Mapping[str, Any]) -> tuple[str, int | None, dict[str, An
     }
     if "conflicting" in {mechanism_status, effect_status}:
         return "conflicting", None, detail
-    if (mechanism_present and mechanism_status == "unknown") or (
-        effect_present and effect_status == "unknown"
-    ):
+    if "unknown" in {mechanism_status, effect_status}:
         return "unknown", None, detail
-    known = [value for value in (mechanism, effect) if value is not None]
-    if not known:
+    if mechanism is None or effect is None:
         return "unknown", None, detail
-    if len(set(known)) > 1:
-        return "conflicting", None, detail
-    disease_sign = known[0]
+    disease_sign = mechanism * effect
     detail["net_disease_sign"] = disease_sign
     return "known", disease_sign, detail
 
@@ -1268,6 +1253,8 @@ def _generate(
                     **sign_detail,
                     "relation": template.target,
                 }
+                if action is not None and mechanism_sign is not None:
+                    sign_computation["sign_product"] = action * mechanism_sign
 
                 def reject_signed(reason: str) -> None:
                     rejected[reason] += 1
@@ -1323,9 +1310,13 @@ def _generate(
                 if causal not in accepted_causal_support:
                     reject_signed("noncausal_support")
                     continue
-                same_sign = action == mechanism_sign
-                if same_sign != contraindication:
-                    reject_signed("opposite_sign" if contraindication else "same_sign")
+                sign_product = action * mechanism_sign
+                if (sign_product > 0) != contraindication:
+                    reject_signed(
+                        "nonharmful_sign_product"
+                        if contraindication
+                        else "nontherapeutic_sign_product"
+                    )
                     continue
                 if not _compatible((target, mechanism)):
                     reject_signed("context_mismatch")
@@ -1353,7 +1344,9 @@ def _generate(
                         extra={
                             "sign_status": "known",
                             "therapeutic_sign": (
-                                "same" if contraindication else "opposite"
+                                "product_positive"
+                                if contraindication
+                                else "product_negative"
                             ),
                             "causal_support": causal,
                             "source_releases": _json(releases),
@@ -1940,7 +1933,6 @@ def build_composition_allowlist(config: BuildConfig) -> dict[str, Any]:
         "artifacts": artifacts,
         "rejected_motifs": REJECTED_MOTIFS,
         "claims": {"scientific_novelty": False, "canonical_observed": False},
-        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
     }
     _publish_output_tree(config, pending_outputs, input_manifest, report)
     return report
