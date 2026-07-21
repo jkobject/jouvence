@@ -87,6 +87,21 @@ remains the source of truth.  Public embedding URIs are not assumed while the
 immutable release/license contract remains pending; set
 `JOUVENCE_EMBEDDING_URI` only to an accepted published shard.
 
+## Jouvence-Graph fixture viewer
+
+Phase 1 of the entity viewer is a deterministic fixture/local API only. It does
+not read canonical GCS, LaminDB, VMs, requester-pays data, credentials, or
+arbitrary local files. Run it from a clean clone with:
+
+```bash
+uv sync --group dev
+uv run jouvence-viewer --host 127.0.0.1 --port 8765
+```
+
+Then open <http://127.0.0.1:8765/>. The static public preview at
+[`docs/viewer.html`](docs/viewer.html) has an explicit fixture fallback for
+GitHub Pages, but the local API path is the tested Phase 1 product surface.
+
 ### Installation
 
 ```bash
