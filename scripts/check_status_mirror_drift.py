@@ -12,12 +12,160 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MIRRORS = (
     Path("TODO.md"),
     Path("todo.d/01_lamindb.md"),
+    Path("todo.d/02_pyg_gnn.md"),
     Path("todo.d/03_embeddings.md"),
+    Path("todo.d/04_relations.md"),
+    Path("todo.d/05_remap.md"),
     Path("todo.d/06_process.md"),
 )
+ROUTING_REQUIREMENTS = {
+    Path("todo.d/README.md"): {
+        "required": ("historical/superseded dated context", "`TODO.md` plus live Kanban"),
+        "forbidden": ("short current-state anchor",),
+    },
+    Path("docs/current_state_20260623.md"): {
+        "required": ("Historical snapshot — superseded", "`TODO.md`", "live Kanban"),
+        "forbidden": ("This is the short current-state anchor",),
+    },
+    Path("docs/guides/agent-context.md"): {
+        "required": (
+            "/Users/jkobject/Documents/jouvence` is the canonical local checkout",
+            "/Users/jkobject/Documents/jouvence/.worktrees/<branch-or-task-id>/",
+        ),
+        "forbidden": ("`work/txgnn` is the canonical local worktree",),
+    },
+    Path("docs/README.md"): {
+        "required": ("[`viewer-install.html`](viewer-install.html)", "historical/superseded snapshot"),
+        "forbidden": (),
+    },
+    Path("CLAUDE.md"): {
+        "required": (
+            "Legacy, non-authoritative context",
+            "[`AGENTS.md`](AGENTS.md)",
+            "[`TODO.md`](TODO.md)",
+        ),
+        "forbidden": (),
+    },
+}
+LIVE_STATUS_REQUIREMENTS = {
+    Path("TODO.md"): {
+        "required": (
+            "canonical active edge relations: `41`",
+            "canonical relations with evidence: `19`",
+            "canonical edge rows: `100,083,633`",
+            "`t_aa5cd96e` / reviewer `t_0611e6c6`",
+            "does not change the accepted LaminDB ingestion numerator",
+            "PR #43's corrected 67-relation ledger remains changes-requested/pending",
+        ),
+        "forbidden": ("canonical active edge relations: `40`",),
+    },
+    Path("todo.d/01_lamindb.md"): {
+        "required": (
+            "**100,083,633 canonical edge rows** across **41/67 declared relations**",
+            "**76,601,052 canonical evidence rows**",
+            "accepted 35,839-row `disease_associated_protein` evidence object",
+            "does **not** change the separately dated Lamin denominator, accepted numerator, or physical readback",
+            "**41/67 declared relations physically canonical**",
+            "PR #43's corrected 67-relation ledger remains changes-requested/pending",
+        ),
+        "forbidden": (
+            "**100,080,390 canonical edge rows**",
+            "**76,565,213 canonical evidence rows**",
+            "**40/67 declared relations physically canonical**",
+        ),
+    },
+    Path("todo.d/04_relations.md"): {
+        "required": (
+            "41 canonical active edge relations",
+            "19 canonical relations with evidence and 22 without evidence",
+            "`t_aa5cd96e` / reviewer `t_0611e6c6` is `canonical promoted / independently accepted`",
+            "PR #43's corrected 67-relation ledger remains changes-requested/pending",
+        ),
+        "forbidden": ("40 canonical active edge relations",),
+    },
+    Path("todo.d/05_remap.md"): {
+        "required": (
+            "Accepted route C supersedes that exploration for current execution scope",
+            "No ReMap execution, recovery, resume, watchdog, build, or promotion lane is dispatchable",
+            "must not be used as an execution, recovery, resume, watchdog, build, or promotion lane",
+        ),
+        "forbidden": (
+            "A new bounded staged candidate is justified",
+            "Fresh-UDC continuation operations policy",
+        ),
+    },
+    Path("todo.d/06_process.md"): {
+        "required": (
+            "## Historical review routes now terminal",
+            "all four producer/fix cards are now terminal `done`; they are not current review queues",
+            "Final reviewer `t_fcb5b69f` accepted evidence-update readiness",
+            "reviewer `t_00459dfe` accepted the restored artifact",
+        ),
+        "forbidden": (
+            "## Current review-required routes observed during this card",
+            "Status: `review-required/admin-required`",
+            "Status: `review-required`, staged-only/evidence-only",
+            "Status: `review-required`, artifact restoration pending review",
+        ),
+    },
+    Path("docs/relation_coverage_current.md"): {
+        "required": (
+            "Canonical edge relations present in `v2/edges`: `41`",
+            "Canonical edge relations with matching `v2/evidence` file: `19`",
+            "Total canonical edge rows across current edge files: `100,083,633`",
+            "`disease_associated_protein` was accepted by `t_0611e6c6`",
+        ),
+        "forbidden": (
+            "`disease_associated_protein` | `protein→disease` | `disease_assoc` | yes | `staged-only/deferred`",
+        ),
+    },
+    Path("docs/kg_schema_overview.md"): {
+        "required": (
+            "Canonical edge files: `41 / 67`",
+            "Canonical edge rows: `100,083,633`",
+            "Evidence files: `19`",
+            "`disease_associated_protein` was accepted by `t_0611e6c6`",
+        ),
+        "forbidden": (
+            "`disease_associated_protein` | `protein→disease` | `disease_assoc` | yes | `staged-only/deferred`",
+        ),
+    },
+    Path("docs/relation_backlog_prioritized.md"): {
+        "required": (
+            "marker-last canonical release `t_aa5cd96e`",
+            "`canonical promoted / independently accepted` by `t_0611e6c6`",
+            "active full `tf_binds_enhancer` topology is a non-dispatchable policy-deferred non-goal",
+            "Only the still-unpromoted Wave B relations remain eligible",
+            "`disease_associated_protein` is already canonical promoted and independently accepted",
+        ),
+        "forbidden": (
+            "`disease_associated_protein` | protein-native disease-association staged pilot",
+            "New ReMap CRM/peak/motif work should follow",
+            "user-approved direction is a new bounded staged `tf_binds_enhancer`",
+            "prepare promotion candidates for `pathway_contains_protein`, `molecule_targets_protein`, and `disease_associated_protein`",
+        ),
+    },
+}
 SUPERSEDED_CARDS = ("t_ce839966", "t_075f5353")
 HISTORICAL_TERMS = ("superseded", "historical", "inert", "must not", "do not")
 SNAPSHOT_RE = re.compile(r"^_Status snapshot: (\d{4}-\d{2}-\d{2})(?: [^.]*)?\._$")
+
+
+def check_text_requirements(
+    relative_path: Path,
+    text: str,
+    requirements: dict[str, tuple[str, ...]],
+    status_label: str,
+) -> list[str]:
+    """Return missing/forbidden text failures for one maintained surface."""
+    errors: list[str] = []
+    for required in requirements["required"]:
+        if required not in text:
+            errors.append(f"{relative_path}: missing {status_label} {required!r}")
+    for forbidden in requirements["forbidden"]:
+        if forbidden in text:
+            errors.append(f"{relative_path}: contains stale {status_label} {forbidden!r}")
+    return errors
 
 
 def check_mirrors(expected_date: str) -> list[str]:
@@ -40,6 +188,18 @@ def check_mirrors(expected_date: str) -> list[str]:
                         f"{relative_path}:{line_number}: superseded card {card_id} "
                         "is not explicitly marked historical/inert"
                     )
+
+    for relative_path, requirements in ROUTING_REQUIREMENTS.items():
+        text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        errors.extend(
+            check_text_requirements(relative_path, text, requirements, "routing text")
+        )
+
+    for relative_path, requirements in LIVE_STATUS_REQUIREMENTS.items():
+        text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        errors.extend(
+            check_text_requirements(relative_path, text, requirements, "accepted live status")
+        )
     return errors
 
 

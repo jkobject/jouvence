@@ -1,5 +1,7 @@
 # TxGNN — Claude Project Context
 
+> **Legacy, non-authoritative context.** This file is no longer an agent boot source and its historical status sections are not maintained. Start with [`AGENTS.md`](AGENTS.md), use [`TODO.md`](TODO.md) plus live Kanban for current status, and consult only the relevant durable guide.
+
 ## What This Is
 
 TxGNN is a Python ML research library for **zero-shot drug repurposing** via

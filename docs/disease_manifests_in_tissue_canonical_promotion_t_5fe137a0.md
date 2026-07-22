@@ -2,7 +2,9 @@
 
 Date: 2026-06-24  
 Producer/staged source: `t_badd3e1e`, semantic approval from `t_7e5953c2`.  
-Status: `canonical promoted` / `review-required`.
+Status at promotion: `canonical promoted` / `review-required`.
+
+> **Supersession note (2026-07-22):** consolidated independent reviewer `t_2d1f767d` passed this exact immutable, narrowly scoped HPA/TCGA canonical revision. Current status is `canonical promoted` / independently accepted; the narrow cancer-context semantics remain unchanged.
 
 ## Scope
 

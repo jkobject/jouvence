@@ -2,7 +2,9 @@
 
 Kanban task: `t_656a1102`  
 Canonical target: `features/remap_crm_tf_enhancer_support.parquet`  
-Status: promoted; tester/reviewer validation still required before counting terminal
+Status at producer handoff: promoted; tester/reviewer validation was still required before counting terminal.
+
+> **Supersession note (2026-07-22):** reviewer `t_69fa9b1d` accepted this exact bounded canonical feature-context sidecar and producer `t_656a1102` closed `validated`.
 
 ## Approval gate
 

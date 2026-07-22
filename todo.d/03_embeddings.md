@@ -1,6 +1,6 @@
 # 03 — Node features and embeddings
 
-_Status snapshot: 2026-07-19 CEST._
+_Status snapshot: 2026-07-22 15:18 CEST._
 
 Kanban board `txgnn` remains the live source of truth.
 
@@ -18,7 +18,7 @@ There are 15 active canonical node types: `paper`, `gene`, `transcript`, `protei
 | --- | --- | --- | --- |
 | protein | `protein_sequence`: 112,051 rows | `protein_textual_summary`: 162,163 rows / 69.30% protein coverage | source-backed but not every protein has both modalities |
 | transcript | `transcript_sequence`: 187,268 rows | none | sequence coverage partial versus 507,365 transcript nodes |
-| gene | none canonical; staged `gene_genomic_sequence`: 78,164 rows and `gene_genomic_interval`: 78,644 rows | `gene_textual_summary`: 212,029 / 267,830 on the pre-migration source | genomic features and counts require rebase to the 81,715-human-ENSG target after `t_8b9cdabc`; no promotion claimed |
+| gene | canonical exact-ENSG genomic NT release: 78,644 embeddings + 3,071 explicit missing = 81,715 eligible; canonical Gene node table remains the old mixed source | `gene_textual_summary`: 212,029 / 267,830 on the pre-migration source | feature release independently accepted (`t_6cf146f0` / `t_536b7016`); not a Gene-node migration |
 | molecule | `molecule_fingerprint`: 18,614; source SMILES/text available for 22,230 / 31,007 | `molecule_textual_summary`: 22,230 | no fabricated structure for molecules without valid SMILES |
 | disease | n/a | 26,395 / 41,859 | partial text coverage |
 | pathway | n/a | 37,492 / 48,575 | mostly GO; Reactome descriptions remain incomplete/deferred |
@@ -65,9 +65,11 @@ Important boundaries:
 - edge/value MLP output has executable bounded proof, but full all-relation production embedding materialization and model calibration are not complete;
 - learned fallback is a model parameter/initialization, not biological source evidence.
 
-## Gene Nucleotide Transformer stop
+## Exact-ENSG Gene Nucleotide Transformer release
 
-`t_d3b876b3` is **stopped-by-user** at 6,912 / 78,164 scratch rows. Those rows are non-canonical and have no accepted release marker. Do not auto-resume, publish, delete, or count the scratch checkpoint as accepted embedding coverage. Any future restart requires a new explicit operator decision and bounded plan.
+Producer `t_03bf9e27` froze staged manifest `d32ef9502fe7100a4fa6512a07b1a614806f1a6d32dd395d9be3ef3faa7eb397`; promotion `t_6cf146f0` and reviewer `t_536b7016` independently accepted the immutable canonical release with 78,644 embedded, 3,071 explicit missing, 81,715 eligible ENSG, and 186,115 quarantined non-ENSG. Duplicate, mismatch, nonfinite, and all-zero counts are 0. This is feature coverage, not canonical Gene-node migration.
+
+The old `t_d3b876b3` 6,912-row checkpoint remains stopped, non-canonical historical scratch with zero current coverage credit; do not resume or publish it.
 
 ## 16 GB implication
 
