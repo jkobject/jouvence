@@ -19,6 +19,32 @@ from typing import Any
 from manage_db.kg_schema import RELATIONS
 
 TASK_ID = "t_8c7f0862"
+CAPTURE_COMPLETENESS_CONTRACT = {
+    "edges": {
+        "object_count": 43,
+        "identity_sha256": "317024c1e31d506d88ecd94743a96584ce3fefa7d7b977ea974344b6081853f1",
+    },
+    "evidence": {
+        "object_count": 21,
+        "identity_sha256": "35b24effd6692b3802280d7b102774929730d2138dfcfa3d365b93f3159128c6",
+    },
+    "proof": {
+        "object_count": 1,
+        "identity_sha256": "bd813469d668be815db6eb009a10d7a4b6a3c4cdf244a85795572677618b3279",
+    },
+    "staging": {
+        "object_count": 10856,
+        "identity_sha256": "edd10b2d2a5936f56867cf9c91a871e0d4fd23bb9c2e191ad350e9615e9b38f9",
+    },
+    "metadata": {
+        "object_count": 18,
+        "identity_sha256": "51178d85f7f6116eda87c497e33b1789cdbfff25d81941f0512249929d268c03",
+    },
+    "features_remap": {
+        "object_count": 28,
+        "identity_sha256": "8cbc554a46d9f4d5b633cc68161d8bd40804cb7c11520a2473d4c4ec170524d1",
+    },
+}
 NEXT_STATES = {
     "accepted-canonical",
     "promote-candidate",
@@ -243,6 +269,33 @@ def identity_digest(items: list[dict[str, Any]]) -> str:
     return sha256_bytes(payload)
 
 
+def validate_capture_completeness(
+    area: str,
+    start_items: list[dict[str, Any]],
+    end_items: list[dict[str, Any]],
+) -> str:
+    expected = CAPTURE_COMPLETENESS_CONTRACT[area]
+    start_digest = identity_digest(start_items)
+    end_digest = identity_digest(end_items)
+    observed = {
+        "start_count": len(start_items),
+        "end_count": len(end_items),
+        "start_identity_sha256": start_digest,
+        "end_identity_sha256": end_digest,
+    }
+    if (
+        len(start_items) != expected["object_count"]
+        or len(end_items) != expected["object_count"]
+        or start_digest != expected["identity_sha256"]
+        or end_digest != expected["identity_sha256"]
+    ):
+        raise RuntimeError(
+            f"capture completeness contract failed for {area}: "
+            f"expected={expected!r}, observed={observed!r}"
+        )
+    return start_digest
+
+
 def relation_name_from_object(area: str, name: str) -> str | None:
     prefix = f"kg/v2/{area}/"
     if not name.startswith(prefix) or not name.endswith(".parquet"):
@@ -299,27 +352,40 @@ def main() -> None:
         area: json.loads((inv / f"{area}.json").read_text())
         for area in ("edges", "evidence", "proof", "staging", "metadata", "features_remap")
     }
+    end_raw: dict[str, list[dict[str, Any]]] = {
+        area: json.loads((inv / f"{area}_end.json").read_text())
+        for area in raw
+    }
+    validated_digests = {
+        area: validate_capture_completeness(area, items, end_raw[area])
+        for area, items in raw.items()
+    }
     footers = json.loads((inv / "parquet_footers_non_remap.json").read_text())
 
     inventories = {
         area: {
             "object_count": len(items),
             "size_bytes": sum(int(x.get("metadata", {}).get("size", 0)) for x in items),
-            "identity_sha256": identity_digest(items),
+            "identity_sha256": validated_digests[area],
             "capture_file_sha256": file_sha256(inv / f"{area}.json"),
+            "expected_object_count": CAPTURE_COMPLETENESS_CONTRACT[area]["object_count"],
+            "expected_identity_sha256": CAPTURE_COMPLETENESS_CONTRACT[area]["identity_sha256"],
+            "completeness_validated": True,
         }
         for area, items in raw.items()
     }
     end_captured_at = (inv / "captured_end_at.txt").read_text().strip()
     capture_boundary = {}
     for area, start_items in raw.items():
-        end_items = json.loads((inv / f"{area}_end.json").read_text())
-        start_digest = identity_digest(start_items)
+        end_items = end_raw[area]
+        start_digest = validated_digests[area]
         end_digest = identity_digest(end_items)
-        assert start_digest == end_digest, f"live GCS generation changed during capture boundary: {area}"
         capture_boundary[area] = {
             "start_identity_sha256": start_digest,
             "end_identity_sha256": end_digest,
+            "expected_object_count": CAPTURE_COMPLETENESS_CONTRACT[area]["object_count"],
+            "expected_identity_sha256": CAPTURE_COMPLETENESS_CONTRACT[area]["identity_sha256"],
+            "completeness_validated": True,
             "unchanged": True,
         }
     inventory_bundle = {
@@ -791,7 +857,7 @@ def main() -> None:
         "",
         "## Live staging routing",
         "",
-        "All 10,856 live objects under `v2/staging/` fall into exactly 13 prefixes. Every prefix is routed below; the durable tracked immutable inventory mirror contains every exact object name, generation, size, MD5 when available, and CRC32C.",
+        f"All {inventories['staging']['object_count']:,} validated live objects under `v2/staging/` fall into exactly 13 prefixes. Every prefix is routed below; the durable tracked immutable inventory mirror contains every exact object name, generation, size, MD5 when available, and CRC32C.",
         "",
         "| Prefix | Objects | Parquets | Identity digest | Relations | Route/exclusion |",
         "| --- | ---: | ---: | --- | --- | --- |",
