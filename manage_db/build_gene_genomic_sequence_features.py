@@ -233,6 +233,82 @@ def load_gene_coordinates_from_ensembl_gtf(
     return coords, stats
 
 
+def classify_ensembl_gtf_gene_ids(
+    gtf_path: str | os.PathLike[str], *, eligible_ids: set[str]
+) -> dict[str, set[str]]:
+    """Classify exact eligible IDs by measured Ensembl GTF presence and contig policy."""
+    primary_ids: set[str] = set()
+    excluded_contig_ids: set[str] = set()
+    with _open_text(gtf_path) as handle:
+        for line in handle:
+            if not line or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 9 or fields[2] != "gene":
+                continue
+            attrs = _parse_gtf_attributes(fields[8])
+            gene_id, _version = _split_ensembl_gene_id(attrs.get("gene_id", ""))
+            if gene_id not in eligible_ids:
+                continue
+            chrom = _normalize_chromosome(fields[0])
+            if (
+                "." in chrom
+                or chrom == "MT"
+                or chrom.startswith(("KI", "GL", "CHR_"))
+            ):
+                excluded_contig_ids.add(gene_id)
+            else:
+                primary_ids.add(gene_id)
+    excluded_contig_ids -= primary_ids
+    return {
+        "primary_ids": primary_ids,
+        "excluded_contig_ids": excluded_contig_ids,
+        "absent_ids": eligible_ids - primary_ids - excluded_contig_ids,
+    }
+
+
+def extract_bounded_gene_strand_sequences(
+    fasta_path: str | os.PathLike[str],
+    coordinates: Iterable[GeneCoordinate],
+    *,
+    window_size: int,
+) -> dict[str, str]:
+    """Extract only the gene-strand prefix needed by the embedding policy."""
+    if window_size <= 0:
+        raise ValueError("window_size must be positive")
+    by_chrom: dict[str, list[GeneCoordinate]] = defaultdict(list)
+    for coordinate in coordinates:
+        by_chrom[coordinate.chromosome].append(coordinate)
+    result: dict[str, str] = {}
+    for chrom, chrom_sequence in _iter_fasta_contigs(fasta_path):
+        for coordinate in by_chrom.get(chrom, []):
+            width = min(coordinate.length, window_size)
+            if coordinate.end_1based > len(chrom_sequence):
+                raise ValueError(f"coordinate exceeds FASTA contig for {coordinate.node_id}")
+            if coordinate.strand == "-":
+                sequence = chrom_sequence[
+                    coordinate.end_1based - width : coordinate.end_1based
+                ]
+                sequence = _reverse_complement(sequence)
+            else:
+                sequence = chrom_sequence[
+                    coordinate.start_1based - 1 : coordinate.start_1based - 1 + width
+                ]
+            invalid = set(sequence) - _DNA_ALPHABET
+            if invalid:
+                raise ValueError(
+                    f"invalid DNA alphabet for {coordinate.node_id}: {sorted(invalid)}"
+                )
+            result[coordinate.node_id] = sequence
+    requested = {
+        coordinate.node_id for values in by_chrom.values() for coordinate in values
+    }
+    missing = requested - set(result)
+    if missing:
+        raise ValueError(f"FASTA contig missing for selected genes: {sorted(missing)[:10]}")
+    return result
+
+
 def _interval_row(
     coord: GeneCoordinate,
     *,

@@ -7,7 +7,12 @@ from pathlib import Path
 import pandas as pd
 
 from manage_db import kg_storage
-from manage_db.build_gene_genomic_sequence_features import build_gene_genomic_features
+from manage_db.build_gene_genomic_sequence_features import (
+    GeneCoordinate,
+    build_gene_genomic_features,
+    classify_ensembl_gtf_gene_ids,
+    extract_bounded_gene_strand_sequences,
+)
 
 
 def _gzip_write(path: Path, text: str) -> None:
@@ -105,3 +110,35 @@ def test_gene_genomic_build_skips_overlength_without_truncating(tmp_path: Path) 
     assert report["sequence_rows_written"] == 0
     assert report["sequence_rows_over_max_length_skipped"] == 1
     assert pd.read_parquet(out / "features" / "gene_genomic_sequence.parquet").empty
+
+
+def test_gtf_identity_classification_separates_primary_and_excluded_contigs(tmp_path: Path) -> None:
+    gtf = tmp_path / "fixture.gtf"
+    gtf.write_text(
+        '\n'.join(
+            [
+                '1\tEnsembl\tgene\t1\t10\t.\t+\t.\tgene_id "ENSG1.1";',
+                'CHR_HSCHR1_1_CTG3\tEnsembl\tgene\t1\t10\t.\t+\t.\tgene_id "ENSG2.1";',
+                'MT\tEnsembl\tgene\t1\t10\t.\t+\t.\tgene_id "ENSG3.1";',
+            ]
+        ) + '\n'
+    )
+
+    result = classify_ensembl_gtf_gene_ids(gtf, eligible_ids={"ENSG1", "ENSG2", "ENSG3", "ENSG4"})
+
+    assert result["primary_ids"] == {"ENSG1"}
+    assert result["excluded_contig_ids"] == {"ENSG2", "ENSG3"}
+    assert result["absent_ids"] == {"ENSG4"}
+
+
+def test_bounded_extraction_matches_gene_strand_prefix_without_materializing_full_locus(tmp_path: Path) -> None:
+    fasta = tmp_path / "fixture.fa"
+    fasta.write_text(">1\nAACCGGTTAACC\n")
+    coordinates = [
+        GeneCoordinate("ENSG_PLUS", "1", 1, 12, "+", "ENSG_PLUS", "1", "", ""),
+        GeneCoordinate("ENSG_MINUS", "1", 1, 12, "-", "ENSG_MINUS", "1", "", ""),
+    ]
+
+    sequences = extract_bounded_gene_strand_sequences(fasta, coordinates, window_size=4)
+
+    assert sequences == {"ENSG_PLUS": "AACC", "ENSG_MINUS": "GGTT"}
