@@ -22,7 +22,7 @@ def chapter(
 
     return [
         md(f"## {heading}\n\n{lesson}"),
-        code(first_code),
+        code(f"# {heading}: run the bounded example and inspect its typed output.\n{first_code}"),
         md(f"### Interpretation\n\n{interpretation}"),
         code(second_code),
         md(f"### Checkpoint\n\n{checkpoint}"),

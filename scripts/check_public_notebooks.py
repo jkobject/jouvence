@@ -180,6 +180,11 @@ def _chapter_contracts(notebook: nbformat.NotebookNode) -> list[dict[str, object
             {
                 "heading": chapter_heading[1],
                 "has_code": any(cell.cell_type == "code" and cell.source.strip() for cell in cells),
+                "has_comment": any(
+                    cell.cell_type == "code"
+                    and re.search(r"(?m)^\s*#\s+\S", str(cell.source)) is not None
+                    for cell in cells
+                ),
                 "has_interpretation": any(
                     term in heading for heading in headings for term in INTERPRETATION_HEADINGS
                 ),
@@ -322,13 +327,14 @@ def check_notebook(path: Path) -> dict[str, object]:
         for contract in chapter_contracts
         if not (
             contract["has_code"]
+            and contract["has_comment"]
             and contract["has_interpretation"]
             and contract["has_checkpoint"]
         )
     ]
     if len(chapter_contracts) < 2 or incomplete_chapters:
         failures.append(
-            "requires coherent chapter progression with an example, interpretation, and checkpoint "
+            "requires coherent chapter progression with a commented example, interpretation, and checkpoint "
             f"in each chapter; incomplete={incomplete_chapters}"
         )
     if not any(term in lower for term in ("interpret", "limitation", "does not", "not prove", "boundary")):
@@ -386,11 +392,13 @@ def check_notebook(path: Path) -> dict[str, object]:
         "coherent_chapters": sum(
             bool(
                 contract["has_code"]
+                and contract["has_comment"]
                 and contract["has_interpretation"]
                 and contract["has_checkpoint"]
             )
             for contract in chapter_contracts
         ),
+        "commented_chapters": sum(bool(contract["has_comment"]) for contract in chapter_contracts),
         "curriculum_chapters": len(concept_chapters),
         "failures": failures,
         "phrases": {phrase: phrase in lower for phrase in REQUIRED_PHRASES},
