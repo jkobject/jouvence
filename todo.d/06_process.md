@@ -48,12 +48,14 @@ The watchdog scans blocked TxGNN producer cards with `review-required` handoffs 
 1. a linked child assigned to `reviewer`, `tester`, or `cto`; or
 2. an explicit routed-comment reviewer/tester card when parent-linking would deadlock a blocked producer.
 
-## Current review-required routes observed during this card
+## Historical review routes now terminal
 
-- `t_c51d9a5b` — Lamin schema activation producer: linked tester child `t_edb59ab8` (`todo`). Status: `review-required/admin-required`, not validated and not production/full done.
-- `t_cd7fec1f` — REL-WAVE-E evidence-only builder: linked tester child `t_18159206` (`todo`). Status: `review-required`, staged-only/evidence-only, not canonical promotion.
-- `t_8eeb17bc` — REL-WAVE-A genomic direct builder: linked tester child `t_22d3afab` (`todo`). Status: `review-required`, bounded staged-only smoke, not full all-part rebuild; reviewer later rejected `mutation_overlaps_enhancer` as canonical edge material unless stronger regulatory evidence is selected.
-- `t_34f5b642` — REL-WAVE-E QA JSON restoration fix: explicit ungated reviewer route `t_00459dfe` in producer comment. Status: `review-required`, artifact restoration pending review.
+These routes were review-required when first recorded, but all four producer/fix cards are now terminal `done`; they are not current review queues:
+
+- `t_c51d9a5b` — `lnschema_txgnn` activation completed and was verified against the self-managed `jkobject/jouvencekb` configuration. This does not imply full LaminDB ingestion.
+- `t_cd7fec1f` — Wave E builder closed as staged/evidence-only after its QA fix and downstream gates. Final reviewer `t_fcb5b69f` accepted evidence-update readiness for synergy and the bounded 481-key positive treatment subset; no canonical write is claimed.
+- `t_8eeb17bc` — historical first-part Wave A smoke closed as staged-only/QA-accepted. Later relation-specific mutation promotions and their independent acceptance are tracked in `todo.d/04_relations.md`; this old smoke is not an outstanding route.
+- `t_34f5b642` — QA JSON restoration closed after reviewer `t_00459dfe` accepted the restored artifact; staged/evidence-only QA acceptance did not authorize a canonical write.
 
 ## Rules
 

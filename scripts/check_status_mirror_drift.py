@@ -59,6 +59,21 @@ LIVE_STATUS_REQUIREMENTS = {
         ),
         "forbidden": ("canonical active edge relations: `40`",),
     },
+    Path("todo.d/01_lamindb.md"): {
+        "required": (
+            "**100,083,633 canonical edge rows** across **41/67 declared relations**",
+            "**76,601,052 canonical evidence rows**",
+            "accepted 35,839-row `disease_associated_protein` evidence object",
+            "does **not** change the separately dated Lamin denominator, accepted numerator, or physical readback",
+            "**41/67 declared relations physically canonical**",
+            "PR #43's corrected 67-relation ledger remains changes-requested/pending",
+        ),
+        "forbidden": (
+            "**100,080,390 canonical edge rows**",
+            "**76,565,213 canonical evidence rows**",
+            "**40/67 declared relations physically canonical**",
+        ),
+    },
     Path("todo.d/04_relations.md"): {
         "required": (
             "41 canonical active edge relations",
@@ -67,6 +82,31 @@ LIVE_STATUS_REQUIREMENTS = {
             "PR #43's corrected 67-relation ledger remains changes-requested/pending",
         ),
         "forbidden": ("40 canonical active edge relations",),
+    },
+    Path("todo.d/05_remap.md"): {
+        "required": (
+            "Accepted route C supersedes that exploration for current execution scope",
+            "No ReMap execution, recovery, resume, watchdog, build, or promotion lane is dispatchable",
+            "must not be used as an execution, recovery, resume, watchdog, build, or promotion lane",
+        ),
+        "forbidden": (
+            "A new bounded staged candidate is justified",
+            "Fresh-UDC continuation operations policy",
+        ),
+    },
+    Path("todo.d/06_process.md"): {
+        "required": (
+            "## Historical review routes now terminal",
+            "all four producer/fix cards are now terminal `done`; they are not current review queues",
+            "Final reviewer `t_fcb5b69f` accepted evidence-update readiness",
+            "reviewer `t_00459dfe` accepted the restored artifact",
+        ),
+        "forbidden": (
+            "## Current review-required routes observed during this card",
+            "Status: `review-required/admin-required`",
+            "Status: `review-required`, staged-only/evidence-only",
+            "Status: `review-required`, artifact restoration pending review",
+        ),
     },
     Path("docs/relation_coverage_current.md"): {
         "required": (

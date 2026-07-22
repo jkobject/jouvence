@@ -13,11 +13,11 @@ Canonical Parquet inventory currently contains:
 - **15/15 node files**;
 - **55,523,691 physical node rows** total;
 - **52,565,491 model/biomedical node rows** when graph-disconnected `paper` (2,958,199) and `dataset` (1) metadata nodes are excluded;
-- **100,080,390 canonical edge rows**;
-- **76,565,213 canonical evidence rows**;
+- **100,083,633 canonical edge rows** across **41/67 declared relations**, after the independently accepted marker-last `disease_associated_protein` promotion;
+- **76,601,052 canonical evidence rows**, including the accepted 35,839-row `disease_associated_protein` evidence object;
 - **230,874,162 rows** in the current Lamin ingestion denominator: 52,565,491 nodes + 101,743,458 edge target rows + 76,565,213 evidence target rows.
 
-The edge ingestion denominator is larger than the older 100,080,390 snapshot because later reviewed/promoted relation material is included in the Lamin target contract. Do not silently mix these dated inventories.
+The dated Lamin edge-ingestion denominator is larger than the current 100,083,633-row canonical inventory because its accepted target contract already included other later relation material, while its 76,565,213-row evidence target is now smaller than the 76,601,052-row canonical evidence inventory because it predates the accepted `disease_associated_protein` evidence object. That promotion updates the canonical KG inventory only: it does **not** change the separately dated Lamin denominator, accepted numerator, or physical readback. Do not silently mix these inventories.
 
 ## Live `jkobject/jouvencekb` ingestion
 
@@ -51,7 +51,7 @@ Do not schedule a new bulk Lamin Gene wave against the old 267,830-row denominat
 ## What is and is not complete
 
 - Canonical Parquet node inventory: **complete for the 15 active node types**.
-- Canonical relation inventory: **40/67 declared relations physically canonical** in the latest schema snapshot; relation review/backlog is separate from Lamin ingestion.
+- Canonical relation inventory: **41/67 declared relations physically canonical** in the accepted current overlay; relation review/backlog is separate from Lamin ingestion and PR #43's corrected 67-relation ledger remains changes-requested/pending.
 - LaminDB artifact catalog/schema activation: implemented and reviewed in bounded form.
 - Full row-level Lamin node/edge/evidence ingestion: **not complete** (11,671,485/230,874,162 accepted as of the dated 2026-07-18 evidence).
 - Query helpers and full exact-ID coverage: not a completed global acceptance gate.
