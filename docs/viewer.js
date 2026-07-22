@@ -265,8 +265,78 @@
     buttons[searchIndex].focus();
   }
 
+  function validatePrintableHtml(html, expectedSnapshot) {
+    const doc=new DOMParser().parseFromString(html,'text/html');
+    const marker=doc.querySelector('meta[name="jouvence-viewer-print-contract"][content="bounded-v1"]');
+    const body=doc.body;
+    const payloadNode=doc.querySelector('#jouvence-print-payload[type="application/json"]');
+    let payload;
+    try { payload=JSON.parse(payloadNode?.textContent || ''); } catch { payload=null; }
+    const total=payload?.evidence_total;
+    const returned=payload?.evidence_returned;
+    const truncated=payload?.evidence_truncated;
+    const markdown=payload?.markdown;
+    const disclosure=`Evidence export: bounded summary — ${returned} of ${total} rows; truncated: ${truncated}.`;
+    const evidenceSection=typeof markdown === 'string'
+      ? markdown.match(/(?:^|\n)## Evidence\n([\s\S]*?)(?=\n## |$)/)?.[1]
+      : null;
+    const evidenceLines=evidenceSection?.split('\n').filter(Boolean) || [];
+    const valid=marker
+      && body?.dataset.jouvencePrintContract === 'bounded-v1'
+      && payload?.contract === 'bounded-v1'
+      && payload?.snapshot_id === expectedSnapshot
+      && body?.dataset.snapshotId === payload.snapshot_id
+      && Number.isInteger(total)
+      && Number.isInteger(returned)
+      && total >= 0
+      && returned >= 0
+      && returned <= 50
+      && returned <= total
+      && typeof truncated === 'boolean'
+      && truncated === (returned < total)
+      && evidenceLines.length === returned + 1
+      && evidenceLines[0] === disclosure
+      && evidenceLines.slice(1).every(line=>line.startsWith('- '));
+    if (!valid) throw new Error('Printable dossier response is invalid.');
+    const escaped=markdown.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Jouvence-Graph export</title></head>'
+      + `<body><pre id="evidence-export-state" data-total="${total}" data-returned="${returned}" `
+      + `data-truncated="${truncated}">${escaped}</pre></body></html>`;
+  }
+
+  async function printHtmlArtifact(html) {
+    $('#jouvence-print-frame')?.remove();
+    const frame=document.createElement('iframe');
+    frame.id='jouvence-print-frame';
+    frame.title='Bounded Jouvence-Graph printable dossier';
+    frame.setAttribute('sandbox','allow-modals allow-same-origin');
+    frame.style.cssText='position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
+    await new Promise((resolve,reject)=>{
+      frame.addEventListener('load',resolve,{once:true});
+      frame.addEventListener('error',()=>reject(new Error('Printable dossier could not be loaded.')),{once:true});
+      frame.srcdoc=html;
+      document.body.append(frame);
+    });
+    const printWindow=frame.contentWindow;
+    if (!printWindow) throw new Error('Printable dossier is unavailable.');
+    const cleanup=()=>frame.remove();
+    printWindow.addEventListener('afterprint',cleanup,{once:true});
+    setTimeout(cleanup,60_000);
+    printWindow.focus();
+    printWindow.print();
+  }
+
   async function exportDossier(kind) {
     const slug=current.display_name.toLowerCase().replace(/\W+/g,'-');
+    if (kind === 'pdf' && dataSource instanceof ApiDataSource) {
+      const response=await dataSource.export({node_type:current.node_type,node_id:current.node_id,trail,format:'html'});
+      const contentType=(response.headers.get('content-type') || '').split(';',1)[0].trim().toLowerCase();
+      if (contentType !== 'text/html') throw new Error('Printable dossier response must be HTML.');
+      const html=validatePrintableHtml(await response.text(),dataSource.session.snapshot.snapshot_id);
+      await printHtmlArtifact(html);
+      showToast('Bounded print dossier opened — choose Save as PDF.');
+      return;
+    }
     if (kind === 'pdf') { window.print(); showToast('Print dialog opened — choose Save as PDF.'); return; }
     if (dataSource instanceof ApiDataSource) {
       const response = await dataSource.export({node_type:current.node_type,node_id:current.node_id,trail,format:kind === 'csv' ? 'csv' : 'markdown'});

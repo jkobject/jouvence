@@ -277,6 +277,144 @@ def test_local_evidence_reports_counts_and_loads_all_bounded_pages(page: Page, v
     expect(page.locator("#load-more-evidence")).to_be_hidden()
 
 
+def test_pdf_export_uses_bounded_isolated_artifact_after_loading_all_evidence(
+    page: Page,
+    viewer_server: str,
+) -> None:
+    rows = [
+        {
+            "edge_key": "fixture:edge:brca1-disease",
+            "relation": "disease_associated_gene",
+            "x_id": "ENSG00000012048",
+            "x_type": "gene",
+            "y_id": "EFO:0000305",
+            "y_type": "disease",
+            "source": "test",
+            "source_dataset": "print-bound",
+            "source_record_id": f"print-record-{index:03d}",
+            "paper_id": f"PRINT:{index}",
+            "predicate": "associated_with",
+            "evidence_score": 0.9,
+            "row_kind": "observed",
+        }
+        for index in range(60)
+    ]
+
+    def evidence_route(route) -> None:
+        params = parse_qs(urlsplit(route.request.url).query)
+        start = int(params.get("cursor", ["0"])[0])
+        selected = rows[start : start + 10]
+        stop = start + len(selected)
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "meta": {
+                        "snapshot_id": "fixture-v1",
+                        "data_mode": "fixture",
+                        "bundle_version": "viewer-fixture-schema-v1",
+                        "truncated": stop < len(rows),
+                        "next_cursor": str(stop) if stop < len(rows) else None,
+                        "total": len(rows),
+                        "returned": len(selected),
+                    },
+                    "rows": selected,
+                }
+            ),
+        )
+
+    bounded_markdown = (
+        "# Jouvence-Graph dossier\n\n## Evidence\n"
+        "Evidence export: bounded summary — 50 of 60 rows; truncated: true.\n"
+        + "".join(f"- print-record-{index:03d}\n" for index in range(50))
+        + "\n## Navigation trail\n"
+    )
+    bounded_payload = json.dumps(
+        {
+            "contract": "bounded-v1",
+            "snapshot_id": "fixture-v1",
+            "evidence_total": 60,
+            "evidence_returned": 50,
+            "evidence_truncated": True,
+            "markdown": bounded_markdown,
+        }
+    )
+    bounded_print_html = f"""<!doctype html><html><head>
+      <meta name="jouvence-viewer-print-contract" content="bounded-v1">
+      <style>pre {{ display: none }}</style>
+    </head><body data-jouvence-print-contract="bounded-v1" data-snapshot-id="fixture-v1">
+      <script id="jouvence-print-payload" type="application/json">{bounded_payload}</script>
+      <script>parent.__printArtifactScriptRan = true;</script>
+    </body></html>"""
+
+    def export_route(route) -> None:
+        assert route.request.post_data_json["format"] == "html"
+        route.fulfill(status=200, content_type="text/html", body=bounded_print_html)
+
+    page.add_init_script(
+        "window.print = () => { window.__printCalled = true; };"
+        "window.__printArtifactScriptRan = false;"
+    )
+    page.route("**/api/nodes/gene/ENSG00000012048/evidence*", evidence_route)
+    page.route("**/api/export", export_route)
+    page.goto(viewer_server)
+
+    for expected_rows in range(20, 61, 10):
+        page.locator("#load-more-evidence").click()
+        expect(page.locator("#evidence-body tr")).to_have_count(expected_rows)
+    expect(page.locator("#evidence-state")).to_have_text("Returned 60 of 60 · complete")
+
+    page.locator("[data-export='pdf']").click()
+
+    print_frame = page.frame_locator("#jouvence-print-frame")
+    export_state = print_frame.locator("#evidence-export-state")
+    expect(export_state).to_have_attribute("data-total", "60")
+    expect(export_state).to_have_attribute("data-returned", "50")
+    expect(export_state).to_have_attribute("data-truncated", "true")
+    expect(export_state).to_contain_text("50 of 60 rows; truncated: true")
+    assert export_state.evaluate("node => (node.textContent.match(/print-record-/g) || []).length") == 50
+    expect(print_frame.locator("style, script")).to_have_count(0)
+    assert print_frame.locator("body").evaluate("() => window.__printCalled") is True
+    assert page.evaluate("window.__printArtifactScriptRan") is False
+
+    expect(page.locator("#evidence-body tr")).to_have_count(60)
+    expect(page.locator("#evidence-state")).to_have_text("Returned 60 of 60 · complete")
+
+    page.unroute("**/api/export", export_route)
+    malformed_payload = json.dumps(
+        {
+            "contract": "bounded-v1",
+            "snapshot_id": "fixture-v1",
+            "evidence_total": 60,
+            "evidence_returned": 50,
+            "evidence_truncated": True,
+            "markdown": bounded_markdown.replace(
+                "\n## Navigation trail", "- print-record-050\n\n## Navigation trail"
+            ),
+        }
+    )
+    page.route(
+        "**/api/export",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="text/html",
+            body=(
+                "<!doctype html><meta name='jouvence-viewer-print-contract' content='bounded-v1'>"
+                "<body data-jouvence-print-contract='bounded-v1' data-snapshot-id='fixture-v1'>"
+                f"<script id='jouvence-print-payload' type='application/json'>{malformed_payload}</script>"
+                "</body>"
+            ),
+        ),
+    )
+    page.locator("#jouvence-print-frame").evaluate("element => element.remove()")
+    page.locator("[data-export='pdf']").click()
+    expect(page.locator("#toast")).to_contain_text(
+        "Export failed: Printable dossier response is invalid."
+    )
+    expect(page.locator("#jouvence-print-frame")).to_have_count(0)
+
+
 def test_stale_evidence_page_cannot_append_after_navigation(page: Page, viewer_server: str) -> None:
     rows = [
         {

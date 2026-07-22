@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import html
 import io
 import json
 import zipfile
@@ -651,8 +652,25 @@ def _markdown_export(data: Any, dossier: dict[str, Any], trail: list[dict[str, s
 
 def _html_export(data: Any, dossier: dict[str, Any], trail: list[dict[str, str]]) -> str:
     markdown = _markdown_export(data, dossier, trail)
-    escaped = markdown.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f"<!doctype html><title>Jouvence-Graph export</title><pre>{escaped}</pre>"
+    evidence_meta = dossier["evidence_meta"]
+    payload = {
+        "contract": "bounded-v1",
+        "snapshot_id": data.snapshot_id,
+        "evidence_total": evidence_meta["total"],
+        "evidence_returned": evidence_meta["returned"],
+        "evidence_truncated": evidence_meta["truncated"],
+        "markdown": markdown,
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False).replace("<", "\\u003c")
+    return (
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        '<meta name="jouvence-viewer-print-contract" content="bounded-v1">'
+        "<title>Jouvence-Graph export</title></head>"
+        '<body data-jouvence-print-contract="bounded-v1" '
+        f'data-snapshot-id="{html.escape(data.snapshot_id, quote=True)}">'
+        '<script id="jouvence-print-payload" type="application/json">'
+        f"{payload_json}</script></body></html>"
+    )
 
 
 def _csv_zip_export(data: Any, dossier: dict[str, Any], trail: list[dict[str, str]]) -> bytes:

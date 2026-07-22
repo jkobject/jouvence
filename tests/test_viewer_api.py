@@ -240,6 +240,26 @@ def test_export_is_bounded_even_for_high_degree_bundle_nodes() -> None:
     assert "Evidence export: bounded summary" in markdown.text
     assert f"50 of {len(source.EVIDENCE_ROWS)} rows; truncated: true" in markdown.text
 
+    printable_html = c.post(
+        "/api/export",
+        json={
+            "node_type": "gene",
+            "node_id": "ENSG00000012048",
+            "format": "html",
+        },
+    )
+    assert printable_html.status_code == 200
+    assert printable_html.headers["content-type"].startswith("text/html")
+    assert printable_html.text.count("export-record-") == 50
+    assert '<meta name="jouvence-viewer-print-contract" content="bounded-v1">' in printable_html.text
+    assert 'data-jouvence-print-contract="bounded-v1"' in printable_html.text
+    assert 'data-snapshot-id="fixture-v1"' in printable_html.text
+    assert 'id="jouvence-print-payload"' in printable_html.text
+    assert '"evidence_total": 100' in printable_html.text
+    assert '"evidence_returned": 50' in printable_html.text
+    assert '"evidence_truncated": true' in printable_html.text
+    assert f"50 of {len(source.EVIDENCE_ROWS)} rows; truncated: true" in printable_html.text
+
 
 def test_every_api_response_has_a_global_byte_ceiling() -> None:
     source = copy(FIXTURE_DATA)
