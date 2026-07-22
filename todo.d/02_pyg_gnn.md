@@ -46,7 +46,7 @@ Measured bounded readiness smoke:
 Therefore a bounded relation-scoped smoke fits comfortably in 16 GB. However:
 
 - the complete 55,523,691-node graph with one dense float32 embedding per node would require about **53 GiB at 256 dimensions**, **106 GiB at 512**, or **159 GiB at 768**, before optimizer state, activations or graph tensors;
-- a 100,080,390-edge `int64` forward `edge_index` is about **1.49 GiB**, or **2.98 GiB** with fully duplicated reverse indices;
+- a 100,083,633-edge `int64` forward `edge_index` is about **1.49 GiB**, or **2.98 GiB** with fully duplicated reverse indices;
 - full dense all-node/all-relation materialization and end-to-end training have **not** been proven inside 16 GB.
 
 So the correct answer is: **yes for the sidecar/memmap sampled architecture and bounded training; no evidence that a monolithic full-KG training job fits in 16 GB.** Full-scale training must remain relation/batch sampled, mmap-backed and independently measured on the 16 GB worker.

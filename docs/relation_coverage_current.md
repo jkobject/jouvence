@@ -8,20 +8,22 @@ Generated for Kanban task `t_0b1f53d9` on 2026-06-23 from:
 
 No `.omoc` cache was used as source of truth for coverage; `.omoc/reports/*` files above are only generated audit outputs from this run.
 
+Live-status overlay (2026-07-22): the counts below apply the independently accepted `disease_associated_protein` promotion (`t_aa5cd96e` / `t_0611e6c6`) to the last accepted inventory. PR #43's corrected 67-relation ledger remains changes-requested/pending and is not used as accepted source truth.
+
 ## Counts
 
 - Declared active relations in schema: `67`
-- Canonical edge relations present in `v2/edges`: `40`
-- Canonical edge relations with matching `v2/evidence` file: `18`
+- Canonical edge relations present in `v2/edges`: `41`
+- Canonical edge relations with matching `v2/evidence` file: `19`
 - Canonical edge relations without `v2/evidence` file: `22`
-- Declared relations not present as canonical edge files: `27`
-- Staged-only/deferred declared relations with staged edge files: `18`
+- Declared relations not present as canonical edge files: `26`
+- Staged-only/deferred declared relations with staged edge files: `17`
 - Source-audit-only/deferred declared relations: `2`
 - Feature/context-not-edge declared relations: `2`
 - Schema-only/missing declared relations: `5`
 - Intentionally retired active relations: `0`
 - Candidate/not-active relations in `CANDIDATE_RELATIONS`: `2`
-- Total canonical edge rows across current edge files: `100,080,390`
+- Total canonical edge rows across current edge files: `100,083,633`
 
 Dataset/paper policy note (`t_c07b8b57`, cleanup `t_d97c4547`): the two
 canonical `dataset_contains_*` files are retained in place as
@@ -36,10 +38,10 @@ graph exports, with canonical policy sidecar
 | --- | ---: | --- |
 | `canonical+validated` | 37 | Derived from RELATIONS plus current FUSE/bucket inventory. |
 | `canonical promoted / review-accepted` | 1 | `mutation_affects_transcript` was promoted by `t_225ae18c` from the accepted all-part OpenTargets 26.03 candidate and accepted by independent review. |
-| `canonical promoted / independently accepted` | 3 | `mutation_in_gene`, support-gated `mutation_overlaps_enhancer`, and narrowly scoped `disease_manifests_in_tissue` were all accepted by consolidated reviewer `t_2d1f767d` on 2026-07-22. |
-| `canonical with evidence file` | 18 | Derived from RELATIONS plus current FUSE/bucket inventory. |
+| `canonical promoted / independently accepted` | 4 | `mutation_in_gene`, support-gated `mutation_overlaps_enhancer`, and narrowly scoped `disease_manifests_in_tissue` were accepted by consolidated reviewer `t_2d1f767d`; `disease_associated_protein` was accepted by `t_0611e6c6` on 2026-07-22. |
+| `canonical with evidence file` | 19 | Last accepted inventory plus the independently accepted `disease_associated_protein` promotion. |
 | `canonical without evidence file` | 22 | Derived from RELATIONS plus current FUSE/bucket inventory. |
-| `staged-only/deferred` | 18 | Derived from RELATIONS plus current FUSE/bucket inventory. |
+| `staged-only/deferred` | 17 | Last accepted inventory after the independently accepted `disease_associated_protein` promotion. |
 | `source-audit-only/deferred` | 2 | Derived from RELATIONS plus current FUSE/bucket inventory. |
 | `feature-context-not-edge` | 2 | Derived from RELATIONS plus current FUSE/bucket inventory. |
 | `schema-only/missing` | 5 | Derived from RELATIONS plus current FUSE/bucket inventory. |
@@ -103,7 +105,7 @@ graph exports, with canonical policy sidecar
 | `cell_line_responds_to_molecule` | `cell_line→molecule` | `experimental` | yes | `staged-only/deferred` | - | - | 11,040/11,713 | Review staged GDSC/PRISM viability pilot before promotion. | GDSC / PRISM viability — staged edges/evidence: 11,040/11,713 |
 | `molecule_associated_phenotype` | `molecule→phenotype` | `pharmacological` | no | `canonical+validated` | 64,784 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | Non-causal molecule-to-phenotype side-effect/rescue association; direction is molecule→phenotype |
 | `disease_associated_gene` | `gene→disease` | `disease_assoc` | yes | `canonical+validated` | 83,339 | 2,928 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Gene→disease direction for causal/directed disease association; source/evidence rows preserve predicate, score, and provenance. — evidence rows: 2,928 |
-| `disease_associated_protein` | `protein→disease` | `disease_assoc` | yes | `staged-only/deferred` | - | - | 3,243/35,839 | Review protein-native disease-association staged pilot; do not infer protein disease edges from gene associations. | Protein→disease direction for protein-native causal/directed disease association; use only protein-specific evidence. — staged edges/evidence: 3,243/35,839 |
+| `disease_associated_protein` | `protein→disease` | `disease_assoc` | yes | `canonical promoted / independently accepted` | 3,243 | 35,839 | -/- | Review marker-last release `t_aa5cd96e` accepted by `t_0611e6c6`; rerun endpoint/support/hash validation when source inputs change. | Protein→disease direction for protein-native source assertions; endpoint/support/hash mismatch 0 and replay no-op. Canonical generations: edge `1784726656613727`, evidence `1784726654659180`, marker `1784726666721784`. |
 | `disease_involves_pathway` | `pathway→disease` | `disease_assoc` | yes | `canonical+validated` | 2,296 | 2,296 | -/- | Keep canonical; rerun endpoint/evidence audit when upstream source changes. | Pathway→disease direction for causal/directed pathway involvement; source/evidence rows preserve enrichment/provenance. — evidence rows: 2,296 |
 | `disease_manifests_in_tissue` | `disease→tissue` | `disease_assoc` | no | `canonical promoted / independently accepted` | 19 | 29 | -/- | Independent review of `docs/disease_manifests_in_tissue_canonical_promotion_t_5fe137a0.md`; rerun endpoint/evidence audit when HPA/source mappings change. | Bounded HPA Pathology Atlas / TCGA cancer-prognostics disease→native tissue context only; not a broad all-disease pathology graph. Evidence preserves HPA/TCGA predicate, source_record_id, release/license, mapping confidence, and gene-row counts. |
 | `disease_subtype_of_disease` | `disease→disease` | `ontological` | yes | `canonical+validated` | 104,809 | - | -/- | Canonical edge exists; add/backfill evidence only if source provenance is available and useful. | EFO / MONDO hierarchy |

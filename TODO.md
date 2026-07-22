@@ -73,16 +73,18 @@ Use these, not old `.omoc` reports:
 Accepted snapshot:
 
 - active declared relations: `67`
-- canonical active edge relations: `40`; the three formerly review-required canonical writes were independently accepted by `t_2d1f767d`
-- canonical relations with evidence: `18`
+- canonical active edge relations: `41`; the three formerly review-required canonical writes were independently accepted by `t_2d1f767d`, and `disease_associated_protein` was independently accepted by `t_0611e6c6`
+- canonical relations with evidence: `19`
 - canonical relations without evidence: `22`
-- declared relations not canonical yet: `27`
-- staged-only/deferred: `18`
+- declared relations not canonical yet: `26`
+- staged-only/deferred: `17`
 - source-audit-only/deferred: `2`
 - feature-context-not-edge: `2`
 - schema-only/missing: `5`
-- canonical edge rows: `100,080,390`
+- canonical edge rows: `100,083,633`
 - node rows: `55,523,691`
+
+The count delta above is limited to the independently accepted `disease_associated_protein` promotion (`t_aa5cd96e` / reviewer `t_0611e6c6`): 3,243 canonical edges and 35,839 evidence rows, with endpoint/support/hash mismatch 0 and replay no-op. It does not change the accepted LaminDB ingestion numerator. PR #43's corrected 67-relation ledger remains changes-requested/pending and is not accepted as a replacement inventory.
 
 ## Active priorities
 

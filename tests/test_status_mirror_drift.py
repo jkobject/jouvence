@@ -45,3 +45,10 @@ def test_status_drift_guard_covers_every_current_phase_and_routing_surface() -> 
         Path("docs/README.md"),
         Path("CLAUDE.md"),
     }
+    assert set(check_status_mirror_drift.LIVE_STATUS_REQUIREMENTS) == {
+        Path("TODO.md"),
+        Path("todo.d/04_relations.md"),
+        Path("docs/relation_coverage_current.md"),
+        Path("docs/kg_schema_overview.md"),
+        Path("docs/relation_backlog_prioritized.md"),
+    }

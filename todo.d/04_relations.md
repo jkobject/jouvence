@@ -35,10 +35,13 @@ Definition: inferred links must remain labeled/separate from observed canonical 
 Counts:
 
 - 67 active declared relations
-- 40 canonical active edge relations, including three `canonical promoted`/`review-required` relations awaiting independent acceptance
-- 27 declared relations not canonical yet
-- 18 staged-only/deferred
+- 41 canonical active edge relations
+- 19 canonical relations with evidence and 22 without evidence
+- 26 declared relations not canonical yet
+- 17 staged-only/deferred
 - 5 schema-only/missing
+
+Accepted overlay after the last full relation inventory: `t_aa5cd96e` promoted `disease_associated_protein` and reviewer `t_0611e6c6` independently accepted the marker-last canonical release (3,243 edges, 35,839 evidence rows; endpoint/support/hash mismatch 0; replay no-op). This relation-only delta does not change the accepted LaminDB ingestion numerator. PR #43's corrected 67-relation ledger remains changes-requested/pending and must not be treated as an accepted replacement inventory.
 
 ## Prioritized relation plan
 
@@ -58,6 +61,7 @@ Counts:
 ## Other active relation waves
 
 - Wave B protein-native mechanisms ended **rejected** by `t_c3eb09e3`: required staged Parquets and machine-readable QA were unavailable for independent reproduction; no promotion-readiness credit.
+- A later focused lane superseded only the `disease_associated_protein` outcome: `t_aa5cd96e` / reviewer `t_0611e6c6` is `canonical promoted / independently accepted` at 3,243 edges and 35,839 evidence rows. Exact live generations are edge `1784726656613727`, evidence `1784726654659180`, and marker `1784726666721784`; the remaining Wave B relations are not promoted by this acceptance.
 - Wave C pharmacology/cell-line context: `t_a7c7a5d1` accepted staged promotion readiness for three cell-line relations; no canonical write is claimed.
 - Wave E evidence-only pharmacology: `t_fcb5b69f` accepted evidence-update readiness for synergy and the bounded 481-key positive treatment subset; no canonical write is claimed, and contraindication remains source-selection-only.
 
