@@ -233,9 +233,10 @@ database while following this guide.
    fixture-backed sample via `build_sampled_pyg`, and use
    [`notebooks/05_sampled_pyg_heterodata.ipynb`](../notebooks/05_sampled_pyg_heterodata.ipynb). Never
    present it as full-KG training or model-quality validation.
-5. **Embeddings:** retrieve only an immutable, reviewed URI explicitly published
-   by the project. `JOUVENCE_EMBEDDING_URI` has no default because accepted
-   release/license/latest-pointer contracts are still incomplete.
+5. **Embeddings:** discover shards only through an immutable, reviewed manifest.
+   `JOUVENCE_EMBEDDING_MANIFEST_URI` has no live default because accepted
+   release/license/latest-pointer contracts are still incomplete; fixture mode
+   supplies a synthetic teaching manifest.
 
 Known limitations: KG coverage and the Lamin mirror are incomplete; some
 relations have no evidence table; canonical status changes only through

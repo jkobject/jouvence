@@ -1,13 +1,23 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+import hashlib
 
+import nbformat
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
 from manage_db import public_notebooks as public
+from scripts import build_public_notebooks, check_public_notebooks
+
+
+ROOT = Path(__file__).resolve().parents[1]
+NOTEBOOK_DIR = ROOT / "notebooks"
+PUBLIC_NOTEBOOKS = sorted(NOTEBOOK_DIR.glob("*.ipynb"))
 
 
 def test_read_bounded_parquet_seeks_row_groups(tmp_path: Path) -> None:
@@ -80,6 +90,158 @@ def test_fixture_catalog_queries_and_embeddings(tmp_path: Path) -> None:
         "source_evidence",
         "source_record_id",
     }.issubset(joined.columns)
+
+
+def test_public_notebooks_are_substantial_chaptered_and_output_free() -> None:
+    assert len(PUBLIC_NOTEBOOKS) == 6
+    for path in PUBLIC_NOTEBOOKS:
+        notebook = nbformat.read(path, as_version=4)
+        markdown = [cell for cell in notebook.cells if cell.cell_type == "markdown"]
+        code = [cell for cell in notebook.cells if cell.cell_type == "code"]
+        headings = [
+            line
+            for cell in markdown
+            for line in cell.source.splitlines()
+            if re.match(r"^##(?:#)?\s+\S", line)
+        ]
+
+        assert len(notebook.cells) >= 30, path.name
+        assert len(markdown) >= 12, path.name
+        assert len(code) >= 10, path.name
+        assert len(headings) >= 5, path.name
+        assert all(cell.source.strip() for cell in notebook.cells), path.name
+        assert all(len(cell.source.split()) >= 5 for cell in markdown), path.name
+        assert all(cell.execution_count is None and not cell.outputs for cell in code), path.name
+
+
+def test_static_checker_rejects_an_undersized_notebook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notebook = nbformat.v4.new_notebook(
+        cells=[nbformat.v4.new_markdown_cell("# Tiny notebook")],
+        metadata={"jouvence": {"bounded": True}},
+    )
+    path = tmp_path / "tiny.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.check_notebook(path)
+
+    assert any("at least 30 meaningful cells" in failure for failure in result["failures"])
+
+
+def test_notebook_generation_is_byte_deterministic() -> None:
+    build_public_notebooks.main()
+    first = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in PUBLIC_NOTEBOOKS}
+    build_public_notebooks.main()
+    second = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in PUBLIC_NOTEBOOKS}
+    assert first == second
+
+
+def test_course_covers_setup_release_discovery_and_visual_interpretation() -> None:
+    texts = {
+        path.name: "\n".join(cell.source for cell in nbformat.read(path, as_version=4).cells).lower()
+        for path in PUBLIC_NOTEBOOKS
+    }
+    setup = texts["01_data_model_and_use_cases.ipynb"]
+    for phrase in (
+        "uv sync",
+        "application default credentials",
+        "requester-pays",
+        "serviceusage.services.use",
+        "authentication",
+        "authorization",
+        "billing",
+        "quota",
+        "proof/",
+        "edge key",
+    ):
+        assert phrase in setup
+
+    embeddings = texts["02_nodes_features_and_embeddings.ipynb"]
+    for phrase in (
+        "accepted immutable",
+        "manifest",
+        "coverage",
+        "missingness",
+        "license",
+        "leakage",
+        "cosine",
+        "nearest",
+        "umap",
+        "pca fallback",
+        "colorblind",
+        "not functional equivalence",
+        "sequence modality",
+    ):
+        assert phrase in embeddings
+
+
+def test_embedding_helpers_preserve_alignment_and_fail_closed(tmp_path: Path) -> None:
+    root = public.build_public_fixture(tmp_path / "kg")
+    manifest = root / "features" / "embeddings" / "manifest.json"
+    releases = public.discover_embedding_releases(manifest, modality="text")
+    assert releases["release_id"].tolist() == ["fixture-text-v1"]
+    assert releases["state"].tolist() == ["accepted"]
+
+    sample = public.load_bounded_embedding_sample(releases.iloc[0]["shard_uri"], limit=4)
+    matrix, metadata = public.extract_embedding_matrix(sample)
+    assert matrix.shape == (4, 8)
+    assert metadata["node_id"].tolist() == sample["node_id"].tolist()
+    assert "embedding" not in metadata
+    assert public.lookup_embedding_id(metadata, "ENSG00000141510") == 2
+
+    similarities = public.pairwise_cosine(matrix)
+    assert similarities.shape == (4, 4)
+    assert np.allclose(np.diag(similarities), 1.0)
+    neighbors = public.cosine_neighbors(matrix, metadata, "ENSG00000012048", limit=2)
+    assert neighbors.iloc[0]["node_id"] == "ENSG00000139618"
+
+    with pytest.raises(KeyError, match="missing-id"):
+        public.lookup_embedding_id(metadata, "missing-id")
+    with pytest.raises(ValueError, match="required columns"):
+        public.extract_embedding_matrix(pd.DataFrame({"node_id": ["x"]}))
+    with pytest.raises(ValueError, match="same dimension"):
+        public.extract_embedding_matrix(
+            pd.DataFrame({"node_id": ["x", "y"], "embedding": [[1.0], [1.0, 2.0]]})
+        )
+    with pytest.raises(ValueError, match="finite"):
+        public.extract_embedding_matrix(
+            pd.DataFrame({"node_id": ["x"], "embedding": [[float("nan"), 1.0]]})
+        )
+
+
+def test_embedding_projection_has_deterministic_pca_fallback() -> None:
+    matrix = np.asarray(
+        [[1.0, 0.0, 0.2], [0.9, 0.1, 0.2], [0.0, 1.0, 0.3], [0.1, 0.9, 0.4]],
+        dtype=np.float32,
+    )
+    first, method = public.project_embedding_matrix(matrix, method="pca", random_state=17)
+    second, repeated_method = public.project_embedding_matrix(matrix, method="pca", random_state=17)
+    assert method == repeated_method == "pca"
+    assert first.shape == (4, 2)
+    assert np.allclose(first, second)
+
+
+def test_release_discovery_filters_unaccepted_and_requires_immutable(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        """{
+          "releases": [
+            {"release_id": "accepted-v1", "state": "accepted", "immutable": true,
+             "modality": "text", "license": "CC-BY-4.0", "coverage": "partial",
+             "shards": ["accepted.parquet"]},
+            {"release_id": "rejected-v1", "state": "rejected", "immutable": true,
+             "modality": "text", "license": "unknown", "coverage": "partial",
+             "shards": ["rejected.parquet"]},
+            {"release_id": "mutable-v1", "state": "accepted", "immutable": false,
+             "modality": "text", "license": "CC-BY-4.0", "coverage": "partial",
+             "shards": ["mutable.parquet"]}
+          ]
+        }"""
+    )
+    releases = public.discover_embedding_releases(manifest)
+    assert releases["release_id"].tolist() == ["accepted-v1"]
 
 
 def test_sampled_pyg_and_ml_reuse_existing_pipeline(tmp_path: Path) -> None:

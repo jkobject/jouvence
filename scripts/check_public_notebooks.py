@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -44,6 +45,24 @@ def check_notebook(path: Path) -> dict[str, object]:
     text = "\n".join(str(cell.source) for cell in notebook.cells)
     lower = text.lower()
     failures: list[str] = []
+    markdown = [cell for cell in notebook.cells if cell.cell_type == "markdown"]
+    code = [cell for cell in notebook.cells if cell.cell_type == "code"]
+    headings = [
+        line
+        for cell in markdown
+        for line in cell.source.splitlines()
+        if re.match(r"^##(?:#)?\s+\S", line)
+    ]
+    if len(notebook.cells) < 30:
+        failures.append("requires at least 30 meaningful cells")
+    if len(markdown) < 12 or len(code) < 10:
+        failures.append("requires substantial markdown/code balance (>=12 markdown, >=10 code)")
+    if len(headings) < 5:
+        failures.append("requires at least 5 real chapter/subchapter headings")
+    if any(not cell.source.strip() for cell in notebook.cells):
+        failures.append("contains empty cell padding")
+    if any(len(cell.source.split()) < 5 for cell in markdown):
+        failures.append("contains trivial markdown cell")
     if notebook.metadata.get("jouvence", {}).get("bounded") is not True:
         failures.append("missing metadata.jouvence.bounded=true")
     for token in FORBIDDEN:
@@ -56,6 +75,9 @@ def check_notebook(path: Path) -> dict[str, object]:
     return {
         "path": str(path.relative_to(ROOT)),
         "cells": len(notebook.cells),
+        "markdown_cells": len(markdown),
+        "code_cells": len(code),
+        "chapter_headings": len(headings),
         "failures": failures,
         "phrases": {phrase: phrase in lower for phrase in REQUIRED_PHRASES},
     }

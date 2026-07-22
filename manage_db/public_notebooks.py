@@ -7,6 +7,7 @@ local fixtures and sampled PyG exports chosen by the caller.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Iterable
@@ -209,6 +210,194 @@ def diseases_with_gene_evidence(
     ).fetchdf()
 
 
+def discover_embedding_releases(
+    manifest_uri: str | Path,
+    *,
+    modality: str | None = None,
+    accepted_only: bool = True,
+    billing_project: str | None = None,
+) -> pd.DataFrame:
+    """Discover immutable embedding shards from an explicit release manifest.
+
+    Accepted-only discovery is the safe public default: mutable, staged, and
+    rejected artifacts never become consumable merely because their paths are
+    guessable. Relative shard paths are resolved against the manifest location.
+    """
+
+    uri_text = str(manifest_uri)
+    fs, path = url_to_fs(uri_text, **_storage_options(uri_text, billing_project))
+    with fs.open(path, "rt") as handle:
+        payload = json.load(handle)
+    releases = payload.get("releases") if isinstance(payload, dict) else None
+    if not isinstance(releases, list):
+        raise ValueError("embedding manifest must contain a releases list")
+
+    required = {"release_id", "state", "immutable", "modality", "license", "coverage", "shards"}
+    rows: list[dict[str, Any]] = []
+    for release in releases:
+        if not isinstance(release, dict) or not required.issubset(release):
+            raise ValueError(f"embedding release missing required fields: {sorted(required)}")
+        if accepted_only and (release["state"] != "accepted" or release["immutable"] is not True):
+            continue
+        if modality is not None and release["modality"] != modality:
+            continue
+        shards = release["shards"]
+        if not isinstance(shards, list) or not shards:
+            raise ValueError(f"embedding release {release['release_id']!r} must list at least one shard")
+        for shard in shards:
+            shard_text = str(shard)
+            if "://" in shard_text or Path(shard_text).is_absolute():
+                shard_uri = shard_text
+            elif "://" in uri_text:
+                shard_uri = f"{uri_text.rsplit('/', 1)[0]}/{shard_text}"
+            else:
+                shard_uri = str(Path(uri_text).parent / shard_text)
+            row = {key: value for key, value in release.items() if key != "shards"}
+            rows.append({**row, "shard_uri": shard_uri})
+    columns = ["release_id", "state", "immutable", "modality", "license", "coverage", "shard_uri"]
+    extra = sorted({key for row in rows for key in row}.difference(columns))
+    result = pd.DataFrame(rows, columns=[*columns, *extra])
+    if result.empty:
+        return result
+    return result.sort_values(["modality", "release_id", "shard_uri"], ignore_index=True)
+
+
+def load_bounded_embedding_sample(
+    embedding_uri: str | Path,
+    *,
+    limit: int = DEFAULT_SAMPLE_ROWS,
+    offset: int = 0,
+    billing_project: str | None = None,
+) -> pd.DataFrame:
+    """Load and validate an aligned, bounded embedding shard sample."""
+
+    frame = read_bounded_parquet(
+        embedding_uri,
+        limit=limit,
+        offset=offset,
+        billing_project=billing_project,
+    )
+    missing = {"node_id", "embedding"}.difference(frame.columns)
+    if missing:
+        raise ValueError(f"embedding shard missing required columns: {sorted(missing)}")
+    return frame.reset_index(drop=True)
+
+
+def extract_embedding_matrix(
+    frame: pd.DataFrame,
+    *,
+    id_column: str = "node_id",
+    vector_column: str = "embedding",
+) -> tuple[np.ndarray, pd.DataFrame]:
+    """Return a finite float matrix and row-aligned metadata copy."""
+
+    missing = {id_column, vector_column}.difference(frame.columns)
+    if missing:
+        raise ValueError(f"embedding frame missing required columns: {sorted(missing)}")
+    if frame.empty:
+        raise ValueError("embedding frame must contain at least one row")
+    vectors = [np.asarray(value, dtype=np.float32) for value in frame[vector_column]]
+    if any(vector.ndim != 1 for vector in vectors):
+        raise ValueError("embedding vectors must be one-dimensional")
+    if len({len(vector) for vector in vectors}) != 1:
+        raise ValueError("embedding vectors must all have the same dimension")
+    matrix = np.vstack(vectors)
+    if not np.isfinite(matrix).all():
+        raise ValueError("embedding vectors must contain only finite values")
+    metadata = frame.drop(columns=[vector_column]).reset_index(drop=True).copy()
+    return matrix, metadata
+
+
+def lookup_embedding_id(metadata: pd.DataFrame, node_id: str, *, id_column: str = "node_id") -> int:
+    """Return the unique row position for an exact stable identifier."""
+
+    if id_column not in metadata:
+        raise ValueError(f"metadata missing identifier column: {id_column}")
+    positions = np.flatnonzero(metadata[id_column].astype(str).to_numpy() == str(node_id))
+    if len(positions) == 0:
+        raise KeyError(f"embedding identifier not found: {node_id}")
+    if len(positions) > 1:
+        raise ValueError(f"embedding identifier is not unique: {node_id}")
+    return int(positions[0])
+
+
+def pairwise_cosine(matrix: np.ndarray) -> np.ndarray:
+    """Compute cosine similarities; zero vectors receive finite zero scores."""
+
+    values = np.asarray(matrix, dtype=np.float32)
+    if values.ndim != 2 or not len(values):
+        raise ValueError("embedding matrix must be a non-empty two-dimensional array")
+    if not np.isfinite(values).all():
+        raise ValueError("embedding matrix must contain only finite values")
+    norms = np.linalg.norm(values, axis=1, keepdims=True)
+    normalized = np.divide(values, norms, out=np.zeros_like(values), where=norms > 0)
+    return normalized @ normalized.T
+
+
+def cosine_neighbors(
+    matrix: np.ndarray,
+    metadata: pd.DataFrame,
+    query_node_id: str,
+    *,
+    limit: int = 5,
+    id_column: str = "node_id",
+) -> pd.DataFrame:
+    """Return deterministic nearest rows while retaining aligned metadata."""
+
+    limit = _validated_limit(limit)
+    values = np.asarray(matrix, dtype=np.float32)
+    if len(values) != len(metadata):
+        raise ValueError("embedding matrix and metadata must have identical row counts")
+    query_position = lookup_embedding_id(metadata, query_node_id, id_column=id_column)
+    scores = pairwise_cosine(values)[query_position]
+    result = metadata.copy()
+    result["cosine_similarity"] = scores
+    result = result.drop(index=result.index[query_position])
+    return result.sort_values(
+        ["cosine_similarity", id_column], ascending=[False, True]
+    ).head(limit).reset_index(drop=True)
+
+
+def project_embedding_matrix(
+    matrix: np.ndarray,
+    *,
+    method: str = "auto",
+    random_state: int = 17,
+) -> tuple[np.ndarray, str]:
+    """Project vectors to two dimensions with UMAP or deterministic PCA fallback."""
+
+    values = np.asarray(matrix, dtype=np.float32)
+    if values.ndim != 2 or len(values) < 2:
+        raise ValueError("projection requires a two-dimensional matrix with at least two rows")
+    if not np.isfinite(values).all():
+        raise ValueError("projection matrix must contain only finite values")
+    if method not in {"auto", "umap", "pca"}:
+        raise ValueError("method must be one of: auto, umap, pca")
+
+    if method in {"auto", "umap"}:
+        try:
+            import umap
+        except ImportError:
+            if method == "umap":
+                raise RuntimeError("UMAP requested but umap-learn is not installed") from None
+        else:
+            reducer = umap.UMAP(
+                n_components=2,
+                n_neighbors=max(2, min(15, len(values) - 1)),
+                random_state=int(random_state),
+                transform_seed=int(random_state),
+            )
+            return np.asarray(reducer.fit_transform(values), dtype=np.float32), "umap"
+
+    from sklearn.decomposition import PCA
+
+    components = min(2, values.shape[0], values.shape[1])
+    projected = PCA(n_components=components, svd_solver="full").fit_transform(values)
+    if components == 1:
+        projected = np.column_stack([projected[:, 0], np.zeros(len(projected), dtype=projected.dtype)])
+    return np.asarray(projected, dtype=np.float32), "pca"
+
+
 def nearest_embeddings(
     embedding_uri: str | Path,
     query_node_id: str,
@@ -225,17 +414,11 @@ def nearest_embeddings(
         limit=MAX_SAMPLE_ROWS,
         billing_project=billing_project,
     )
-    match = frame.loc[frame["node_id"].astype(str) == str(query_node_id)]
-    if match.empty:
-        raise KeyError(f"query node not present in bounded embedding table: {query_node_id}")
-    matrix = np.vstack(frame["embedding"].map(lambda value: np.asarray(value, dtype=np.float32)))
-    query = np.asarray(match.iloc[0]["embedding"], dtype=np.float32)
-    norms = np.linalg.norm(matrix, axis=1) * max(float(np.linalg.norm(query)), 1e-12)
-    scores = np.divide(matrix @ query, norms, out=np.zeros(len(matrix), dtype=np.float32), where=norms > 0)
-    result = frame[["node_id", "node_type", "embedding_model"]].copy()
-    result["cosine_similarity"] = scores
-    result = result[result["node_id"].astype(str) != str(query_node_id)]
-    return result.sort_values(["cosine_similarity", "node_id"], ascending=[False, True]).head(limit).reset_index(drop=True)
+    try:
+        matrix, metadata = extract_embedding_matrix(frame)
+        return cosine_neighbors(matrix, metadata, query_node_id, limit=limit)
+    except KeyError:
+        raise KeyError(f"query node not present in bounded embedding table: {query_node_id}") from None
 
 
 def _connect_exact_lamin(instance: str):
@@ -520,4 +703,26 @@ def build_public_fixture(root_path: str | Path) -> Path:
             ],
         }
     ).to_parquet(embedding_dir / "fixture.parquet", index=False)
+    (features / "embeddings" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "releases": [
+                    {
+                        "release_id": "fixture-text-v1",
+                        "state": "accepted",
+                        "immutable": True,
+                        "modality": "text",
+                        "license": "synthetic-fixture-only",
+                        "coverage": "10 illustrative entities; not production coverage",
+                        "model": "fixture-biomedical-encoder-v1",
+                        "shards": ["text/fixture.parquet"],
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
     return root_path

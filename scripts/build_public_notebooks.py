@@ -28,6 +28,9 @@ import os
 import sys
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+
 REPO_ROOT = Path.cwd()
 if REPO_ROOT.name == "notebooks":
     REPO_ROOT = REPO_ROOT.parent
@@ -75,7 +78,7 @@ def write(path: str, cells: list) -> None:
     nbf.write(notebook, OUT / path)
 
 
-def main() -> None:
+def _legacy_placeholder_notebooks() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     write(
         "01_data_model_and_use_cases.ipynb",
@@ -323,7 +326,19 @@ print(json.dumps({
 """),
         ],
     )
-    print(f"wrote 6 notebooks under {OUT}")
+    print(f"wrote 6 legacy placeholder notebooks under {OUT}")
+
+
+def main() -> None:
+    """Generate the chaptered public course from deterministic source cells."""
+
+    from scripts.public_notebook_course import course_notebooks
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    notebooks = course_notebooks(md, code, setup)
+    for path, cells in notebooks.items():
+        write(path, cells)
+    print(f"wrote {len(notebooks)} pedagogical notebooks under {OUT}")
 
 
 if __name__ == "__main__":
