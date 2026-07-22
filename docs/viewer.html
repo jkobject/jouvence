@@ -27,7 +27,7 @@
     <a class="viewer-site-link" href="index.html">Project site ↗</a>
   </header>
 
-  <div class="prototype-banner"><strong>Interactive product proposal</strong><span>Uses deterministic fixture data. Local Parquet and requester-pays GCS modes are specified but not connected in this preview.</span><a href="viewer-proposal.md">Read architecture</a></div>
+  <div class="prototype-banner"><strong>Phase 1 fixture viewer</strong><span>Uses a reviewed static fixture bundle or the localhost fixture API; neither is live KG data.</span><a href="getting-started-data.md">Access the full database locally →</a><a href="viewer-proposal.md">Read architecture</a></div>
 
   <main class="viewer-shell">
     <nav class="viewer-toc" aria-label="Dossier sections">
@@ -99,14 +99,15 @@
     <form method="dialog">
       <div class="dialog-head"><div><p class="viewer-kicker">DATA CONNECTION</p><h2>Choose a data source</h2></div><button value="cancel" aria-label="Close">×</button></div>
       <label class="source-option selected"><input type="radio" name="source" value="demo" checked><span><strong>Demo fixture</strong><small>Deterministic, zero-cost data bundled with the preview.</small></span><em>READY</em></label>
-      <label class="source-option"><input type="radio" name="source" value="local"><span><strong>Local Jouvence root</strong><small>Read a canonical KG root or generated viewer bundle.</small><input id="local-path" type="text" placeholder="/path/to/kg/v2" disabled></span><em>PROPOSED</em></label>
-      <label class="source-option"><input type="radio" name="source" value="gcs"><span><strong>GCS requester-pays</strong><small>Uses host ADC; credentials never enter the browser.</small><input id="billing-project" type="text" placeholder="consumer-billing-project" disabled></span><em>PROPOSED</em></label>
-      <div id="source-message" class="source-message">This preview can connect only to its fixture. See the architecture proposal for the real backend contract.</div>
+      <label class="source-option"><input type="radio" name="source" value="local"><span><strong>Local Jouvence root</strong><small>Future read-only query bundle mode; disabled in Phase 1.</small><input id="local-path" type="text" placeholder="/path/to/kg/v2" disabled></span><em>FUTURE</em></label>
+      <label class="source-option"><input type="radio" name="source" value="gcs"><span><strong>GCS requester-pays</strong><small>Future host-ADC mode; no credentials enter the browser.</small><input id="billing-project" type="text" placeholder="consumer-billing-project" disabled></span><em>FUTURE</em></label>
+      <div id="source-message" class="source-message">Phase 1 connects only to a deterministic local fixture API. It never reads canonical GCS, LaminDB, VMs, or arbitrary local files.</div>
       <div class="dialog-actions"><button value="cancel" class="dialog-secondary">Cancel</button><button id="connect-source" value="default" class="dialog-primary">Use demo fixture</button></div>
     </form>
   </dialog>
 
   <div id="toast" class="viewer-toast" role="status" aria-live="polite"></div>
+  <script src="viewer-data/fixture.js"></script>
   <script src="viewer.js"></script>
 </body>
 </html>

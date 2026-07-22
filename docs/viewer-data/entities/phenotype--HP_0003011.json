@@ -1,0 +1,43 @@
+{
+  "edges": [],
+  "evidence": [],
+  "features": [
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "description",
+      "feature_kind": "identity_summary",
+      "node_id": "HP:0003011",
+      "node_type": "phenotype",
+      "release": "fixture-v1",
+      "source": "HPO fixture",
+      "value": "A phenotype involving altered regulation or rate of cellular proliferation."
+    }
+  ],
+  "long_range": [],
+  "meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "snapshot_id": "fixture-v1",
+    "truncated": false
+  },
+  "node": {
+    "aliases": [
+      {
+        "kind": "name",
+        "source": "HPO fixture",
+        "value": "abnormal proliferation"
+      }
+    ],
+    "attributes": {
+      "ontology": "HPO"
+    },
+    "description": "A phenotype involving altered regulation or rate of cellular proliferation.",
+    "display_name": "Abnormal cell proliferation",
+    "external_links": [],
+    "node_id": "HP:0003011",
+    "node_type": "phenotype",
+    "source": "HPO fixture"
+  },
+  "putative_links": []
+}

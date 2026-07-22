@@ -1,0 +1,407 @@
+{
+  "meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture-static-bundle",
+    "snapshot_id": "fixture-v1",
+    "truncated": false
+  },
+  "nodes": [
+    {
+      "aliases": [
+        {
+          "kind": "name",
+          "source": "EFO fixture",
+          "value": "breast cancer"
+        },
+        {
+          "kind": "external_id",
+          "source": "MONDO fixture",
+          "value": "MONDO:0007254"
+        },
+        {
+          "kind": "external_id",
+          "source": "MeSH fixture",
+          "value": "D001943"
+        },
+        {
+          "kind": "external_id",
+          "source": "ICD10 fixture",
+          "value": "C50"
+        }
+      ],
+      "attributes": {
+        "disease_group": "neoplasm",
+        "ontology": "EFO"
+      },
+      "description": "A malignant neoplasm arising from breast tissue.",
+      "display_name": "breast carcinoma",
+      "entity_shard": "entities/disease--EFO_0000305.json",
+      "external_links": [
+        {
+          "kind": "external_id",
+          "label": "MONDO:0007254",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=MONDO:0007254"
+        },
+        {
+          "kind": "external_id",
+          "label": "D001943",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=D001943"
+        },
+        {
+          "kind": "external_id",
+          "label": "C50",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=C50"
+        }
+      ],
+      "node_id": "EFO:0000305",
+      "node_type": "disease",
+      "source": "OpenTargets fixture"
+    },
+    {
+      "aliases": [
+        {
+          "kind": "name",
+          "source": "EFO fixture",
+          "value": "lung cancer"
+        },
+        {
+          "kind": "external_id",
+          "source": "MONDO fixture",
+          "value": "MONDO:0004992"
+        },
+        {
+          "kind": "external_id",
+          "source": "MeSH fixture",
+          "value": "D008545"
+        }
+      ],
+      "attributes": {
+        "disease_group": "neoplasm",
+        "ontology": "EFO"
+      },
+      "description": "A malignant neoplasm originating in lung tissue.",
+      "display_name": "lung carcinoma",
+      "entity_shard": "entities/disease--EFO_0000616.json",
+      "external_links": [
+        {
+          "kind": "external_id",
+          "label": "MONDO:0004992",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=MONDO:0004992"
+        },
+        {
+          "kind": "external_id",
+          "label": "D008545",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=D008545"
+        }
+      ],
+      "node_id": "EFO:0000616",
+      "node_type": "disease",
+      "source": "OpenTargets fixture"
+    },
+    {
+      "aliases": [
+        {
+          "kind": "symbol",
+          "source": "HGNC fixture",
+          "value": "BRCA1"
+        },
+        {
+          "kind": "external_id",
+          "source": "HGNC fixture",
+          "value": "HGNC:1100"
+        },
+        {
+          "kind": "external_id",
+          "source": "NCBI Gene fixture",
+          "value": "672"
+        },
+        {
+          "kind": "external_id",
+          "source": "UniProt fixture",
+          "value": "P38398"
+        }
+      ],
+      "attributes": {
+        "biotype": "protein_coding",
+        "chromosome": "17q21.31"
+      },
+      "description": "DNA repair associated protein 1; a tumor suppressor involved in homologous recombination and genome integrity.",
+      "display_name": "BRCA1",
+      "entity_shard": "entities/gene--ENSG00000012048.json",
+      "external_links": [
+        {
+          "kind": "external_id",
+          "label": "HGNC:1100",
+          "url": "https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/HGNC:1100"
+        },
+        {
+          "kind": "external_id",
+          "label": "672",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=672"
+        },
+        {
+          "kind": "external_id",
+          "label": "P38398",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=P38398"
+        }
+      ],
+      "node_id": "ENSG00000012048",
+      "node_type": "gene",
+      "source": "Ensembl fixture"
+    },
+    {
+      "aliases": [
+        {
+          "kind": "symbol",
+          "source": "HGNC fixture",
+          "value": "BRCA2"
+        },
+        {
+          "kind": "external_id",
+          "source": "HGNC fixture",
+          "value": "HGNC:1101"
+        },
+        {
+          "kind": "external_id",
+          "source": "NCBI Gene fixture",
+          "value": "675"
+        },
+        {
+          "kind": "external_id",
+          "source": "UniProt fixture",
+          "value": "P51587"
+        }
+      ],
+      "attributes": {
+        "biotype": "protein_coding",
+        "chromosome": "13q13.1"
+      },
+      "description": "DNA repair associated protein 2; a mediator of homologous recombination.",
+      "display_name": "BRCA2",
+      "entity_shard": "entities/gene--ENSG00000139618.json",
+      "external_links": [
+        {
+          "kind": "external_id",
+          "label": "HGNC:1101",
+          "url": "https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/HGNC:1101"
+        },
+        {
+          "kind": "external_id",
+          "label": "675",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=675"
+        },
+        {
+          "kind": "external_id",
+          "label": "P51587",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=P51587"
+        }
+      ],
+      "node_id": "ENSG00000139618",
+      "node_type": "gene",
+      "source": "Ensembl fixture"
+    },
+    {
+      "aliases": [
+        {
+          "kind": "symbol",
+          "source": "HGNC fixture",
+          "value": "TP53"
+        },
+        {
+          "kind": "external_id",
+          "source": "HGNC fixture",
+          "value": "HGNC:11998"
+        },
+        {
+          "kind": "external_id",
+          "source": "NCBI Gene fixture",
+          "value": "7157"
+        },
+        {
+          "kind": "external_id",
+          "source": "UniProt fixture",
+          "value": "P04637"
+        }
+      ],
+      "attributes": {
+        "biotype": "protein_coding",
+        "chromosome": "17p13.1"
+      },
+      "description": "Tumor protein p53; a transcription factor coordinating DNA-damage responses, cell-cycle arrest and apoptosis.",
+      "display_name": "TP53",
+      "entity_shard": "entities/gene--ENSG00000141510.json",
+      "external_links": [
+        {
+          "kind": "external_id",
+          "label": "HGNC:11998",
+          "url": "https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/HGNC:11998"
+        },
+        {
+          "kind": "external_id",
+          "label": "7157",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=7157"
+        },
+        {
+          "kind": "external_id",
+          "label": "P04637",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=P04637"
+        }
+      ],
+      "node_id": "ENSG00000141510",
+      "node_type": "gene",
+      "source": "Ensembl fixture"
+    },
+    {
+      "aliases": [
+        {
+          "kind": "symbol",
+          "source": "HGNC fixture",
+          "value": "EGFR"
+        },
+        {
+          "kind": "external_id",
+          "source": "HGNC fixture",
+          "value": "HGNC:3236"
+        },
+        {
+          "kind": "external_id",
+          "source": "NCBI Gene fixture",
+          "value": "1956"
+        },
+        {
+          "kind": "external_id",
+          "source": "UniProt fixture",
+          "value": "P00533"
+        }
+      ],
+      "attributes": {
+        "biotype": "protein_coding",
+        "chromosome": "7p11.2"
+      },
+      "description": "Epidermal growth factor receptor; a receptor tyrosine kinase involved in proliferation and survival signaling.",
+      "display_name": "EGFR",
+      "entity_shard": "entities/gene--ENSG00000146648.json",
+      "external_links": [
+        {
+          "kind": "external_id",
+          "label": "HGNC:3236",
+          "url": "https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/HGNC:3236"
+        },
+        {
+          "kind": "external_id",
+          "label": "1956",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=1956"
+        },
+        {
+          "kind": "external_id",
+          "label": "P00533",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=P00533"
+        }
+      ],
+      "node_id": "ENSG00000146648",
+      "node_type": "gene",
+      "source": "Ensembl fixture"
+    },
+    {
+      "aliases": [
+        {
+          "kind": "name",
+          "source": "ChEMBL fixture",
+          "value": "IRESSA"
+        },
+        {
+          "kind": "external_id",
+          "source": "DrugBank fixture",
+          "value": "DB00317"
+        },
+        {
+          "kind": "external_id",
+          "source": "PubChem fixture",
+          "value": "123631"
+        }
+      ],
+      "attributes": {
+        "canonical_smiles": "COC1=NC=NC2=C1C=CN2",
+        "chembl_phase": "4"
+      },
+      "description": "A small-molecule EGFR tyrosine kinase inhibitor.",
+      "display_name": "gefitinib",
+      "entity_shard": "entities/molecule--CHEMBL1201585.json",
+      "external_links": [
+        {
+          "kind": "external_id",
+          "label": "DB00317",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=DB00317"
+        },
+        {
+          "kind": "external_id",
+          "label": "123631",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=123631"
+        }
+      ],
+      "node_id": "CHEMBL1201585",
+      "node_type": "molecule",
+      "source": "ChEMBL fixture"
+    },
+    {
+      "aliases": [
+        {
+          "kind": "name",
+          "source": "ChEMBL fixture",
+          "value": "acetylsalicylic acid"
+        },
+        {
+          "kind": "external_id",
+          "source": "DrugBank fixture",
+          "value": "DB00945"
+        },
+        {
+          "kind": "external_id",
+          "source": "PubChem fixture",
+          "value": "2244"
+        }
+      ],
+      "attributes": {
+        "canonical_smiles": "CC(=O)OC1=CC=CC=C1C(=O)O",
+        "chembl_phase": "4"
+      },
+      "description": "Acetylsalicylic acid; a cyclooxygenase inhibitor.",
+      "display_name": "aspirin",
+      "entity_shard": "entities/molecule--CHEMBL25.json",
+      "external_links": [
+        {
+          "kind": "external_id",
+          "label": "DB00945",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=DB00945"
+        },
+        {
+          "kind": "external_id",
+          "label": "2244",
+          "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=2244"
+        }
+      ],
+      "node_id": "CHEMBL25",
+      "node_type": "molecule",
+      "source": "ChEMBL fixture"
+    },
+    {
+      "aliases": [
+        {
+          "kind": "name",
+          "source": "HPO fixture",
+          "value": "abnormal proliferation"
+        }
+      ],
+      "attributes": {
+        "ontology": "HPO"
+      },
+      "description": "A phenotype involving altered regulation or rate of cellular proliferation.",
+      "display_name": "Abnormal cell proliferation",
+      "entity_shard": "entities/phenotype--HP_0003011.json",
+      "external_links": [],
+      "node_id": "HP:0003011",
+      "node_type": "phenotype",
+      "source": "HPO fixture"
+    }
+  ]
+}

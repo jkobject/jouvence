@@ -30,10 +30,12 @@ dependencies = [
   "tqdm==4.67.3",
   "duckdb>=1.1.0",
   "rdkit>=2025.9.1",
+  "fastapi>=0.116.0",
+  "uvicorn>=0.35.0",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "httpx>=0.28", "playwright>=1.45"]
 gnn = ["torch>=2.12", "torch-geometric>=2.8"]
 embeddings-text = ["sentence-transformers>=3.0", "torch>=2.12"]
 embeddings-edge = ["sentence-transformers>=3.0", "torch>=2.12"]
@@ -51,6 +53,10 @@ exclude = ["test"]
 
 [tool.setuptools.dynamic]
 version = { attr = "txgnn.version.__version__" }
+
+[project.scripts]
+jouvence-viewer = "manage_db.viewer.cli:main"
+jouvence-viewer-bundle = "manage_db.viewer.static_bundle:main"
 
 # uv workspace — lnschema_txgnn is a separate installable sub-package.
 # `uv sync` will install it in editable mode automatically.

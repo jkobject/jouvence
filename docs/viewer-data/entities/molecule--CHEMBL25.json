@@ -1,0 +1,85 @@
+{
+  "edges": [
+    {
+      "anchor_role": "x",
+      "credibility": 1,
+      "display_relation": "molecule targets gene",
+      "edge_key": "fixture:edge:8",
+      "kind": "observed",
+      "neighbor_id": "ENSG00000141510",
+      "neighbor_name": "TP53",
+      "neighbor_type": "gene",
+      "pharmacological_action": "weak fixture support",
+      "relation": "molecule_targets_gene",
+      "row_kind": "observed",
+      "score": 0.46,
+      "source": "ChEMBL fixture",
+      "x_id": "CHEMBL25",
+      "x_type": "molecule",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    }
+  ],
+  "evidence": [],
+  "features": [
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "description",
+      "feature_kind": "identity_summary",
+      "node_id": "CHEMBL25",
+      "node_type": "molecule",
+      "release": "fixture-v1",
+      "source": "ChEMBL fixture",
+      "value": "Acetylsalicylic acid; a cyclooxygenase inhibitor."
+    }
+  ],
+  "long_range": [],
+  "meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "snapshot_id": "fixture-v1",
+    "truncated": false
+  },
+  "node": {
+    "aliases": [
+      {
+        "kind": "name",
+        "source": "ChEMBL fixture",
+        "value": "acetylsalicylic acid"
+      },
+      {
+        "kind": "external_id",
+        "source": "DrugBank fixture",
+        "value": "DB00945"
+      },
+      {
+        "kind": "external_id",
+        "source": "PubChem fixture",
+        "value": "2244"
+      }
+    ],
+    "attributes": {
+      "canonical_smiles": "CC(=O)OC1=CC=CC=C1C(=O)O",
+      "chembl_phase": "4"
+    },
+    "description": "Acetylsalicylic acid; a cyclooxygenase inhibitor.",
+    "display_name": "aspirin",
+    "external_links": [
+      {
+        "kind": "external_id",
+        "label": "DB00945",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=DB00945"
+      },
+      {
+        "kind": "external_id",
+        "label": "2244",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=2244"
+      }
+    ],
+    "node_id": "CHEMBL25",
+    "node_type": "molecule",
+    "source": "ChEMBL fixture"
+  },
+  "putative_links": []
+}
