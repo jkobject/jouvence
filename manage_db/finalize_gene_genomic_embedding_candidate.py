@@ -18,6 +18,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from manage_db.build_gene_genomic_sequence_embeddings import build_denominator_reason_rows
+from manage_db.build_gene_genomic_sequence_features import classify_ensembl_gtf_gene_ids
 
 TASK_ID = "t_03bf9e27"
 EXPECTED_DIM = 512
@@ -87,6 +88,8 @@ def classify_gene_denominator(
     interval_ids: set[str],
     sequence_ids: set[str],
     embedded_ids: set[str],
+    source_absent_ids: set[str],
+    source_excluded_ids: set[str],
 ) -> dict[str, list[Any]]:
     eligible_ensg = sorted(
         node_id for node_id in canonical_ids if re.fullmatch(r"ENSG[0-9]+", node_id)
@@ -96,6 +99,8 @@ def classify_gene_denominator(
         interval_ids=interval_ids,
         sequence_ids=sequence_ids,
         embedded_ids=embedded_ids,
+        source_absent_ids=source_absent_ids,
+        source_excluded_ids=source_excluded_ids,
     )
     quarantine_rows = []
     for node_id in sorted(canonical_ids - set(eligible_ensg)):
@@ -212,19 +217,172 @@ def read_canonical_gene_ids(path: Path) -> set[str]:
     return {str(value) for value in table["id"].to_pylist()}
 
 
+def build_canonical_gene_identity(
+    path: Path, *, uri: str, object_description: dict[str, Any]
+) -> dict[str, Any]:
+    table = pq.read_table(path, columns=["id"])
+    ids = [str(value) for value in table["id"].to_pylist()]
+    unique_ids = set(ids)
+    ensg_ids = sorted(
+        node_id for node_id in unique_ids if re.fullmatch(r"ENSG[0-9]+", node_id)
+    )
+    described_size = int(object_description.get("size", -1))
+    if described_size != path.stat().st_size:
+        raise RuntimeError("canonical gene object size does not match local readback")
+    return {
+        "uri": uri,
+        "generation": str(object_description.get("generation", "")),
+        "size": described_size,
+        "sha256": sha256(path),
+        "rows": len(ids),
+        "unique_ids": len(unique_ids),
+        "eligible_ensg_rows": len(ensg_ids),
+        "sorted_ensg_id_set_sha256": hashlib.sha256(
+            "".join(f"{node_id}\n" for node_id in ensg_ids).encode("utf-8")
+        ).hexdigest(),
+    }
+
+
+def validate_builder_identity(
+    manifest: dict[str, Any], *, expected_source_sha256: str, expected_source_rows: int
+) -> None:
+    model = manifest.get("models", {}).get("nucleotide_transformer", {})
+    output = manifest.get("outputs", {}).get(
+        "gene_genomic_sequence_nt_embeddings", {}
+    )
+    actual = {
+        "validation.passed": (manifest.get("validation") or {}).get("passed"),
+        "model.embedding_model": model.get("embedding_model"),
+        "model.requested_revision": model.get("requested_revision"),
+        "model.resolved_revision": model.get("resolved_revision"),
+        "model.tokenizer_revision": model.get("tokenizer_revision"),
+        "model.embedding_dim": model.get("embedding_dim"),
+        "model.pooling": model.get("pooling"),
+        "model.normalization": model.get("normalization"),
+        "model.encoder_identity": model.get("encoder_identity"),
+        "policy_version": manifest.get("policy_version"),
+        "environment.transformers": (manifest.get("environment") or {}).get(
+            "transformers"
+        ),
+        "output.embedding_dim": output.get("embedding_dim"),
+        "output.max_nucleotides_per_window": output.get(
+            "max_nucleotides_per_window"
+        ),
+        "output.window_stride": output.get("window_stride"),
+        "output.tokenizer_max_length": output.get("tokenizer_max_length"),
+        "output.source.sha256": (output.get("source") or {}).get("sha256"),
+        "output.source.rows": (output.get("source") or {}).get("rows"),
+    }
+    required = {
+        "validation.passed": True,
+        "model.embedding_model": EXPECTED_MODEL,
+        "model.requested_revision": EXPECTED_REVISION,
+        "model.resolved_revision": EXPECTED_REVISION,
+        "model.tokenizer_revision": EXPECTED_REVISION,
+        "model.embedding_dim": EXPECTED_DIM,
+        "model.pooling": "attention_masked_mean_pool_last_hidden_state_per_window_then_mean_of_window_vectors",
+        "model.normalization": "l2",
+        "model.encoder_identity": "real_huggingface_remote_code",
+        "policy_version": "foundation_embedding_policy_v1+gene_genomic_sequence_nt_window_mean_v1",
+        "environment.transformers": "4.55.4",
+        "output.embedding_dim": EXPECTED_DIM,
+        "output.max_nucleotides_per_window": 1000,
+        "output.window_stride": 1000,
+        "output.tokenizer_max_length": None,
+        "output.source.sha256": expected_source_sha256,
+        "output.source.rows": expected_source_rows,
+    }
+    mismatches = {
+        key: {"actual": actual[key], "expected": value}
+        for key, value in required.items()
+        if actual[key] != value
+    }
+    if mismatches:
+        raise RuntimeError(
+            f"builder identity mismatch: {json.dumps(mismatches, sort_keys=True)}"
+        )
+
+
+def validate_embedding_source_identity(
+    embedding_path: Path, source_sequence_path: Path
+) -> dict[str, Any]:
+    source = pq.read_table(
+        source_sequence_path, columns=["feature_key", "checksum_sha256"]
+    )
+    expected_hashes = dict(
+        zip(
+            (str(value) for value in source["feature_key"].to_pylist()),
+            (str(value) for value in source["checksum_sha256"].to_pylist()),
+            strict=True,
+        )
+    )
+    expected_values = {
+        "embedding_model": EXPECTED_MODEL,
+        "embedding_version": f"{EXPECTED_MODEL}@{EXPECTED_REVISION}+attention_masked_mean_pool_window_mean_l2+policy_v1",
+        "embedding_dim": EXPECTED_DIM,
+        "embedding_dtype": "float32",
+        "pooling": "attention_masked_mean_pool_last_hidden_state_per_window_then_mean_of_window_vectors",
+        "normalization": "l2",
+        "modality": "gene_genomic_sequence",
+        "source_feature_table": "features/gene_genomic_sequence.parquet",
+    }
+    checked = source_mismatches = metadata_mismatches = 0
+    columns = [
+        "source_feature_key",
+        "source_sequence_sha256",
+        *expected_values,
+    ]
+    for batch in pq.ParquetFile(embedding_path).iter_batches(
+        batch_size=4096, columns=columns
+    ):
+        table = pa.Table.from_batches([batch])
+        rows = table.to_pylist()
+        checked += len(rows)
+        for row in rows:
+            feature_key = str(row["source_feature_key"])
+            if expected_hashes.get(feature_key) != str(row["source_sequence_sha256"]):
+                source_mismatches += 1
+            metadata_mismatches += sum(
+                row.get(key) != value for key, value in expected_values.items()
+            )
+    checks = {
+        "rows_checked": checked,
+        "source_sequence_hash_mismatches": source_mismatches,
+        "model_policy_metadata_mismatches": metadata_mismatches,
+        "source_feature_key_coverage_exact": checked == len(expected_hashes),
+    }
+    checks["passed"] = (
+        source_mismatches == 0
+        and metadata_mismatches == 0
+        and checks["source_feature_key_coverage_exact"]
+    )
+    if not checks["passed"]:
+        raise RuntimeError(
+            f"row-level embedding identity mismatch: {json.dumps(checks, sort_keys=True)}"
+        )
+    return checks
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-root", type=Path, required=True)
     parser.add_argument("--builder-output", type=Path, required=True)
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--canonical-gene", type=Path, required=True)
+    parser.add_argument("--canonical-gene-origin", required=True)
+    parser.add_argument("--ensembl-gtf", type=Path, required=True)
+    parser.add_argument("--adopted-base-embedding", type=Path, required=True)
+    parser.add_argument("--adopted-base-manifest", type=Path, required=True)
+    parser.add_argument("--adopted-base-origin", required=True)
+    parser.add_argument("--recovery-report", type=Path, required=True)
+    parser.add_argument("--allow-bounded-local-finalization", action="store_true")
     parser.add_argument("--candidate-dir", type=Path, required=True)
     parser.add_argument("--gcs-root", required=True)
     parser.add_argument("--source-origin-root", required=True)
     parser.add_argument("--repository-commit", required=True)
     args = parser.parse_args()
 
-    if platform.node() != "txgnn-worker":
+    if platform.node() != "txgnn-worker" and not args.allow_bounded_local_finalization:
         raise RuntimeError("production finalization must run on txgnn-worker")
     if os.environ.get("HERMES_KANBAN_TASK") != TASK_ID:
         raise RuntimeError("wrong or absent HERMES_KANBAN_TASK")
@@ -232,10 +390,16 @@ def main() -> None:
         raise RuntimeError(f"candidate directory already exists: {args.candidate_dir}")
 
     builder_manifest = json.loads((args.builder_output / "manifest.json").read_text())
-    if not builder_manifest["validation"]["passed"]:
-        raise RuntimeError("builder validation did not pass")
     part_dir = args.builder_output / "features/embeddings/gene_genomic_sequence/gene/instadeepai__nucleotide-transformer-v2-50m-multi-species/policy_v1"
-    parts = sorted(part_dir.glob("part-*.parquet"))
+    recovery_parts = sorted(part_dir.glob("part-*.parquet"))
+    base_manifest = json.loads(args.adopted_base_manifest.read_text(encoding="utf-8"))
+    expected_base_sha256 = str(base_manifest.get("compaction", {}).get("sha256", ""))
+    if sha256(args.adopted_base_embedding) != expected_base_sha256:
+        raise RuntimeError("adopted base embedding hash does not match rejected immutable candidate")
+    base_description = gcs_description(args.adopted_base_origin)
+    if int(base_description["size"]) != args.adopted_base_embedding.stat().st_size:
+        raise RuntimeError("adopted base embedding size does not match GCS identity")
+    parts = [args.adopted_base_embedding, *recovery_parts]
     if not parts:
         raise RuntimeError("builder emitted no embedding parts")
 
@@ -247,6 +411,7 @@ def main() -> None:
     args.candidate_dir.mkdir(parents=True)
     embedding_path = args.candidate_dir / "embeddings/gene_genomic_sequence_nt.parquet"
     compact = compact_embeddings(parts, embedding_path)
+    row_identity = validate_embedding_source_identity(embedding_path, sequence_path)
     embedded_ids = set(compact.pop("node_ids"))
     embedded_feature_keys = set(compact.pop("source_feature_keys"))
     source_row_indices = compact.pop("source_row_indices")
@@ -254,11 +419,32 @@ def main() -> None:
     sequence_feature_keys = set(str(value) for value in sequence_table["feature_key"].to_pylist())
     interval_ids = set(str(value) for value in interval_table["node_id"].to_pylist())
     canonical_ids = read_canonical_gene_ids(args.canonical_gene)
+    canonical_description = gcs_description(args.canonical_gene_origin)
+    canonical_identity = build_canonical_gene_identity(
+        args.canonical_gene,
+        uri=args.canonical_gene_origin,
+        object_description=canonical_description,
+    )
+    validate_builder_identity(
+        builder_manifest,
+        expected_source_sha256=sha256(sequence_path),
+        expected_source_rows=parquet_rows(sequence_path),
+    )
+    eligible_ensg = {
+        node_id for node_id in canonical_ids if re.fullmatch(r"ENSG[0-9]+", node_id)
+    }
+    gtf_classification = classify_ensembl_gtf_gene_ids(
+        args.ensembl_gtf, eligible_ids=eligible_ensg
+    )
+    if gtf_classification["primary_ids"] != interval_ids:
+        raise RuntimeError("Ensembl GTF primary IDs do not match staged interval IDs")
     classification = classify_gene_denominator(
         canonical_ids=canonical_ids,
         interval_ids=interval_ids,
         sequence_ids=sequence_ids,
         embedded_ids=embedded_ids,
+        source_absent_ids=gtf_classification["absent_ids"],
+        source_excluded_ids=gtf_classification["excluded_contig_ids"],
     )
 
     missing_path = args.candidate_dir / "coverage/missing_eligible_ensg.parquet"
@@ -273,6 +459,7 @@ def main() -> None:
     source_report = args.source_root / "reports/gene_genomic_sequence_feature_report.json"
     if source_report.exists():
         shutil.copy2(source_report, source_dir / source_report.name)
+    shutil.copy2(args.recovery_report, source_dir / args.recovery_report.name)
 
     eligible_ids = set(classification["eligible_ensg"])
     missing_ids = {row["node_id"] for row in classification["missing_rows"]}
@@ -303,6 +490,7 @@ def main() -> None:
             pq.read_schema(embedding_path).field("embedding").type
         ),
         "windows": compact["windows"],
+        "row_level_identity": row_identity,
     }
     validation["passed"] = all(
         [
@@ -320,6 +508,7 @@ def main() -> None:
             validation["duplicate_source_feature_keys"] == 0,
             validation["physical_embedding_type_valid"],
             validation["windows"] == len(embedded_ids),
+            validation["row_level_identity"]["passed"],
         ]
     )
     if not validation["passed"]:
@@ -381,16 +570,35 @@ def main() -> None:
             "origin_root": args.source_origin_root,
             "objects": source_objects,
             "local_hashes": source_hashes,
+            "canonical_gene": canonical_identity,
+            "ensembl_gtf": {
+                "path": str(args.ensembl_gtf),
+                "bytes": args.ensembl_gtf.stat().st_size,
+                "sha256": sha256(args.ensembl_gtf),
+                "primary_ids": len(gtf_classification["primary_ids"]),
+                "excluded_contig_ids": len(gtf_classification["excluded_contig_ids"]),
+                "absent_ids": len(gtf_classification["absent_ids"]),
+            },
         },
         "builder": {
             "repository_commit": args.repository_commit,
             "builder_manifest_sha256": sha256(args.builder_output / "manifest.json"),
+            "adopted_base_embedding": {
+                "uri": args.adopted_base_origin,
+                "generation": str(base_description["generation"]),
+                "size": int(base_description["size"]),
+                "sha256": expected_base_sha256,
+                "rows": int(base_manifest["compaction"]["rows"]),
+                "release_state": "rejected_v1_reused_only_as_exact_vector_bytes_after_row_level_revalidation",
+            },
+            "recovery_report_sha256": sha256(args.recovery_report),
             "builder_files": {
-                name: sha256(args.task_root / "repo/manage_db" / name)
+                name: sha256(Path(__file__).resolve().parent / name)
                 for name in (
                     "build_gene_genomic_sequence_embeddings.py",
                     "build_nucleotide_sequence_embeddings.py",
                     "resumable_embedding_parts.py",
+                    "recover_gene_genomic_overlength_windows.py",
                     "finalize_gene_genomic_embedding_candidate.py",
                 )
             },
@@ -418,11 +626,21 @@ def main() -> None:
         "Immutable staged candidate pending independent review. It covers the exact human ENSG denominator with one source-backed row or one explicit missing-reason row per eligible gene. "
         "Embeddings encode the gene-strand 5-prime 1,000-nt genomic-locus window with the pinned Nucleotide Transformer v2 50M checkpoint. No canonical pointer, IAM, or public release is changed.\n"
     )
-    checksum_files = sorted(path for path in args.candidate_dir.rglob("*") if path.is_file())
+    payload_files = sorted(path for path in args.candidate_dir.rglob("*") if path.is_file())
+    payload_inventory = [
+        {
+            "path": path.relative_to(args.candidate_dir).as_posix(),
+            "bytes": path.stat().st_size,
+            "sha256": sha256(path),
+            "rows": parquet_rows(path) if path.suffix == ".parquet" else None,
+        }
+        for path in payload_files
+    ]
+    write_json(args.candidate_dir / "object_inventory.json", payload_inventory)
+    checksum_files = [*payload_files, args.candidate_dir / "object_inventory.json"]
     (args.candidate_dir / "checksums.sha256").write_text(
         "".join(f"{sha256(path)}  {path.relative_to(args.candidate_dir).as_posix()}\n" for path in checksum_files)
     )
-
     local_inventory = [
         {
             "path": path.relative_to(args.candidate_dir).as_posix(),
@@ -432,7 +650,6 @@ def main() -> None:
         }
         for path in sorted(path for path in args.candidate_dir.rglob("*") if path.is_file())
     ]
-    write_json(args.candidate_dir / "object_inventory.json", local_inventory)
     objects = publish_candidate(args.candidate_dir, args.gcs_root, args.task_root / "readback")
     terminal_evidence = {
         "task_id": TASK_ID,
@@ -443,6 +660,7 @@ def main() -> None:
         "objects": objects,
         "validation": validation,
         "local_inventory": local_inventory,
+        "terminal_marker_uri": args.gcs_root.rstrip("/") + "/_STAGED_CANDIDATE.json",
     }
     evidence_path = args.task_root / "evidence/terminal_evidence.json"
     write_json(evidence_path, terminal_evidence)
@@ -459,12 +677,10 @@ def main() -> None:
     )
     marker_uri = args.gcs_root.rstrip("/") + "/_STAGED_CANDIDATE.json"
     marker_description = create_only_upload(marker_path, marker_uri)
-    terminal_evidence["terminal_marker"] = {
-        "uri": marker_uri,
-        "description": marker_description,
-        "sha256": sha256(marker_path),
-    }
-    write_json(evidence_path, terminal_evidence)
+    write_json(
+        args.task_root / "evidence/_STAGED_CANDIDATE_UPLOAD_RECEIPT.local.json",
+        {"uri": marker_uri, "description": marker_description, "sha256": sha256(marker_path)},
+    )
     print(json.dumps({"status": "success", "candidate_root": args.gcs_root, "validation": validation}, sort_keys=True))
 
 

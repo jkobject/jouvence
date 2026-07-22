@@ -20,14 +20,46 @@ def test_build_denominator_reason_rows_accounts_for_each_unembedded_ensg() -> No
         interval_ids={"ENSG1", "ENSG2", "ENSG3"},
         sequence_ids={"ENSG1", "ENSG2"},
         embedded_ids={"ENSG1"},
+        source_absent_ids={"ENSG4"},
+        source_excluded_ids=set(),
     )
 
     reasons = {row["node_id"]: row["reason"] for row in rows}
     assert reasons == {
         "ENSG2": "embedding_missing_or_failed",
         "ENSG3": "source_sequence_overlength",
-        "ENSG4": "source_interval_absent_or_excluded",
+        "ENSG4": "source_absent_ensembl_release",
     }
+
+
+def test_build_denominator_reason_rows_requires_measured_absent_and_excluded_classes() -> None:
+    rows = build_denominator_reason_rows(
+        denominator_ids={"ENSG1", "ENSG2", "ENSG3"},
+        interval_ids={"ENSG1"},
+        sequence_ids={"ENSG1"},
+        embedded_ids={"ENSG1"},
+        source_absent_ids={"ENSG2"},
+        source_excluded_ids={"ENSG3"},
+    )
+
+    assert rows == [
+        {"node_id": "ENSG2", "reason": "source_absent_ensembl_release"},
+        {"node_id": "ENSG3", "reason": "source_excluded_contig_or_build"},
+    ]
+
+
+def test_build_denominator_reason_rows_rejects_unmeasured_missing_id() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="unmeasured missing denominator IDs"):
+        build_denominator_reason_rows(
+            denominator_ids={"ENSG1", "ENSG2"},
+            interval_ids={"ENSG1"},
+            sequence_ids={"ENSG1"},
+            embedded_ids={"ENSG1"},
+            source_absent_ids=set(),
+            source_excluded_ids=set(),
+        )
 
 
 def test_reason_rows_are_deterministically_sorted() -> None:
@@ -36,6 +68,8 @@ def test_reason_rows_are_deterministically_sorted() -> None:
         interval_ids={"ENSG1"},
         sequence_ids={"ENSG1"},
         embedded_ids=set(),
+        source_absent_ids={"ENSG2", "ENSG3"},
+        source_excluded_ids=set(),
     )
 
     assert [row["node_id"] for row in rows] == ["ENSG1", "ENSG2", "ENSG3"]

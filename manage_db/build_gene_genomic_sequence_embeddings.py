@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import math
 import os
@@ -88,16 +89,39 @@ def build_denominator_reason_rows(
     interval_ids: set[str],
     sequence_ids: set[str],
     embedded_ids: set[str],
+    source_absent_ids: set[str],
+    source_excluded_ids: set[str],
 ) -> list[dict[str, str]]:
     """Account deterministically for every exact-denominator ID without an embedding."""
+    missing_ids = denominator_ids - embedded_ids
+    measured_ids = (
+        (sequence_ids - embedded_ids)
+        | (interval_ids - sequence_ids)
+        | source_absent_ids
+        | source_excluded_ids
+    )
+    unmeasured = missing_ids - measured_ids
+    overlapping = (
+        (source_absent_ids & source_excluded_ids)
+        | (source_absent_ids & interval_ids)
+        | (source_excluded_ids & interval_ids)
+    )
+    if unmeasured:
+        raise ValueError(f"unmeasured missing denominator IDs: {sorted(unmeasured)[:10]}")
+    if overlapping:
+        raise ValueError(f"conflicting measured missing denominator classes: {sorted(overlapping)[:10]}")
     rows: list[dict[str, str]] = []
-    for node_id in sorted(denominator_ids - embedded_ids):
+    for node_id in sorted(missing_ids):
         if node_id in sequence_ids:
             reason = "embedding_missing_or_failed"
         elif node_id in interval_ids:
             reason = "source_sequence_overlength"
+        elif node_id in source_excluded_ids:
+            reason = "source_excluded_contig_or_build"
+        elif node_id in source_absent_ids:
+            reason = "source_absent_ensembl_release"
         else:
-            reason = "source_interval_absent_or_excluded"
+            raise AssertionError(f"missing reason classification for {node_id}")
         rows.append({"node_id": node_id, "reason": reason})
     return rows
 
@@ -275,6 +299,9 @@ def build_embeddings(
             "row_end": chunk_end,
             "model_name": encoder.model_name,
             "model_version": encoder.model_version,
+            "resolved_revision": encoder.resolved_revision,
+            "encoder_identity": "deterministic_test_encoder" if encoder.test_deterministic else "real_huggingface_remote_code",
+            "transformers_version": importlib.metadata.version("transformers"),
             "embedding_dim": encoder.embedding_dim,
             "policy_version": POLICY_VERSION,
             "max_nucleotides_per_window": max_nucleotides_per_window,
@@ -645,6 +672,7 @@ def run(
                 "fallback_allowed_only_if_documented": f"{DNABERT2_FALLBACK_MODEL}@{DNABERT2_FALLBACK_REVISION}",
                 "model_license": MODEL_LICENSE,
                 "tokenizer_revision": encoder.resolved_revision,
+                "encoder_identity": "deterministic_test_encoder" if encoder.test_deterministic else "real_huggingface_remote_code",
             }
         },
         "outputs": outputs,
@@ -655,6 +683,7 @@ def run(
             "numpy": np.__version__,
             "pandas": pd.__version__,
             "pyarrow": pa.__version__,
+            "transformers": importlib.metadata.version("transformers"),
             "torch_available": torch is not None,
             "torch_cuda_available": bool(torch is not None and torch.cuda.is_available()),
             "torch_mps_available": bool(torch is not None and getattr(torch.backends, "mps", None) and torch.backends.mps.is_available()),
