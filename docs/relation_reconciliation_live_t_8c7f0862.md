@@ -6,6 +6,7 @@
 - Ledger SHA256: `8b4bddff8d511710cf60bfdf052179bf2023e50caef8a8bc3d1ec616591fb3dd`
 - Exact GCS inventory bundle: `.omoc/reports/relation_reconciliation_live_t_8c7f0862_gcs_inventory.json`
 - Inventory bundle SHA256: `450911fb3d468938226dbd98f51258f2ab332d003b748872a295730994047ecf`
+- Durable PR mirrors: `artifacts/reports/t_8c7f0862/relation_reconciliation_live_t_8c7f0862.json.gz` and `artifacts/reports/t_8c7f0862/relation_reconciliation_live_t_8c7f0862_gcs_inventory.json.gz`; decompress to the exact JSON hashes above
 
 ## Executive result
 
@@ -118,7 +119,7 @@ Every table row has object generations/hashes, source-native semantics, support-
 
 ## Live staging routing
 
-All 10,856 live objects under `v2/staging/` fall into exactly 13 prefixes. Every prefix is routed below; the durable attached immutable inventory bundle contains every exact object name, generation, size, MD5 when available, and CRC32C.
+All 10,856 live objects under `v2/staging/` fall into exactly 13 prefixes. Every prefix is routed below; the durable tracked immutable inventory mirror contains every exact object name, generation, size, MD5 when available, and CRC32C.
 
 | Prefix | Objects | Parquets | Identity digest | Relations | Route/exclusion |
 | --- | ---: | ---: | --- | --- | --- |
