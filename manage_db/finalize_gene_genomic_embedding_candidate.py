@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -67,6 +68,10 @@ def replace_embedding_column(table: pa.Table, *, expected_dim: int = EXPECTED_DI
     return table
 
 
+def expected_embedding_type(expected_dim: int = EXPECTED_DIM) -> str:
+    return str(pa.list_(pa.float32(), expected_dim))
+
+
 def classify_gene_denominator(
     *,
     canonical_ids: set[str],
@@ -74,7 +79,9 @@ def classify_gene_denominator(
     sequence_ids: set[str],
     embedded_ids: set[str],
 ) -> dict[str, list[Any]]:
-    eligible_ensg = sorted(node_id for node_id in canonical_ids if node_id.startswith("ENSG"))
+    eligible_ensg = sorted(
+        node_id for node_id in canonical_ids if re.fullmatch(r"ENSG[0-9]+", node_id)
+    )
     missing_rows = build_denominator_reason_rows(
         denominator_ids=set(eligible_ensg),
         interval_ids=interval_ids,
@@ -83,7 +90,12 @@ def classify_gene_denominator(
     )
     quarantine_rows = []
     for node_id in sorted(canonical_ids - set(eligible_ensg)):
-        reason = "ncbi_gene_namespace" if node_id.startswith("NCBIGene:") else "non_human_ensg_namespace"
+        if node_id.startswith(("NCBI:", "NCBIGene:")):
+            reason = "unmapped_ncbi_alias"
+        elif node_id.startswith("ENS") and not node_id.startswith("ENSG"):
+            reason = "non_human_ensembl_homologue"
+        else:
+            reason = "non_ensg_namespace"
         quarantine_rows.append({"node_id": node_id, "reason": reason})
     return {
         "eligible_ensg": eligible_ensg,
@@ -186,6 +198,11 @@ def parquet_rows(path: Path) -> int:
     return pq.ParquetFile(path).metadata.num_rows
 
 
+def read_canonical_gene_ids(path: Path) -> set[str]:
+    table = pq.read_table(path, columns=["id"])
+    return {str(value) for value in table["id"].to_pylist()}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-root", type=Path, required=True)
@@ -217,7 +234,6 @@ def main() -> None:
     interval_path = args.source_root / "features/gene_genomic_interval.parquet"
     sequence_table = pq.read_table(sequence_path, columns=["node_id", "feature_key"])
     interval_table = pq.read_table(interval_path, columns=["node_id"])
-    canonical_table = pq.read_table(args.canonical_gene, columns=["node_id"])
 
     args.candidate_dir.mkdir(parents=True)
     embedding_path = args.candidate_dir / "embeddings/gene_genomic_sequence_nt.parquet"
@@ -228,7 +244,7 @@ def main() -> None:
     sequence_ids = set(str(value) for value in sequence_table["node_id"].to_pylist())
     sequence_feature_keys = set(str(value) for value in sequence_table["feature_key"].to_pylist())
     interval_ids = set(str(value) for value in interval_table["node_id"].to_pylist())
-    canonical_ids = set(str(value) for value in canonical_table["node_id"].to_pylist())
+    canonical_ids = read_canonical_gene_ids(args.canonical_gene)
     classification = classify_gene_denominator(
         canonical_ids=canonical_ids,
         interval_ids=interval_ids,
@@ -290,7 +306,7 @@ def main() -> None:
             validation["all_zero_vectors"] == 0,
             validation["duplicate_node_ids"] == 0,
             validation["duplicate_source_feature_keys"] == 0,
-            validation["physical_embedding_type"] == "fixed_size_list<element: float>[512]",
+            validation["physical_embedding_type"] == expected_embedding_type(),
             validation["windows"] == len(embedded_ids),
         ]
     )
