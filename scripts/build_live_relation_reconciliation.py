@@ -31,9 +31,6 @@ NEXT_STATES = {
 }
 
 REVIEW_REQUIRED = {
-    "mutation_in_gene",
-    "mutation_overlaps_enhancer",
-    "disease_manifests_in_tissue",
     "molecule_treats_disease",
 }
 EVIDENCE_BACKFILL = {
@@ -53,6 +50,7 @@ FEATURE_CONTEXT = {
     "dataset_contains_cell_type",
     "dataset_contains_cell_line",
     "dataset_contains_tissue",
+    "tf_binds_enhancer",
 }
 PROMOTE_CANDIDATE = {
     "cell_line_expresses_protein",
@@ -60,7 +58,6 @@ PROMOTE_CANDIDATE = {
     "cell_line_responds_to_molecule",
     "pathway_contains_protein",
     "molecule_targets_protein",
-    "disease_associated_protein",
     "cell_type_found_in_tissue",
     "cell_type_subtype_of_cell_type",
     "cell_line_models_disease",
@@ -68,7 +65,6 @@ PROMOTE_CANDIDATE = {
 }
 DEFERRED_POLICY = {
     "enhancer_regulates_transcript",
-    "tf_binds_enhancer",
     "cell_type_involved_in_disease",
 }
 REJECTED = {"transcript_interacts_protein"}
@@ -119,7 +115,7 @@ STAGING_PREFIX_ROUTES = {
     },
     "disease-associated-protein-20260622-t_7f0cccde": {
         "relations": ["disease_associated_protein"],
-        "decision": "route to protein-native promote-candidate review",
+        "decision": "historical staged source retained; superseded byte-for-byte by terminally accepted canonical edge/evidence generations from t_aa5cd96e reviewed by t_0611e6c6",
     },
     "enhancer-regulates-transcript-audit-20260622-t_8ed77c71": {
         "relations": ["enhancer_regulates_transcript"],
@@ -159,7 +155,7 @@ STAGING_PREFIX_ROUTES = {
     },
     "remap-tf-binds-enhancer-remote-pruned-chr1-20260623-t_3479936e-v7-100kb-b50k-tempfix": {
         "relations": ["tf_binds_enhancer"],
-        "decision": "deferred-policy; all-peak/bucketed output must not be promoted and footer recount is VM-only ReMap scaling",
+        "decision": "historical staged validation evidence only; route C is complete on accepted canonical feature/context surfaces, all-peak topology conversion is policy-deferred, and no scaling/recovery/resume lane is active",
     },
     "source-native-expansion": {
         "relations": ["mutation_affects_transcript", "mutation_in_gene", "mutation_overlaps_enhancer"],
@@ -175,7 +171,6 @@ STAGED_VALIDATION = {
     "cell_type_subtype_of_cell_type": (0, 0, 0, 0, "staged context report"),
     "cell_line_derived_from_cell_type": (0, 0, 0, 0, "staged DuckDB validation"),
     "cell_line_models_disease": (0, 0, 0, 0, "staged DuckDB validation"),
-    "disease_associated_protein": (0, 0, 0, 0, "staged independent validation"),
     "molecule_synergizes_molecule": (0, 0, 0, 0, "staged validation.json"),
     "molecule_targets_protein": (0, 0, 0, 0, "staged validation report"),
     "pathway_contains_protein": (0, 0, 0, 0, "staged DuckDB validation"),
@@ -187,13 +182,14 @@ CANONICAL_REPORTED_ZERO = {
     "mutation_overlaps_enhancer": "promotion report: live endpoint/evidence/support audit",
     "disease_manifests_in_tissue": "promotion report: bounded endpoint/evidence audit",
     "mutation_affects_transcript": "independently accepted promotion report",
+    "disease_associated_protein": "terminal independent reviewer t_0611e6c6: endpoint/support/hash mismatch 0 and replay no-op",
 }
 
 SEMANTIC_OVERRIDES = {
     "molecule_treats_disease": "Keep indication topology. Current canonical evidence is CTGov trial context only (7,804 assertions / 377 edge keys); preserve the staged 481 OpenTargets indication assertions instead of treating CTGov overwrite as complete.",
     "molecule_contraindicates_disease": "Require a contraindication-specific source; positive indication or trial evidence cannot be reused.",
     "molecule_synergizes_molecule": "Keep drug-combination response semantics; staged evidence has exact support but no non-null score or study/context fields, so review before evidence-only promotion.",
-    "tf_binds_enhancer": "ReMap bucket output remains deferred support/candidate material; do not equate CRM aggregate or motif support with observed canonical binding.",
+    "tf_binds_enhancer": "Route C is complete for current scope as accepted canonical feature/context. The bounded and full ReMap CRM support-QA surfaces are not observed binding topology; conversion into tf_binds_enhancer edges remains policy-deferred and no recovery/resume/build lane is active.",
     "transcript_interacts_protein": "Current ENCORI pilot is rejected because tested rows do not expose source-native transcript/protein endpoints; relation remains active for a future direct RBP/RNA source.",
 }
 
@@ -301,7 +297,7 @@ def main() -> None:
     inv = args.inventory_dir
     raw: dict[str, list[dict[str, Any]]] = {
         area: json.loads((inv / f"{area}.json").read_text())
-        for area in ("edges", "evidence", "proof", "staging", "metadata")
+        for area in ("edges", "evidence", "proof", "staging", "metadata", "features_remap")
     }
     footers = json.loads((inv / "parquet_footers_non_remap.json").read_text())
 
@@ -314,10 +310,22 @@ def main() -> None:
         }
         for area, items in raw.items()
     }
+    end_captured_at = (inv / "captured_end_at.txt").read_text().strip()
+    capture_boundary = {}
+    for area, start_items in raw.items():
+        end_items = json.loads((inv / f"{area}_end.json").read_text())
+        start_digest = identity_digest(start_items)
+        end_digest = identity_digest(end_items)
+        assert start_digest == end_digest, f"live GCS generation changed during capture boundary: {area}"
+        capture_boundary[area] = {
+            "start_identity_sha256": start_digest,
+            "end_identity_sha256": end_digest,
+            "unchanged": True,
+        }
     inventory_bundle = {
         "task_id": TASK_ID,
         "captured_at": args.captured_at,
-        "scope": "gs://jouvencekb/kg/v2/{edges,evidence,proof,staging,metadata}/**",
+        "scope": "gs://jouvencekb/kg/v2/{edges,evidence,proof,staging,metadata}/** plus accepted ReMap feature surfaces",
         "inventories": {
             area: [normalized_identity(item) for item in items]
             for area, items in raw.items()
@@ -608,6 +616,53 @@ def main() -> None:
     assert set(row["relation"] for row in relation_rows if row["next_state"] == "accepted-canonical") | REVIEW_REQUIRED | EVIDENCE_BACKFILL | (FEATURE_CONTEXT & canonical_names) == canonical_names
 
     top_metadata = [normalized_identity(item) for item in raw["metadata"]]
+    remap_features = [normalized_identity(item) for item in raw["features_remap"]]
+    remap_bounded = next(
+        item
+        for item in remap_features
+        if item["name"] == "kg/v2/features/remap_crm_tf_enhancer_support.parquet"
+    )
+    remap_full = [
+        item
+        for item in remap_features
+        if item["name"].startswith("kg/v2/features/remap_crm_tf_enhancer_support_full/")
+    ]
+    assert remap_bounded["generation"] == "1782308308670478"
+    assert len(remap_full) == 27
+    assert sum(item["size_bytes"] for item in remap_full) == 5144179807
+    remap_route_c = {
+        "status": "accepted-canonical-feature-context",
+        "topology_conversion": "deferred-policy",
+        "bounded_surface": {
+            **remap_bounded,
+            "rows": 2915130,
+            "producer": "t_656a1102",
+            "reviewer": "t_69fa9b1d",
+        },
+        "full_surface": {
+            "prefix": "gs://jouvencekb/kg/v2/features/remap_crm_tf_enhancer_support_full/",
+            "object_count": len(remap_full),
+            "size_bytes": sum(item["size_bytes"] for item in remap_full),
+            "object_identity_sha256": sha256_bytes(
+                json.dumps(
+                    sorted(remap_full, key=lambda item: item["name"]),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ),
+            "summary_rows": 48768788,
+            "global_tf_rows": 1179,
+            "producer": "t_f2a2952e",
+            "reviewer": "t_0974375e",
+        },
+        "decision": "Route C complete for current scope; no watchdog, recovery, resume, promotion, backfill, or VM lane. Only conversion into active tf_binds_enhancer topology is policy-deferred.",
+    }
+    remap_relation = next(row for row in relation_rows if row["relation"] == "tf_binds_enhancer")
+    remap_relation["canonical_feature_context"] = remap_route_c
+    remap_relation["status"] = "accepted-canonical-feature-context+topology-deferred"
+    remap_relation["policy_deferral_reason"] = (
+        "Only conversion of accepted support-QA features into observed tf_binds_enhancer topology is deferred; current route C is complete."
+    )
     ledger = {
         "ledger_version": 1,
         "task_id": TASK_ID,
@@ -619,12 +674,18 @@ def main() -> None:
             "active_relation_count": len(RELATIONS),
         },
         "scope": {
-            "gcs": "gs://jouvencekb/kg/v2/{edges,evidence,proof,staging,metadata}/**",
+            "gcs": "gs://jouvencekb/kg/v2/{edges,evidence,proof,staging,metadata}/** plus accepted ReMap feature surfaces",
             "canonical_writes": False,
             "full_table_scans": False,
             "fuse_readback": "unavailable: expected FUSE directory existed but was empty/unmounted; GCS direct readback used and discrepancy failed closed",
         },
         "inventory_summary": inventories,
+        "capture_boundary": {
+            "start": args.captured_at,
+            "end": end_captured_at,
+            "all_relevant_object_identities_unchanged": True,
+            "areas": capture_boundary,
+        },
         "exact_inventory_bundle": {
             "path": str(args.inventory_output),
             "sha256": inventory_bundle_sha,
@@ -651,14 +712,15 @@ def main() -> None:
         },
         "staging_prefix_routes": prefix_rows,
         "metadata_objects": top_metadata,
+        "remap_route_c": remap_route_c,
         "excluded_live_objects": excluded_canonical_objects,
         "known_high_priority_finding": {
             "relation": "molecule_treats_disease",
-            "finding": "Current canonical evidence is CTGov-only (7,804 assertions / 377 edge keys). The live staged OpenTargets file has 481 source assertions/keys; 104 keys are absent from current canonical evidence and the 377 overlapping keys lost OpenTargets source multiplicity. Treat as review-required evidence overwrite/backfill risk.",
+            "finding": "Confirmed concrete non-merge/overwrite failure: current canonical evidence is CTGov-only (7,804 assertions / 377 edge keys). The live staged OpenTargets file has 481 source assertions/keys; 104 keys are absent from canonical evidence and the 377 overlapping keys lost OpenTargets source multiplicity. Preserve topology and repair only through a separately reviewed evidence-identity merge; this ledger authorizes no write.",
         },
         "verification_limits": [
             "No all-relation endpoint anti-join or support scan was run on the Mac; that is prohibited heavy/all-relation work. Every row records whether its result is fresh, report-backed, absent-evidence exact, or not rerun.",
-            "The 5,366 ReMap Parquet footer totals were not recomputed locally. Exact live object identities are captured; the 189,459,767/189,459,767 rows remain a documented aggregate hypothesis pending approved VM review.",
+            "The historical 5,366 ReMap staged Parquet footer totals were not recomputed locally. They are excluded historical validation material: route C is complete on accepted canonical feature/context surfaces and no VM review, scaling, recovery, or resume lane is pending.",
             "The configured FUSE root existed but was empty/unmounted, so GCS/FUSE parity could not be established. The ledger fails closed to direct GCS generations and records the unavailable FUSE readback.",
         ],
         "relations": relation_rows,
@@ -683,7 +745,9 @@ def main() -> None:
         "",
         f"Exactly **{accepted_exception_count}** canonical no-evidence relations are explicitly accepted exceptions. Exactly **{next_state_counts['evidence-backfill-candidate']}** canonical relations are evidence-backfill candidates; two canonical dataset relations are graph-disconnected feature/context. No missing evidence object is silently counted as complete.",
         "",
-        "P0 finding: `molecule_treats_disease` canonical evidence is currently CTGov-only (7,804 assertions, 377 distinct edge keys). The live staged OpenTargets file has 481 assertions/keys; 104 keys are absent from current canonical evidence and the 377 overlaps have lost source multiplicity. This is `review-required`, not an accepted completed backfill.",
+        "P0 finding: `molecule_treats_disease` has a confirmed concrete non-merge/overwrite failure. Canonical evidence is CTGov-only (7,804 assertions, 377 distinct edge keys); the live staged OpenTargets file has 481 assertions/keys, 104 keys are absent, and 377 overlaps lost source multiplicity. This is `review-required`; any repair must merge evidence identities and requires a separate write gate.",
+        "",
+        "ReMap route C is complete for current scope as accepted canonical feature/context: bounded generation `1782308308670478` (2,915,130 rows), plus the exact 27-object full support-QA prefix (48,768,788 summary rows + 1,179 global TF rows). Only conversion into observed `tf_binds_enhancer` topology is `deferred-policy`; no active compute or recovery lane exists.",
         "",
         "## Denominator and buckets",
         "",
@@ -726,7 +790,7 @@ def main() -> None:
         "",
         "## Live staging routing",
         "",
-        "All 10,856 live objects under `v2/staging/` fall into exactly 13 prefixes. Every prefix is routed below; the immutable inventory bundle contains every exact object name, generation, size, MD5 when available, and CRC32C.",
+        "All 10,856 live objects under `v2/staging/` fall into exactly 13 prefixes. Every prefix is routed below; the durable attached immutable inventory bundle contains every exact object name, generation, size, MD5 when available, and CRC32C.",
         "",
         "| Prefix | Objects | Parquets | Identity digest | Relations | Route/exclusion |",
         "| --- | ---: | ---: | --- | --- | --- |",
@@ -737,7 +801,7 @@ def main() -> None:
         )
     lines += [
         "",
-        "The extra live edge object `edges/gene_interacts_gene.parquet.bak_20260618_ot` is excluded from the active denominator as a backup, not a relation. All 16 metadata objects and the single proof object are captured exactly in the JSON ledger/inventory.",
+        f"The extra live edge object `edges/gene_interacts_gene.parquet.bak_20260618_ot` is excluded from the active denominator as a backup, not a relation. All {len(top_metadata)} metadata objects, the single proof object, and the 28 accepted ReMap feature objects are captured exactly in the JSON ledger/inventory.",
         "",
         "## Evidence completeness decisions",
         "",
@@ -748,9 +812,10 @@ def main() -> None:
         "## Readback and fail-closed limits",
         "",
         "- GCS direct object inventory and Parquet footer reads succeeded.",
+        f"- Freeze gate PASS: fresh start/end inventories ({args.captured_at} to {end_captured_at}) have identical names, generations, sizes, and hashes for edges, evidence, proof, staging, metadata, and accepted ReMap feature surfaces.",
         "- `/Users/jkobject/mnt/gcs/jouvencekb-kg/v2` existed but was empty/unmounted. GCS/FUSE parity is therefore **not established**; no FUSE result is treated as confirming GCS.",
         "- No Mac all-relation endpoint/support scan was run. Each JSON row labels checks as fresh bounded readback, report-backed, exactly absent evidence, or not rerun. The independent reviewer must run representative/high-risk scans and use an approved worker for any full scan.",
-        "- ReMap: exact 10,732 object identities are captured (5,366 Parquets + 5,366 SHA companions), but the documented 189,459,767/189,459,767 row aggregate was not recomputed because ReMap scaling is VM-only. It remains `deferred-policy`.",
+        "- ReMap: historical staged object identities remain routed/excluded, while route C is complete on the accepted bounded and full canonical feature/context surfaces. Scaling, VM review, recovery, and resume are closed; only topology conversion remains policy-deferred.",
         "",
         "## Exact commands",
         "",
@@ -758,6 +823,10 @@ def main() -> None:
         "git fetch origin --prune",
         "git worktree add -b docs/t_8c7f0862-live-reconciliation /Users/jkobject/Documents/jouvence/.worktrees/t_8c7f0862 origin/main",
         "for p in edges evidence proof staging metadata; do gcloud storage ls --recursive --json \"gs://jouvencekb/kg/v2/$p/**\" > \"artifacts/cache/t_8c7f0862/live_inventory/$p.json\"; done",
+        "gcloud storage ls --json gs://jouvencekb/kg/v2/features/remap_crm_tf_enhancer_support.parquet > artifacts/cache/t_8c7f0862/live_inventory/features_remap_bounded.json",
+        "gcloud storage ls --recursive --json 'gs://jouvencekb/kg/v2/features/remap_crm_tf_enhancer_support_full/**' > artifacts/cache/t_8c7f0862/live_inventory/features_remap_full.json",
+        "jq -s add artifacts/cache/t_8c7f0862/live_inventory/features_remap_{bounded,full}.json > artifacts/cache/t_8c7f0862/live_inventory/features_remap.json",
+        "# Repeat every listing as *_end.json after the capture. The generator compares exact identity digests and fails if any name/generation/size/hash changed.",
         "# PyArrow GcsFileSystem + ParquetFile.metadata read every canonical and non-ReMap staged Parquet footer; ReMap was intentionally excluded.",
         f"uv run python scripts/build_live_relation_reconciliation.py --inventory-dir artifacts/cache/{TASK_ID}/live_inventory --captured-at {args.captured_at} --schema-commit {args.schema_commit} --json-output {args.json_output} --markdown-output {args.markdown_output} --inventory-output {args.inventory_output}",
         "python -m json.tool .omoc/reports/relation_reconciliation_live_t_8c7f0862.json >/dev/null",
