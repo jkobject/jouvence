@@ -52,3 +52,23 @@ def test_status_drift_guard_covers_every_current_phase_and_routing_surface() -> 
         Path("docs/kg_schema_overview.md"),
         Path("docs/relation_backlog_prioritized.md"),
     }
+
+
+def test_status_drift_guard_rejects_forbidden_remap_and_wave_b_directives() -> None:
+    path = Path("docs/relation_backlog_prioritized.md")
+    requirements = check_status_mirror_drift.LIVE_STATUS_REQUIREMENTS[path]
+    live_text = (REPO_ROOT / path).read_text(encoding="utf-8")
+
+    forbidden_directives = (
+        "New ReMap CRM/peak/motif work should follow",
+        "user-approved direction is a new bounded staged `tf_binds_enhancer`",
+        "prepare promotion candidates for `pathway_contains_protein`, `molecule_targets_protein`, and `disease_associated_protein`",
+    )
+    for directive in forbidden_directives:
+        errors = check_status_mirror_drift.check_text_requirements(
+            path,
+            f"{live_text}\n{directive}\n",
+            requirements,
+            "accepted live status",
+        )
+        assert any(directive in error for error in errors), errors

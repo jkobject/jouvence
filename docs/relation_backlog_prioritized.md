@@ -12,7 +12,7 @@ This is an execution plan for relations that are not fully done after REL-AUDIT.
 2. Relation names follow native endpoint and assertion. Evidence-specific predicates, scores, assays, releases, and provenance remain in `evidence/{relation}.parquet` and relation metadata.
 3. Do not project gene/RNA rows into protein relations. Protein relations require direct protein/isoform evidence or direct protein measurement.
 4. Do not derive `tf_regulates_gene`, `tf_binds_enhancer`, `transcript_interacts_protein`, `transcript_interacts_gene`, or `protein_interacts_protein` from canonical broad `gene_interacts_gene` rows.
-5. ReMap all-peak finalization from the old broad run is stopped/deferred, and the already accepted CRM sidecar remains bounded `crm_aggregated_support` QA/support material. New ReMap CRM/peak/motif work should follow `docs/remap_crm_canonical_readiness.md` (`t_f558cee3`): stage `tf_binds_enhancer` edge/evidence candidates with explicit ReMap peak, CRM reconstruction, motif, metadata, and leakage fields before any canonical write.
+5. ReMap route C is complete for the current scope: the bounded and full CRM feature-context sidecars are independently accepted `crm_aggregated_support` QA/support material. Active full `tf_binds_enhancer` topology is a non-dispatchable policy-deferred non-goal; do not create a ReMap build, recovery, or promotion lane unless Jérémie explicitly supersedes route C.
 6. Canonical promotion gate for every batch:
    - build in scratch or staging only;
    - validate x/y endpoint anti-joins against mounted canonical nodes using DuckDB where scale requires it;
@@ -60,7 +60,7 @@ Relations:
 
 Rationale: source-native protein endpoints are central to the KG's expanded biomedical mechanism layer and are small enough for fast targeted QA. Keep current canonical BioGRID `protein_interacts_protein` readback as the validated baseline; HCI/humanPPI remains staged-only computational weighted support until reviewed canonicalization/leakage policy exists, and PTM/complex decomposition remains separate/future unless schema changes add PTM/complex nodes.
 
-Child pipeline created from this plan: builder → tester → reviewer.
+Only the still-unpromoted Wave B relations remain eligible for a future builder → tester → reviewer pipeline. The accepted `disease_associated_protein` release is excluded from that fan-out.
 
 ## Wave C — P0/P1 experimental pharmacology and cell-line context staged promotion
 
@@ -128,7 +128,7 @@ No builder should create canonical/staged edge Parquets for these without an acc
 | `gene_coexpressed_gene` | `t_badd3e1e` recommendation: `defer`; keep as feature/context unless a concrete sparse coexpression network edge policy is approved, including source, context, threshold/top-k, symmetry handling, and leakage guard |
 | `disease_comorbid_disease` | `t_badd3e1e` recommendation: `needs_source`; keep as feature/context unless an EHR/co-occurrence source and privacy/provenance policy is approved; do not synthesize from shared annotations/phenotypes/treatments |
 | ReMap broad all-peak legacy output | stopped/deferred; do not create canonical promotion cards from the old all-peak output |
-| ReMap CRM/peak/motif `tf_binds_enhancer` | user-approved direction is a new bounded staged `tf_binds_enhancer` edge/evidence pilot with ReMap peak fields, CRM reconstructed-support fields, optional motif support, metadata coverage, endpoint/evidence audits, and leakage policy; the existing CRM feature sidecar remains bounded QA/support and must not be silently reinterpreted or overwritten |
+| ReMap CRM/peak/motif `tf_binds_enhancer` | bounded and full CRM feature-context sidecars are independently accepted under route C; active full `tf_binds_enhancer` topology is a non-dispatchable policy-deferred non-goal and must not regain a build, recovery, or promotion lane unless Jérémie explicitly supersedes route C |
 | miRNA / mature miRNA / PTM / protein complex candidate families | not active `RELATIONS`; require schema extension and node/relation policy before canonical edge work |
 
 ## Wave H — `t_badd3e1e` relation gaps source-audit and bounded prototypes
@@ -151,10 +151,10 @@ Create the following child pipelines from this REL-PLAN card:
    - builder: `mutation_in_gene` canonical promotion was written by `t_1cfcd48f`; treat `mutation_affects_transcript`, `mutation_in_gene`, and the `t_00551bc3` support-gated `mutation_overlaps_enhancer` write as independently accepted, while keeping coordinate-only overlap as staged/context/feature and requiring support-source/density/leakage policy for any future candidates.
    - tester/reviewer: independently run endpoint/evidence/proof/support audits and semantic leakage checks for `mutation_in_gene` promotion report `docs/mutation_in_gene_canonical_promotion_t_1cfcd48f.md`.
    - reviewer: accept/reject canonical promotion for `mutation_in_gene` and the support-gated `mutation_overlaps_enhancer` promotion; `mutation_affects_transcript` is already review-accepted, and `mutation_overlaps_enhancer` remains feature/context for coordinate-only rows while future support-gated candidates require separate regulatory/disease-support review before any promotion.
-2. Wave B protein-native mechanism promotion:
-   - builder: prepare promotion candidates for `pathway_contains_protein`, `molecule_targets_protein`, and `disease_associated_protein`.
-   - tester: endpoint/evidence anti-join/support QA and no-gene-projection checks.
-   - reviewer: accept/reject source-native protein endpoint semantics and canonical promotion.
+2. Remaining Wave B protein-native mechanism work:
+   - builder: future reviewed work may prepare candidates only for still-unpromoted `pathway_contains_protein`, `molecule_targets_protein`, and HCI weighted support for `protein_interacts_protein`; `disease_associated_protein` is already canonical promoted and independently accepted, so it is not eligible for this fan-out.
+   - tester: for those remaining candidates only, run endpoint/evidence anti-join/support QA and no-gene-projection checks.
+   - reviewer: for those remaining candidates only, accept/reject source-native protein endpoint semantics and canonical promotion without reopening the accepted `disease_associated_protein` release.
 3. Wave C experimental pharmacology/cell-line context promotion:
    - builder: prepare promotion candidates for `cell_line_gene_essentiality`, `cell_line_responds_to_molecule`, `cell_line_expresses_protein`, optionally `cell_type_found_in_tissue` if kept in this batch.
    - tester: score/effect/evidence/endpoint QA and direct-proteomics checks.

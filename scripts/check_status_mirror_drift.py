@@ -94,15 +94,38 @@ LIVE_STATUS_REQUIREMENTS = {
         "required": (
             "marker-last canonical release `t_aa5cd96e`",
             "`canonical promoted / independently accepted` by `t_0611e6c6`",
+            "active full `tf_binds_enhancer` topology is a non-dispatchable policy-deferred non-goal",
+            "Only the still-unpromoted Wave B relations remain eligible",
+            "`disease_associated_protein` is already canonical promoted and independently accepted",
         ),
         "forbidden": (
             "`disease_associated_protein` | protein-native disease-association staged pilot",
+            "New ReMap CRM/peak/motif work should follow",
+            "user-approved direction is a new bounded staged `tf_binds_enhancer`",
+            "prepare promotion candidates for `pathway_contains_protein`, `molecule_targets_protein`, and `disease_associated_protein`",
         ),
     },
 }
 SUPERSEDED_CARDS = ("t_ce839966", "t_075f5353")
 HISTORICAL_TERMS = ("superseded", "historical", "inert", "must not", "do not")
 SNAPSHOT_RE = re.compile(r"^_Status snapshot: (\d{4}-\d{2}-\d{2})(?: [^.]*)?\._$")
+
+
+def check_text_requirements(
+    relative_path: Path,
+    text: str,
+    requirements: dict[str, tuple[str, ...]],
+    status_label: str,
+) -> list[str]:
+    """Return missing/forbidden text failures for one maintained surface."""
+    errors: list[str] = []
+    for required in requirements["required"]:
+        if required not in text:
+            errors.append(f"{relative_path}: missing {status_label} {required!r}")
+    for forbidden in requirements["forbidden"]:
+        if forbidden in text:
+            errors.append(f"{relative_path}: contains stale {status_label} {forbidden!r}")
+    return errors
 
 
 def check_mirrors(expected_date: str) -> list[str]:
@@ -128,21 +151,15 @@ def check_mirrors(expected_date: str) -> list[str]:
 
     for relative_path, requirements in ROUTING_REQUIREMENTS.items():
         text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-        for required in requirements["required"]:
-            if required not in text:
-                errors.append(f"{relative_path}: missing required routing text {required!r}")
-        for forbidden in requirements["forbidden"]:
-            if forbidden in text:
-                errors.append(f"{relative_path}: contains stale routing text {forbidden!r}")
+        errors.extend(
+            check_text_requirements(relative_path, text, requirements, "routing text")
+        )
 
     for relative_path, requirements in LIVE_STATUS_REQUIREMENTS.items():
         text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-        for required in requirements["required"]:
-            if required not in text:
-                errors.append(f"{relative_path}: missing accepted live status {required!r}")
-        for forbidden in requirements["forbidden"]:
-            if forbidden in text:
-                errors.append(f"{relative_path}: contains stale live status {forbidden!r}")
+        errors.extend(
+            check_text_requirements(relative_path, text, requirements, "accepted live status")
+        )
     return errors
 
 
