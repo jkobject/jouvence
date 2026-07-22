@@ -18,7 +18,7 @@ This directory is the single home for durable project knowledge. Start at the re
 | LaminDB, VM, GCS, checkpoints, and recovery | [`guides/lamindb-porting-operations.md`](guides/lamindb-porting-operations.md) |
 | Cross-cutting lessons | [`guides/lessons-learned.md`](guides/lessons-learned.md) |
 
-## Authoritative detailed documents
+## Durable current product and runbook documents
 
 ### Schema, provenance, and source policy
 
@@ -52,6 +52,7 @@ This directory is the single home for durable project knowledge. Start at the re
 
 ### Documentation history
 
+- [`current_state_20260623.md`](current_state_20260623.md) — historical/superseded snapshot; not a current-state or dispatch anchor.
 - [`history/documentation-change-log.md`](history/documentation-change-log.md) — dated documentation migration log.
 - [`history/agent-boot-2026-06-29.md`](history/agent-boot-2026-06-29.md) — superseded agent-context snapshot retained as historical evidence.
 

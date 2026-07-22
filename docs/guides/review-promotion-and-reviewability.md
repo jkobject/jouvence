@@ -52,7 +52,7 @@ A reviewer must be dispatchable. Do not make a review card depend on a producer 
 
 ## Reviewable code and documentation
 
-`work/txgnn` is the canonical local TxGNN worktree and also contains ignored artifact/report surfaces. Git commands must resolve to this root; ignored artifacts are never part of a review unless explicitly force-added and justified.
+`/Users/jkobject/Documents/jouvence` is the canonical local Jouvence checkout and project-level review surface. Task worktrees live under `/Users/jkobject/Documents/jouvence/.worktrees/`; ignored artifacts are never part of a review unless explicitly force-added and justified.
 
 For reviewable changes:
 
@@ -84,6 +84,6 @@ A useful reviewer checks more than commands and exit codes:
 - [`../kanban_status_hygiene.md`](../kanban_status_hygiene.md)
 - [`../git_reviewability_migration_t_4cab4a2f.md`](../git_reviewability_migration_t_4cab4a2f.md)
 - [`../txgnn_agentic_mess_reviewability_audit_20260629.md`](../txgnn_agentic_mess_reviewability_audit_20260629.md)
-- [`../../artifacts/reports/t_ade56294/source_isolation.md`](../../artifacts/reports/t_ade56294/source_isolation.md)
+- Local generated report (not versioned): `artifacts/reports/t_ade56294/source_isolation.md`
 - [`../mutation_in_gene_canonical_promotion_t_1cfcd48f.md`](../mutation_in_gene_canonical_promotion_t_1cfcd48f.md)
 - [`../remap_crm_full_support_sidecar_canonical_promotion_t_f2a2952e.md`](../remap_crm_full_support_sidecar_canonical_promotion_t_f2a2952e.md)

@@ -2,7 +2,7 @@
 
 Kanban board `txgnn` remains the dispatch/source-of-truth. This file is a compact human overview; detailed phase mirrors live in `todo.d/`.
 
-_Status snapshot: 2026-07-19 CEST._
+_Status snapshot: 2026-07-22 15:18 CEST._
 
 ## Operating rule
 
@@ -37,17 +37,17 @@ Avoid bare “done” except as a Kanban state. Use:
 - `stopped-by-user`
 - `production/full done`
 
-## Review snapshot — 2026-07-22
+## Review snapshot
 
 This snapshot supersedes the older June/July execution notes below. Detailed denominators and evidence are in `todo.d/01_lamindb.md`, `todo.d/02_pyg_gnn.md`, and `todo.d/03_embeddings.md`.
 
 1. **Exact-ENSG genomic embeddings are canonical promoted and independently accepted.** Producer `t_03bf9e27` and its independent reviewer froze staged manifest `d32ef9502fe7100a4fa6512a07b1a614806f1a6d32dd395d9be3ef3faa7eb397`. After the independently accepted lifecycle fix (`t_0d57fd03` / `t_2113fbf0`), promotion `t_6cf146f0` was independently accepted at the immutable canonical Nucleotide Transformer release: 78,644 embedded + 3,071 explicit missing = 81,715 eligible human ENSG; duplicate, mismatch, nonfinite and all-zero counts are 0. This promotes the feature release only: canonical `nodes/gene.parquet` remains the mixed 267,830-row source (81,715 ENSG + 186,115 quarantined non-ENSG), so it is not a claim that the ENSG-only Gene node migration was canonically promoted.
-2. **LaminDB ingestion is partial, and accepted counters differ from physical counters.** The latest durable accepted ledger (2026-07-18 evidence) is 11,671,485 / 230,874,162 rows. The latest sealed physical readback from the same date is 12,011,512 rows, with +170,027 edges and +170,000 evidence still uncredited. No newer mismatch-0 readback is claimed; the denominator also awaits reviewed ENSG-only rebasing.
+2. **LaminDB ingestion is partial, and accepted counters differ from physical counters.** The latest durable accepted ledger (2026-07-18 evidence) is 11,671,485 / 230,874,162 rows. The latest sealed physical readback from the same date is 12,011,512 rows, with +170,027 edges and +170,000 evidence still uncredited. No newer mismatch-0 readback is claimed. The human-ENSG migration implementation is merged and independently accepted (PR #12, merge `2786d847`; corrected head `7f300b8`; `t_5c938f23` / `t_0b806c0e`), but the production rebuild and canonical node migration were not executed; live `nodes/gene.parquet` remains generation `1781617033173178`.
 3. **The corrected immutable public embeddings v2 candidate is validated.** Producer `t_2d54477b` published 808,269 rows across 12 logical leaves; independent reviewer `t_2e6b355f` passed the exact 51-object candidate at generation `1784460889447648`. This is a validated immutable candidate, not a mutable latest-pointer or blanket source-backed vector for every node. Rejected v1 remains historical and unaccepted.
 4. **The old 6,912-row Gene NT checkpoint is historical, not current coverage.** `t_d3b876b3` remains a non-canonical, zero-credit stopped scratch checkpoint and must not be resumed or published. It has been superseded for product status by the exact accepted 78,644-row canonical release above.
 5. **DepMap revision 2 is code/test ready but not fully rebuilt.** PR #11 is pushed at `e40e2508b8f061f70fc7a4fcbf05b0f4a1accfaf`; no fresh dual full build or accepted immutable artifact is claimed. The prior candidate remains rejected.
 6. **PyG/GNN has a real reviewed runtime smoke, not full-KG training.** The sidecar/mmap architecture remains the bounded path; full multi-relation model-quality training has not run. The accepted canonical zero-row formal-inference release is valid negative evidence, not inferred-edge coverage; full inferred-edge materialization and GNN ablations remain intentionally paused by `t_437925a5`.
-7. **Public notebooks and the zero-backend viewer are active review lanes, not completed releases.** PR #42 continuation `t_1cf69ed9` remains review-required after an independent reviewer found a remaining keyword-shell false pass in the pedagogical checker. The real ≤500 MiB public bundle `t_3158fa55` is blocked pending explicit bounded-cloud authorization or a local/read-only rescope; retained local work is incomplete and no real public candidate, publication or product credit is claimed. The merged localhost viewer remains the supported full-data path.
+7. **Public notebooks and the zero-backend viewer are active review lanes, not completed releases.** PR #42 continuation `t_1cf69ed9` remains review-required after an independent reviewer found a remaining keyword-shell false pass in the pedagogical checker. Viewer PRs #35 and #37 are merged; GitHub Pages deploy `29919985184` succeeded at merge `034e498`, while the public viewer remains honestly labelled `fixture-v1`. The real ≤500 MiB public bundle `t_3158fa55` is blocked after the remote stop pending explicit bounded-cloud authorization or a local/read-only rescope; retained local work is incomplete and no real candidate or publication is claimed. The merged localhost viewer remains the supported full-data path.
 8. **Explicit holds remain non-dispatchable.** LaminDB/enhancer work (`t_25b1ac18`), full inferred-edge/GNN expansion (`t_437925a5`) and optional source-native expansion (`t_2a8cbcd6`) require an explicit later resumption/selection; no autonomous execution or completion credit is implied.
 
 ## Current phase mirrors
@@ -73,7 +73,7 @@ Use these, not old `.omoc` reports:
 Accepted snapshot:
 
 - active declared relations: `67`
-- canonical active edge relations: `40`, including three `canonical promoted`/`review-required` relations pending acceptance
+- canonical active edge relations: `40`; the three formerly review-required canonical writes were independently accepted by `t_2d1f767d`
 - canonical relations with evidence: `18`
 - canonical relations without evidence: `22`
 - declared relations not canonical yet: `27`
@@ -90,7 +90,7 @@ Accepted snapshot:
 
 `lnschema_txgnn` activation and bounded loaders are validated, but global ingestion remains partial. Current durable counter and Gene-identity boundaries are in `todo.d/01_lamindb.md`.
 
-- The reviewed 81,715-ENSG embedding denominator does not itself migrate the canonical Gene node table or LaminDB. Canonical Gene identity and LaminDB remain unchanged by the embedding promotion; any ENSG-only node migration still requires its own reviewed promotion and exact-ID parity.
+- The reviewed 81,715-ENSG embedding denominator does not itself migrate the canonical Gene node table or LaminDB. PR #12's migration implementation is merged and reviewed, but the production rebuild/canonical promotion still requires its own execution, exact-ID parity, and acceptance.
 - `t_ce839966` and `t_075f5353` — superseded historical +158,505 non-human Gene sync plans; remain inert and must not run.
 - Accepted-versus-physical drift remains explicit; physical rows are not product credit without accepted readback evidence.
 
@@ -119,7 +119,7 @@ Four source-backed embedding families have one independently validated immutable
 
 ### 4. ReMap
 
-All-peak ReMap is stopped/deferred. Do not auto-resume.
+ReMap is complete for the currently accepted route C: canonical bounded and full CRM feature-context sidecars were independently accepted, while conversion into active full `tf_binds_enhancer` topology is an explicit policy-deferred non-goal. Do not create a new execution lane without a superseding decision.
 
 Accepted staged-only support artifacts:
 
@@ -131,19 +131,20 @@ Accepted staged-only support artifacts:
 Canonical-readiness decision:
 
 - `t_9c0e6a68` — decision doc: `docs/remap_crm_canonical_readiness.md`.
-- Only appropriate canonical target from current CRM artifact: support/evidence sidecar `features/remap_crm_tf_enhancer_support.parquet`, via separately reviewed promotion card `t_656a1102`.
+- `t_656a1102` / reviewer `t_69fa9b1d` accepted the bounded canonical feature-context sidecar `features/remap_crm_tf_enhancer_support.parquet`.
+- `t_f2a2952e` / reviewer `t_0974375e` accepted the full sharded canonical feature-context sidecar under `features/remap_crm_tf_enhancer_support_full/`.
 - CRM is `crm_aggregated_support` / support-QA only; not canonical `observed_binding`, not canonical `tf_binds_enhancer` edge/evidence, and not `tf_regulates_gene`.
 - Observed binding requires peak-level/per-experiment source rows with assay/biosample/direct-binding evidence; TF→gene regulation requires a separate source-native TF→target regulation policy/source.
 
 ### 5. Mutation genomic direct relations
 
-`mutation_affects_transcript` is canonical promoted/review-accepted from the all-part OpenTargets 26.03 candidate. `mutation_in_gene` is now relation-specific canonical promoted/review-required by `t_1cfcd48f` from the full all-25-part containment-gated candidate (`t_2bb8e7de`) using OpenTargets `target.genomicLocation`, with 2,599,525 edge/evidence/proof rows and passing live canonical endpoint, duplicate/gap, containment, leakage, staged/canonical sha256, and edge/evidence audit gates. `mutation_overlaps_enhancer` is canonical promoted/review-required by `t_00551bc3` only for the reviewed non-context-support-gated `t_73c67c1b` candidate (1,664,278 edge/evidence rows); coordinate overlap alone remains context/support-only and not observed regulatory evidence.
+`mutation_affects_transcript` is canonical promoted/review-accepted from the all-part OpenTargets 26.03 candidate. `mutation_in_gene` and the support-gated `mutation_overlaps_enhancer` promotion are now independently accepted by consolidated reviewer `t_2d1f767d`; coordinate overlap alone remains context/support-only and not observed regulatory evidence.
 
 Relations:
 
 - `mutation_affects_transcript` — `canonical promoted` / reviewed.
-- `mutation_in_gene` — `canonical promoted` / `review-required`; relation-specific canonical write done by `t_1cfcd48f`, pending independent acceptance.
-- `mutation_overlaps_enhancer` — `canonical promoted` / `review-required` for the support-gated `t_73c67c1b` candidate promoted by `t_00551bc3`; coordinate-only overlap remains context/support-only and not observed regulatory evidence.
+- `mutation_in_gene` — `canonical promoted` / independently accepted (`t_1cfcd48f` / `t_2d1f767d`).
+- `mutation_overlaps_enhancer` — `canonical promoted` / independently accepted for the support-gated `t_73c67c1b` candidate (`t_00551bc3` / `t_2d1f767d`); coordinate-only overlap remains context/support-only.
 
 Cards:
 
@@ -153,9 +154,9 @@ Cards:
 - `t_8de911c0` — remaining-relation next-state decision: `mutation_in_gene` bounded containment candidate only; `mutation_overlaps_enhancer` coordinate-only context/support feature; no broad or relation-specific promotion card created.
 - `t_0aa76f3b` — support-gated `mutation_overlaps_enhancer` policy/pilot: evidence-backed staged edge candidate with external support context, no canonical write.
 - `t_73c67c1b` — full non-context-support-gated `mutation_overlaps_enhancer` staged candidate: 1,664,278 edges/evidence rows with live endpoint anti-joins and edge/evidence validation passing. Report: `docs/mutation_overlaps_enhancer_support_gated_full_t_73c67c1b.md`.
-- `t_00551bc3` — relation-specific canonical promotion of reviewed `t_73c67c1b` support-gated `mutation_overlaps_enhancer` to `gs://jouvencekb/kg/v2/{edges,evidence}/`; status `canonical promoted`/`review-required` pending independent acceptance. Report: `docs/mutation_overlaps_enhancer_canonical_promotion_t_00551bc3.md`.
+- `t_00551bc3` — relation-specific canonical promotion of reviewed `t_73c67c1b` support-gated `mutation_overlaps_enhancer` to `gs://jouvencekb/kg/v2/{edges,evidence}/`; independently accepted by `t_2d1f767d`. Report: `docs/mutation_overlaps_enhancer_canonical_promotion_t_00551bc3.md`.
 - `t_2bb8e7de` — full all-25-part `mutation_in_gene` containment-gated staged candidate built/validated under `artifacts/staged/t_2bb8e7de/`; producer handoff was `review-required`, with no canonical write.
-- `t_1cfcd48f` — `mutation_in_gene` live endpoint revalidation and relation-specific canonical write to `gs://jouvencekb/kg/v2/{edges,evidence,proof}/`; status `review-required` pending independent review. Report: `docs/mutation_in_gene_canonical_promotion_t_1cfcd48f.md`.
+- `t_1cfcd48f` — `mutation_in_gene` live endpoint revalidation and relation-specific canonical write to `gs://jouvencekb/kg/v2/{edges,evidence,proof}/`; independently accepted by `t_2d1f767d`. Report: `docs/mutation_in_gene_canonical_promotion_t_1cfcd48f.md`.
 - `t_4b1227b3` — do not use as blanket promotion; only relation-specific promotion after explicit acceptance.
 
 ### 6. Relation waves
@@ -169,8 +170,9 @@ Use `docs/relation_backlog_prioritized.md` and `todo.d/04_relations.md`. A relat
 ### 8. Public notebooks and viewer
 
 - `t_1cf69ed9` / PR #42 — continuation remains `review-required`; fixture build/execution and focused checks passed at the latest handed-off head, but independent qualitative review still found a dressed keyword-shell false pass. Do not call the notebook course accepted or merged.
-- `t_3158fa55` — real zero-backend ≤500 MiB public bundle is blocked pending explicit bounded-cloud authorization or local/read-only rescope. Local uncommitted work is partial; no reproducible measured candidate, PR, publication or product credit exists.
-- The merged secure localhost/query-bundle viewer remains the supported full-data route. Fixture mode and any static fallback must remain explicitly labeled rather than presented as the real public bundle.
+- Viewer PRs #35 and #37 are merged; GitHub Pages deploy `29919985184` succeeded at merge `034e498`. The public site remains explicitly `fixture-v1`.
+- `t_3158fa55` — real zero-backend ≤500 MiB public bundle is blocked after remote stop pending explicit bounded-cloud authorization or local/read-only rescope. Local uncommitted work is partial; no reproducible measured candidate, PR, publication or product credit exists.
+- The merged secure localhost/query-bundle viewer and published `viewer-install.html` guide remain the supported full-data route. Fixture mode and any static fallback must remain explicitly labeled rather than presented as the real public bundle.
 
 ### 9. Intentional holds
 
@@ -190,4 +192,4 @@ Older docs/reports may mention `.omoc` and old local caches. Treat those as hist
 
 ---
 
-_Live-status evidence refreshed 2026-07-22 15:05 CEST from immutable Kanban handoffs `t_03bf9e27`, `t_0d57fd03`, `t_2113fbf0`, `t_6cf146f0`, `t_1cf69ed9`, `t_3158fa55`, `t_25b1ac18`, `t_437925a5`, and `t_2a8cbcd6`. Kanban remains the live source of truth; this footer does not turn running, blocked, staged or review-required work into accepted product state._
+_Live-status evidence refreshed 2026-07-22 15:18 CEST from immutable Kanban handoffs named above, including `t_5c938f23` / `t_0b806c0e`, `t_03bf9e27`, `t_6cf146f0`, `t_2d1f767d`, `t_1cf69ed9`, `t_3158fa55`, `t_25b1ac18`, `t_437925a5`, and `t_2a8cbcd6`. Kanban remains the live source of truth; this footer does not turn running, blocked, staged or review-required work into accepted product state._

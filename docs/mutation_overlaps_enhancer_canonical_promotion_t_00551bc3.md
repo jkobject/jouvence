@@ -3,7 +3,9 @@
 Kanban task: `t_00551bc3`  
 Source staged candidate: `t_73c67c1b`  
 Reviewer for staged candidate: `t_2fb6ffeb`  
-Status: `canonical promoted` / `review-required`
+Status at promotion: `canonical promoted` / `review-required`
+
+> **Supersession note (2026-07-22):** consolidated independent reviewer `t_2d1f767d` passed this exact immutable support-gated canonical revision. Current status is `canonical promoted` / independently accepted. Producer-time review and rollback wording below remains historical evidence.
 
 ## Bottom line
 

@@ -16,9 +16,9 @@ Use these exact labels in docs/comments instead of bare "done" when scope is par
 
 Process details live in `docs/kanban_status_hygiene.md`.
 
-Current phase files:
+Current phase files (`TODO.md` plus live Kanban are the current status route):
 
-- `docs/current_state_20260623.md` — short current-state anchor for workers/reviewers.
+- `docs/current_state_20260623.md` — historical/superseded dated context; never use it as live dispatch state.
 - `01_lamindb.md`
 - `02_pyg_gnn.md` — PyG/HeteroData export and actual GNN runtime.
 - `03_embeddings.md` — real node/edge embeddings, not surrogate-only pilots.

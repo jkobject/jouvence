@@ -1,5 +1,7 @@
 # Mutation genomic relations promotion policy
 
+> **Supersession note (2026-07-22):** consolidated reviewer `t_2d1f767d` accepted the exact canonical `mutation_in_gene` and support-gated `mutation_overlaps_enhancer` revisions. Pending-review wording below preserves earlier policy chronology only; coordinate-only overlap remains non-canonical context.
+
 Kanban task: `t_60b3e504`
 Date: 2026-06-23
 Prior staged pilot: `t_3255672c`

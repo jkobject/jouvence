@@ -7,7 +7,7 @@
 
 ## Current operating posture
 
-`work/txgnn` is the canonical local worktree for `https://github.com/jkobject/jouvence-graph` and the project-level review surface. The local path is retained for compatibility. It also holds ignored local artifacts/caches, so reviewers must inspect the explicit Git diff rather than infer scope from directory contents. Parallel task worktrees belong under `/Users/jkobject/.openclaw/worktrees/txgnn/<branch-or-task-id>/`; do not create a second canonical checkout under `~/code`.
+`/Users/jkobject/Documents/jouvence` is the canonical local checkout for `https://github.com/jkobject/jouvence-graph` and the project-level review surface. It also holds ignored local artifacts/caches, so reviewers must inspect the explicit Git diff rather than infer scope from directory contents. Parallel task worktrees belong under `/Users/jkobject/Documents/jouvence/.worktrees/<branch-or-task-id>/`; do not create a second canonical checkout under `~/code`.
 
 Default KG access:
 
@@ -31,8 +31,8 @@ Read:
 
 1. `AGENTS.md`
 2. `TODO.md`
-3. `docs/current_state_20260623.md` for broad status
-4. The relevant `todo.d/*.md` phase file only when routing that phase
+3. The relevant `todo.d/*.md` phase file only when routing that phase
+4. `docs/current_state_20260623.md` only as explicitly historical June evidence, never live status
 
 ### KG schema / relation worker
 

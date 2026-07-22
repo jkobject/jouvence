@@ -1,6 +1,8 @@
 # ClinicalTrials.gov canonical support promotion — t_f8841ff7
 
-Status: `canonical promoted` / `review-required`.
+Status at promotion: `canonical promoted` / `review-required`.
+
+> **Supersession note (2026-07-22):** independent reviewer `t_03ffa23d` accepted the exact canonical CTGov support/evidence/feature artifacts and producer `t_f8841ff7` closed `validated`. Scope remains the bounded selected OpenTargets/CTGov seed, not global ClinicalTrials.gov coverage.
 
 This card promoted the reviewed staged CTGov/ClinicalTrials.gov production candidate from `t_c4f67957` into canonical KG support/evidence/feature namespaces for the existing canonical `molecule_treats_disease` graph assertions. It did not modify `edges/molecule_treats_disease.parquet` and did not create clinical-trial negative edges.
 

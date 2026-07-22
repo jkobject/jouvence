@@ -4,7 +4,7 @@ Task: `t_f2a2952e`
 Source staged candidate: `t_5968ce32`  
 Promotion-readiness gate: `t_7e356c5c`  
 Readiness reviewer: `t_0d77b4f0`  
-Status: `canonical promoted full support sidecar` / `review-required`.
+Status: `canonical promoted full support sidecar` / `validated`; post-write reviewer `t_0974375e` accepted the immutable canonical feature-context sidecar and producer `t_f2a2952e` closed.
 
 ## Verdict
 
@@ -171,7 +171,7 @@ Forbidden canonical paths checked absent after promotion:
 
 ## Rollback handle
 
-If reviewer rejects the canonical sidecar, remove exactly the objects written by this card using the generation-checked manifest. The full object/generation list is in `artifacts/reports/t_f2a2952e_remap_crm_full_support_sidecar_canonical_manifest.json`. Generation-checked rollback commands:
+The following generation-checked rollback handle was retained from the producer handoff for recovery; reviewer `t_0974375e` subsequently accepted the canonical sidecar. The full object/generation list is in `artifacts/reports/t_f2a2952e_remap_crm_full_support_sidecar_canonical_manifest.json`:
 
 ```bash
 gsutil rm 'gs://jouvencekb/kg/v2/features/remap_crm_tf_enhancer_support_full/summary_chr1.parquet#1782327502251035'

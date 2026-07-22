@@ -1,6 +1,6 @@
 # 01 — LaminDB
 
-_Status snapshot: 2026-07-19 CEST._
+_Status snapshot: 2026-07-22 15:18 CEST._
 
 Kanban board `txgnn` remains the live source of truth. Counter evidence below is explicitly dated; this mirror does not imply a fresh database read.
 
@@ -32,21 +32,21 @@ Latest durable accepted ledger, sealed in 2026-07-18 task evidence:
 
 The latest sealed physical readback is also from 2026-07-18: 3,771,054 nodes + 4,141,291 edges + 4,099,167 evidence = **12,011,512 physical rows**. The +170,027 edge and +170,000 evidence difference is physical but uncredited. No newer mismatch-0 database readback is claimed here.
 
-## Human ENSG-only denominator change in progress
+## Human ENSG-only implementation accepted; data migration outstanding
 
-`t_8b9cdabc` produced a `staged-only` / `review-required` human Gene candidate at commit `8714378`; its PR and independent review remain outstanding:
+PR #12 merged at `2786d847` on 2026-07-21. The corrected implementation head `7f300b8` was independently accepted by `t_0b806c0e`, and producer `t_5c938f23` closed `validated`. The earlier `t_8b9cdabc` production candidate is rejected historical evidence. The production-scale staged rebuild and canonical node migration were not executed:
 
 - current canonical Gene source: 267,830 IDs = 81,715 human ENSG + 27,610 human NCBI + 158,505 non-human Ensembl homologues;
 - target canonical Gene identity: 81,715 human ENSG only;
 - NCBI IDs are aliases/provenance, with authoritative endpoint remap or explicit quarantine required before removal;
 - non-human homologue nodes and `gene_ortholog_gene` are excluded from the human canonical candidate;
-- no canonical KG or LaminDB promotion is claimed.
+- live `nodes/gene.parquet` remains the old generation `1781617033173178`; no canonical Gene-node or LaminDB migration is claimed.
 
 `t_ce839966` and `t_075f5353` are superseded historical +158,505 Lamin Gene plans. They remain inert and must not run. Their 2026-07-18 readbacks remain useful as dated counter evidence only.
 
 ## Current boundary
 
-Do not schedule a new bulk Lamin Gene wave against the old 267,830-row denominator. First complete independent review and any explicit promotion of the ENSG-only candidate, then produce a fresh source↔Lamin denominator and mismatch-0 readback. Keep accepted and physical counters separate until that review closes.
+Do not schedule a new bulk Lamin Gene wave against the old 267,830-row denominator. First run and review a fresh production-scale ENSG rebuild and explicit canonical promotion, then produce a fresh source↔Lamin denominator and mismatch-0 readback. Keep accepted and physical counters separate until data migration acceptance closes.
 
 ## What is and is not complete
 

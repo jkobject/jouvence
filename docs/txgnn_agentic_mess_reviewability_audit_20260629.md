@@ -1,5 +1,7 @@
 # TxGNN / Jouvence KG — agentic mess + reviewability rescue audit
 
+> **Historical audit — superseded routing.** Current checkout/worktree paths are `/Users/jkobject/Documents/jouvence` and `/Users/jkobject/Documents/jouvence/.worktrees/`; older paths below record the 2026-06-29 observation only.
+
 Date: 2026-06-29  
 Workspace audited: `/Users/jkobject/.openclaw/workspace/work/txgnn`  
 Mode: local read-only code/docs/artifact-shape inspection, plus writing this report. No GCS writes, no LaminDB writes, no canonical KG promotion, no deletion.

@@ -1,5 +1,7 @@
 # TxGNN git reviewability migration decision — `t_4cab4a2f`
 
+> **Supersession note (2026-07-22):** this migration plan is historical. It was executed into `/Users/jkobject/Documents/jouvence`, with task worktrees under `/Users/jkobject/Documents/jouvence/.worktrees/`; paths below preserve the original plan evidence only.
+
 Date: 2026-06-24
 Workspace inspected: `/Users/jkobject/.openclaw/workspace/work/txgnn`
 Reference: `docs/repo_cleanup_t_859cbca4.md`

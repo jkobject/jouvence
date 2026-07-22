@@ -1,13 +1,15 @@
 # Human ENSG gene migration candidate — `t_8b9cdabc`
 
-Status: **prior production-scale candidate rejected; corrected implementation local-only and
-review-required; canonical not modified**
+Status: **prior production-scale candidate rejected; corrected implementation merged and
+independently accepted; production rebuild and canonical migration not executed**
 
 Revision producer: `t_5c938f23`. The earlier 12.6 GB candidate below was built by
 `t_8b9cdabc` and is retained only as rejected historical evidence. It is not a corrected
 candidate and must not be promoted. A fresh production-scale staged rebuild requires a
 separate remote execution lane after lifecycle reauthorization and acceptance of this
-implementation.
+implementation. PR #12 merged at `2786d847` on 2026-07-21; corrected head `7f300b8`
+was independently accepted by `t_0b806c0e`. Live `nodes/gene.parquet` remains old
+generation `1781617033173178`.
 
 ## Scope and policy
 

@@ -1,6 +1,6 @@
-# Current TxGNN / Jouvence KG state — 2026-06-23
+# Historical TxGNN / Jouvence KG state — 2026-06-23
 
-This is the short current-state anchor for workers. Prefer this plus `todo.d/` over older historical reports.
+> **Historical snapshot — superseded.** This page preserves what the project reported on 2026-06-23; its counters, statuses, workspace paths, and priorities are not maintained as live state. Use root `TODO.md` plus `todo.d/` for the current human mirror and live Kanban for dispatch/status. Do not prefer or copy this page as current operating truth.
 
 ## Storage / scratch
 

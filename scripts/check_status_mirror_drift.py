@@ -12,9 +12,41 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MIRRORS = (
     Path("TODO.md"),
     Path("todo.d/01_lamindb.md"),
+    Path("todo.d/02_pyg_gnn.md"),
     Path("todo.d/03_embeddings.md"),
+    Path("todo.d/04_relations.md"),
+    Path("todo.d/05_remap.md"),
     Path("todo.d/06_process.md"),
 )
+ROUTING_REQUIREMENTS = {
+    Path("todo.d/README.md"): {
+        "required": ("historical/superseded dated context", "`TODO.md` plus live Kanban"),
+        "forbidden": ("short current-state anchor",),
+    },
+    Path("docs/current_state_20260623.md"): {
+        "required": ("Historical snapshot — superseded", "`TODO.md`", "live Kanban"),
+        "forbidden": ("This is the short current-state anchor",),
+    },
+    Path("docs/guides/agent-context.md"): {
+        "required": (
+            "/Users/jkobject/Documents/jouvence` is the canonical local checkout",
+            "/Users/jkobject/Documents/jouvence/.worktrees/<branch-or-task-id>/",
+        ),
+        "forbidden": ("`work/txgnn` is the canonical local worktree",),
+    },
+    Path("docs/README.md"): {
+        "required": ("[`viewer-install.html`](viewer-install.html)", "historical/superseded snapshot"),
+        "forbidden": (),
+    },
+    Path("CLAUDE.md"): {
+        "required": (
+            "Legacy, non-authoritative context",
+            "[`AGENTS.md`](AGENTS.md)",
+            "[`TODO.md`](TODO.md)",
+        ),
+        "forbidden": (),
+    },
+}
 SUPERSEDED_CARDS = ("t_ce839966", "t_075f5353")
 HISTORICAL_TERMS = ("superseded", "historical", "inert", "must not", "do not")
 SNAPSHOT_RE = re.compile(r"^_Status snapshot: (\d{4}-\d{2}-\d{2})(?: [^.]*)?\._$")
@@ -40,6 +72,15 @@ def check_mirrors(expected_date: str) -> list[str]:
                         f"{relative_path}:{line_number}: superseded card {card_id} "
                         "is not explicitly marked historical/inert"
                     )
+
+    for relative_path, requirements in ROUTING_REQUIREMENTS.items():
+        text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        for required in requirements["required"]:
+            if required not in text:
+                errors.append(f"{relative_path}: missing required routing text {required!r}")
+        for forbidden in requirements["forbidden"]:
+            if forbidden in text:
+                errors.append(f"{relative_path}: contains stale routing text {forbidden!r}")
     return errors
 
 

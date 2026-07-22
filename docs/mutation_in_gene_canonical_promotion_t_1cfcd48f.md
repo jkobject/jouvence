@@ -2,7 +2,9 @@
 
 Date: 2026-06-24  
 Producer/staged source: `t_2bb8e7de`, accepted by reviewer `t_8b4de179` as a full staged candidate only.  
-Status: `canonical promoted` / `review-required`.
+Status at promotion: `canonical promoted` / `review-required`.
+
+> **Supersession note (2026-07-22):** consolidated independent reviewer `t_2d1f767d` passed this exact immutable canonical revision. Current status is `canonical promoted` / independently accepted. Statements below that independent review is still required preserve the producer-time handoff only.
 
 ## Scope
 

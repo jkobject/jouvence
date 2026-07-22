@@ -1,5 +1,7 @@
 # ReMap CRM `tf_binds_enhancer` next-route decision
 
+> **Supersession note (2026-07-22):** route C remains the accepted topology policy, while the bounded and full canonical feature-context sidecars are now independently accepted (`t_656a1102` / `t_69fa9b1d`, `t_f2a2952e` / `t_0974375e`). Producer-time `review-required` wording below is historical.
+
 Kanban task: `t_2e1b271a`
 Status: `policy decided`; full CRM remains `support-only`; no full edge/evidence build authorized.
 

@@ -1,5 +1,7 @@
 # Relation gaps wave: gene/tissue/disease/phenotype set
 
+> **Supersession note (2026-07-22):** consolidated reviewer `t_2d1f767d` accepted the exact narrow canonical `disease_manifests_in_tissue` revision. Producer-time `review-required` rows below are historical; the narrow HPA/TCGA scope remains unchanged.
+
 Kanban task: `t_badd3e1e`  
 Workspace: `/Users/jkobject/.openclaw/workspace/work/txgnn`  
 Status: staged-only/source-audit for the original producer task; no canonical writes were made by `t_badd3e1e`.
