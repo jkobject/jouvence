@@ -83,9 +83,10 @@ rows, seek by Parquet row group, and never default to macOS GCS-FUSE or a full-K
 materialization.  Live LaminDB access is opt-in with
 `JOUVENCE_LAMIN_LIVE=1` and refuses any instance other than
 `jkobject/jouvencekb`; the mirror is currently incomplete, so canonical Parquet
-remains the source of truth.  Public embedding URIs are not assumed while the
-immutable release/license contract remains pending; set
-`JOUVENCE_EMBEDDING_URI` only to an accepted published shard.
+remains the source of truth.  Public embedding paths are never guessed. In live mode, set
+`JOUVENCE_EMBEDDING_MANIFEST_URI` only to a reviewed manifest whose accepted,
+immutable entries declare modality, license, coverage, model identity, and
+versioned shard paths. Fixture mode supplies a synthetic teaching manifest.
 
 ## Jouvence-Graph local viewer
 
