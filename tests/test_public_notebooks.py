@@ -229,19 +229,53 @@ def test_release_discovery_filters_unaccepted_and_requires_immutable(tmp_path: P
         """{
           "releases": [
             {"release_id": "accepted-v1", "state": "accepted", "immutable": true,
-             "modality": "text", "license": "CC-BY-4.0", "coverage": "partial",
+             "modality": "text", "model": "encoder-v1", "license": "CC-BY-4.0", "coverage": "partial",
              "shards": ["accepted.parquet"]},
             {"release_id": "rejected-v1", "state": "rejected", "immutable": true,
-             "modality": "text", "license": "unknown", "coverage": "partial",
+             "modality": "text", "model": "encoder-v1", "license": "unknown", "coverage": "partial",
              "shards": ["rejected.parquet"]},
             {"release_id": "mutable-v1", "state": "accepted", "immutable": false,
-             "modality": "text", "license": "CC-BY-4.0", "coverage": "partial",
+             "modality": "text", "model": "encoder-v1", "license": "CC-BY-4.0", "coverage": "partial",
              "shards": ["mutable.parquet"]}
           ]
         }"""
     )
     releases = public.discover_embedding_releases(manifest)
     assert releases["release_id"].tolist() == ["accepted-v1"]
+
+
+@pytest.mark.parametrize(
+    "release",
+    [
+        {
+            "release_id": "missing-model-v1",
+            "state": "accepted",
+            "immutable": True,
+            "modality": "text",
+            "license": "CC-BY-4.0",
+            "coverage": "partial",
+            "shards": ["part.parquet"],
+        },
+        {
+            "release_id": "",
+            "state": "accepted",
+            "immutable": True,
+            "modality": "",
+            "model": "",
+            "license": "",
+            "coverage": "",
+            "shards": ["part.parquet"],
+        },
+    ],
+)
+def test_release_discovery_rejects_incomplete_identity(
+    tmp_path: Path, release: dict[str, object]
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(__import__("json").dumps({"releases": [release]}))
+
+    with pytest.raises(ValueError, match="required|non-empty"):
+        public.discover_embedding_releases(manifest)
 
 
 def test_sampled_pyg_and_ml_reuse_existing_pipeline(tmp_path: Path) -> None:

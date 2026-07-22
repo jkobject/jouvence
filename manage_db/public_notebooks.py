@@ -232,11 +232,23 @@ def discover_embedding_releases(
     if not isinstance(releases, list):
         raise ValueError("embedding manifest must contain a releases list")
 
-    required = {"release_id", "state", "immutable", "modality", "license", "coverage", "shards"}
+    required = {
+        "release_id",
+        "state",
+        "immutable",
+        "modality",
+        "model",
+        "license",
+        "coverage",
+        "shards",
+    }
+    identity_fields = ("release_id", "state", "modality", "model", "license", "coverage")
     rows: list[dict[str, Any]] = []
     for release in releases:
         if not isinstance(release, dict) or not required.issubset(release):
             raise ValueError(f"embedding release missing required fields: {sorted(required)}")
+        if any(not isinstance(release[field], str) or not release[field].strip() for field in identity_fields):
+            raise ValueError(f"embedding release identity fields must be non-empty: {identity_fields}")
         if accepted_only and (release["state"] != "accepted" or release["immutable"] is not True):
             continue
         if modality is not None and release["modality"] != modality:
@@ -246,6 +258,8 @@ def discover_embedding_releases(
             raise ValueError(f"embedding release {release['release_id']!r} must list at least one shard")
         for shard in shards:
             shard_text = str(shard)
+            if not shard_text.strip():
+                raise ValueError(f"embedding release {release['release_id']!r} has an empty shard path")
             if "://" in shard_text or Path(shard_text).is_absolute():
                 shard_uri = shard_text
             elif "://" in uri_text:
@@ -254,7 +268,16 @@ def discover_embedding_releases(
                 shard_uri = str(Path(uri_text).parent / shard_text)
             row = {key: value for key, value in release.items() if key != "shards"}
             rows.append({**row, "shard_uri": shard_uri})
-    columns = ["release_id", "state", "immutable", "modality", "license", "coverage", "shard_uri"]
+    columns = [
+        "release_id",
+        "state",
+        "immutable",
+        "modality",
+        "model",
+        "license",
+        "coverage",
+        "shard_uri",
+    ]
     extra = sorted({key for row in rows for key in row}.difference(columns))
     result = pd.DataFrame(rows, columns=[*columns, *extra])
     if result.empty:
