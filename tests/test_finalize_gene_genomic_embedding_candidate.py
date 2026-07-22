@@ -8,6 +8,7 @@ import pyarrow.parquet as pq
 
 from manage_db.finalize_gene_genomic_embedding_candidate import (
     classify_gene_denominator,
+    embedding_type_matches,
     expected_embedding_type,
     read_canonical_gene_ids,
     replace_embedding_column,
@@ -36,6 +37,12 @@ def test_replace_embedding_column_writes_fixed_size_float32() -> None:
 
 def test_expected_embedding_type_matches_runtime_pyarrow_type() -> None:
     assert expected_embedding_type(512) == str(pa.list_(pa.float32(), 512))
+
+
+def test_embedding_type_match_accepts_equivalent_child_field_names() -> None:
+    runtime_type = pa.list_(pa.field("element", pa.float32()), 512)
+
+    assert embedding_type_matches(runtime_type, expected_dim=512)
 
 
 def test_read_canonical_gene_ids_uses_canonical_id_column(tmp_path: Path) -> None:

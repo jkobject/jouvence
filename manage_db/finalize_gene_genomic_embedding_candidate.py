@@ -72,6 +72,15 @@ def expected_embedding_type(expected_dim: int = EXPECTED_DIM) -> str:
     return str(pa.list_(pa.float32(), expected_dim))
 
 
+def embedding_type_matches(data_type: pa.DataType, *, expected_dim: int = EXPECTED_DIM) -> bool:
+    """Compare fixed-size vector types without depending on child-field spelling."""
+    return (
+        pa.types.is_fixed_size_list(data_type)
+        and data_type.list_size == expected_dim
+        and data_type.value_type == pa.float32()
+    )
+
+
 def classify_gene_denominator(
     *,
     canonical_ids: set[str],
@@ -290,6 +299,9 @@ def main() -> None:
         "duplicate_node_ids": compact["duplicate_node_ids"],
         "duplicate_source_feature_keys": compact["duplicate_source_feature_keys"],
         "physical_embedding_type": compact["physical_embedding_type"],
+        "physical_embedding_type_valid": embedding_type_matches(
+            pq.read_schema(embedding_path).field("embedding").type
+        ),
         "windows": compact["windows"],
     }
     validation["passed"] = all(
@@ -306,7 +318,7 @@ def main() -> None:
             validation["all_zero_vectors"] == 0,
             validation["duplicate_node_ids"] == 0,
             validation["duplicate_source_feature_keys"] == 0,
-            validation["physical_embedding_type"] == expected_embedding_type(),
+            validation["physical_embedding_type_valid"],
             validation["windows"] == len(embedded_ids),
         ]
     )
