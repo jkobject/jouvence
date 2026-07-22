@@ -1,0 +1,132 @@
+{
+  "edges": [
+    {
+      "anchor_role": "x",
+      "credibility": 3,
+      "display_relation": "disease associated gene",
+      "edge_key": "fixture:edge:5",
+      "effect_direction": "risk",
+      "kind": "observed",
+      "neighbor_id": "EFO:0000616",
+      "neighbor_name": "lung carcinoma",
+      "neighbor_type": "disease",
+      "relation": "disease_associated_gene",
+      "row_kind": "observed",
+      "score": 0.74,
+      "source": "OpenTargets fixture",
+      "x_id": "ENSG00000146648",
+      "x_type": "gene",
+      "y_id": "EFO:0000616",
+      "y_type": "disease"
+    },
+    {
+      "anchor_role": "y",
+      "credibility": 3,
+      "display_relation": "molecule targets gene",
+      "edge_key": "fixture:edge:6",
+      "kind": "observed",
+      "neighbor_id": "CHEMBL1201585",
+      "neighbor_name": "gefitinib",
+      "neighbor_type": "molecule",
+      "pharmacological_action": "inhibitor",
+      "relation": "molecule_targets_gene",
+      "row_kind": "observed",
+      "score": 0.94,
+      "source": "ChEMBL fixture",
+      "x_id": "CHEMBL1201585",
+      "x_type": "molecule",
+      "y_id": "ENSG00000146648",
+      "y_type": "gene"
+    }
+  ],
+  "evidence": [
+    {
+      "edge_key": "fixture:edge:6",
+      "evidence_score": 0.94,
+      "license": "fixture only",
+      "paper_id": "CHEMBL-ACT:fixture:1",
+      "predicate": "inhibits",
+      "relation": "molecule_targets_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "ChEMBL fixture",
+      "source_dataset": "mechanism",
+      "source_record_id": "fixture:chembl:gefitinib-egfr",
+      "x_id": "CHEMBL1201585",
+      "x_type": "molecule",
+      "y_id": "ENSG00000146648",
+      "y_type": "gene"
+    }
+  ],
+  "features": [
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "description",
+      "feature_kind": "identity_summary",
+      "node_id": "ENSG00000146648",
+      "node_type": "gene",
+      "release": "fixture-v1",
+      "source": "Ensembl fixture",
+      "value": "Epidermal growth factor receptor; a receptor tyrosine kinase involved in proliferation and survival signaling."
+    }
+  ],
+  "long_range": [],
+  "meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "snapshot_id": "fixture-v1",
+    "truncated": false
+  },
+  "node": {
+    "aliases": [
+      {
+        "kind": "symbol",
+        "source": "HGNC fixture",
+        "value": "EGFR"
+      },
+      {
+        "kind": "external_id",
+        "source": "HGNC fixture",
+        "value": "HGNC:3236"
+      },
+      {
+        "kind": "external_id",
+        "source": "NCBI Gene fixture",
+        "value": "1956"
+      },
+      {
+        "kind": "external_id",
+        "source": "UniProt fixture",
+        "value": "P00533"
+      }
+    ],
+    "attributes": {
+      "biotype": "protein_coding",
+      "chromosome": "7p11.2"
+    },
+    "description": "Epidermal growth factor receptor; a receptor tyrosine kinase involved in proliferation and survival signaling.",
+    "display_name": "EGFR",
+    "external_links": [
+      {
+        "kind": "external_id",
+        "label": "HGNC:3236",
+        "url": "https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/HGNC:3236"
+      },
+      {
+        "kind": "external_id",
+        "label": "1956",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=1956"
+      },
+      {
+        "kind": "external_id",
+        "label": "P00533",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=P00533"
+      }
+    ],
+    "node_id": "ENSG00000146648",
+    "node_type": "gene",
+    "source": "Ensembl fixture"
+  },
+  "putative_links": []
+}

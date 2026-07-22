@@ -1,0 +1,301 @@
+{
+  "edges": [
+    {
+      "anchor_role": "x",
+      "credibility": 3,
+      "display_relation": "disease associated gene",
+      "edge_key": "fixture:edge:1",
+      "effect_direction": "risk",
+      "kind": "observed",
+      "neighbor_id": "EFO:0000305",
+      "neighbor_name": "breast carcinoma",
+      "neighbor_type": "disease",
+      "relation": "disease_associated_gene",
+      "row_kind": "observed",
+      "score": 0.92,
+      "source": "OpenTargets fixture",
+      "x_id": "ENSG00000012048",
+      "x_type": "gene",
+      "y_id": "EFO:0000305",
+      "y_type": "disease"
+    },
+    {
+      "anchor_role": "x",
+      "credibility": 2,
+      "display_relation": "gene interacts gene",
+      "edge_key": "fixture:edge:9",
+      "interaction_kind": "physical_interaction",
+      "kind": "observed",
+      "neighbor_id": "ENSG00000141510",
+      "neighbor_name": "TP53",
+      "neighbor_type": "gene",
+      "relation": "gene_interacts_gene",
+      "row_kind": "observed",
+      "score": 0.79,
+      "source": "BioGRID fixture",
+      "x_id": "ENSG00000012048",
+      "x_type": "gene",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    }
+  ],
+  "evidence": [
+    {
+      "edge_key": "fixture:edge:1",
+      "evidence_score": 0.92,
+      "license": "CC BY 4.0 fixture metadata",
+      "paper_id": "PMID:0000001",
+      "predicate": "associated_with",
+      "relation": "disease_associated_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "OpenTargets fixture",
+      "source_dataset": "associationByDatasourceDirect",
+      "source_record_id": "fixture:ot:brca1-breast",
+      "x_id": "ENSG00000012048",
+      "x_type": "gene",
+      "y_id": "EFO:0000305",
+      "y_type": "disease"
+    },
+    {
+      "edge_key": "fixture:edge:1",
+      "evidence_score": 0.88,
+      "license": "fixture only",
+      "paper_id": "PMID:0000002",
+      "predicate": "germline_role",
+      "relation": "disease_associated_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "ClinGen fixture",
+      "source_dataset": "gene_validity",
+      "source_record_id": "fixture:cg:brca1",
+      "x_id": "ENSG00000012048",
+      "x_type": "gene",
+      "y_id": "EFO:0000305",
+      "y_type": "disease"
+    },
+    {
+      "edge_key": "fixture:edge:9",
+      "evidence_score": 0.79,
+      "license": "fixture only",
+      "paper_id": "BIOGRID:fixture:12",
+      "predicate": "physical_interaction",
+      "relation": "gene_interacts_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "BioGRID fixture",
+      "source_dataset": "physical_interactions",
+      "source_record_id": "fixture:biogrid:brca1-tp53",
+      "x_id": "ENSG00000012048",
+      "x_type": "gene",
+      "y_id": "ENSG00000141510",
+      "y_type": "gene"
+    }
+  ],
+  "features": [
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "description",
+      "feature_kind": "identity_summary",
+      "node_id": "ENSG00000012048",
+      "node_type": "gene",
+      "release": "fixture-v1",
+      "source": "Ensembl fixture",
+      "value": "DNA repair associated protein 1; a tumor suppressor involved in homologous recombination and genome integrity."
+    },
+    {
+      "epistemic_kind": "source-backed",
+      "feature_key": "chromosome",
+      "feature_kind": "genomic_context",
+      "node_id": "ENSG00000012048",
+      "node_type": "gene",
+      "release": "fixture-v1",
+      "source": "Ensembl fixture",
+      "value": "17q21.31"
+    },
+    {
+      "epistemic_kind": "model/fallback",
+      "feature_key": "fixture_embedding_family",
+      "feature_kind": "model_context",
+      "node_id": "ENSG00000012048",
+      "node_type": "gene",
+      "release": "fixture-v1",
+      "source": "fixture ranker",
+      "value": "text-neighborhood-demo"
+    }
+  ],
+  "long_range": [
+    {
+      "anchor_id": "ENSG00000012048",
+      "anchor_type": "gene",
+      "caveats": "Observed row shown in ranked context; not a causal claim.",
+      "observed_overlap": true,
+      "path_length": 1,
+      "rank": 1,
+      "ranker_id": "fixture_path_ranker",
+      "ranker_version": "v1",
+      "row_kind": "ranked",
+      "score": 0.94,
+      "support_path": "BRCA1 \u2192 breast carcinoma",
+      "support_relations": [
+        "disease_associated_gene"
+      ],
+      "target_id": "EFO:0000305",
+      "target_name": "breast carcinoma",
+      "target_type": "disease"
+    },
+    {
+      "anchor_id": "ENSG00000012048",
+      "anchor_type": "gene",
+      "caveats": "Shared disease context; not physical interaction evidence.",
+      "observed_overlap": false,
+      "path_length": 2,
+      "rank": 1,
+      "ranker_id": "fixture_path_ranker",
+      "ranker_version": "v1",
+      "row_kind": "ranked",
+      "score": 0.79,
+      "support_path": "BRCA1 \u2192 breast carcinoma \u2192 TP53",
+      "support_relations": [
+        "disease_associated_gene"
+      ],
+      "target_id": "ENSG00000141510",
+      "target_name": "TP53",
+      "target_type": "gene"
+    },
+    {
+      "anchor_id": "ENSG00000012048",
+      "anchor_type": "gene",
+      "caveats": "Ranked retrieval only; treatment direction is not inferred.",
+      "observed_overlap": false,
+      "path_length": 3,
+      "rank": 1,
+      "ranker_id": "fixture_path_ranker",
+      "ranker_version": "v1",
+      "row_kind": "ranked",
+      "score": 0.65,
+      "support_path": "BRCA1 \u2192 TP53 \u2192 EGFR \u2192 gefitinib",
+      "support_relations": [
+        "disease_associated_gene",
+        "molecule_targets_gene"
+      ],
+      "target_id": "CHEMBL1201585",
+      "target_name": "gefitinib",
+      "target_type": "molecule"
+    },
+    {
+      "anchor_id": "ENSG00000012048",
+      "anchor_type": "gene",
+      "caveats": "Ontology-like context, not observed gene phenotype evidence.",
+      "observed_overlap": false,
+      "path_length": 2,
+      "rank": 1,
+      "ranker_id": "fixture_path_ranker",
+      "ranker_version": "v1",
+      "row_kind": "ranked",
+      "score": 0.61,
+      "support_path": "BRCA1 \u2192 cancer ontology context \u2192 proliferation",
+      "support_relations": [
+        "disease_has_phenotype"
+      ],
+      "target_id": "HP:0003011",
+      "target_name": "Abnormal cell proliferation",
+      "target_type": "phenotype"
+    }
+  ],
+  "meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "snapshot_id": "fixture-v1",
+    "truncated": false
+  },
+  "node": {
+    "aliases": [
+      {
+        "kind": "symbol",
+        "source": "HGNC fixture",
+        "value": "BRCA1"
+      },
+      {
+        "kind": "external_id",
+        "source": "HGNC fixture",
+        "value": "HGNC:1100"
+      },
+      {
+        "kind": "external_id",
+        "source": "NCBI Gene fixture",
+        "value": "672"
+      },
+      {
+        "kind": "external_id",
+        "source": "UniProt fixture",
+        "value": "P38398"
+      }
+    ],
+    "attributes": {
+      "biotype": "protein_coding",
+      "chromosome": "17q21.31"
+    },
+    "description": "DNA repair associated protein 1; a tumor suppressor involved in homologous recombination and genome integrity.",
+    "display_name": "BRCA1",
+    "external_links": [
+      {
+        "kind": "external_id",
+        "label": "HGNC:1100",
+        "url": "https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/HGNC:1100"
+      },
+      {
+        "kind": "external_id",
+        "label": "672",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=672"
+      },
+      {
+        "kind": "external_id",
+        "label": "P38398",
+        "url": "https://www.ncbi.nlm.nih.gov/search/all/?term=P38398"
+      }
+    ],
+    "node_id": "ENSG00000012048",
+    "node_type": "gene",
+    "source": "Ensembl fixture"
+  },
+  "putative_links": [
+    {
+      "anchor_id": "ENSG00000012048",
+      "anchor_type": "gene",
+      "leakage_caveat": "Association path is not a causal disease assertion.",
+      "observed_overlap": false,
+      "policy_class": "inferred_weak",
+      "row_kind": "inferred",
+      "support_edge_hashes": [
+        "fixture:edge:1",
+        "fixture:edge:4"
+      ],
+      "support_path": "BRCA1 \u2192 TP53 \u2192 lung carcinoma",
+      "target_id": "EFO:0000616",
+      "target_name": "lung carcinoma",
+      "target_type": "disease",
+      "template_id": "gene_disease_path_v1",
+      "template_version": "v1"
+    },
+    {
+      "anchor_id": "ENSG00000012048",
+      "anchor_type": "gene",
+      "leakage_caveat": "Drug action and disease mechanism are incomplete.",
+      "observed_overlap": false,
+      "policy_class": "inferred_weak",
+      "row_kind": "inferred",
+      "support_edge_hashes": [
+        "fixture:edge:6",
+        "fixture:edge:5"
+      ],
+      "support_path": "gefitinib \u2192 EGFR \u2192 lung carcinoma; BRCA1 shares cancer context",
+      "target_id": "CHEMBL1201585",
+      "target_name": "gefitinib",
+      "target_type": "molecule",
+      "template_id": "molecule_gene_disease_v1",
+      "template_version": "v1"
+    }
+  ]
+}
