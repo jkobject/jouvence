@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import hashlib
+import os
 
 import nbformat
 import numpy as np
@@ -128,6 +129,67 @@ def test_static_checker_rejects_an_undersized_notebook(
     result = check_public_notebooks.check_notebook(path)
 
     assert any("at least 30 meaningful cells" in failure for failure in result["failures"])
+
+
+def test_static_checker_rejects_writes_unbounded_reads_and_false_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cells = [
+        nbformat.v4.new_markdown_cell(f"## Chapter {index}\n\nSubstantial explanatory content for chapter {index}.")
+        if index % 2 == 0
+        else nbformat.v4.new_code_cell("value = 1 + 1\nprint(value)")
+        for index in range(30)
+    ]
+    cells[1] = nbformat.v4.new_code_cell(
+        "Path('/tmp/escape').write_text('unsafe')\n"
+        "frame = pd.read_parquet(dynamic_root)"
+    )
+    notebook = nbformat.v4.new_notebook(
+        cells=cells,
+        metadata={"jouvence": {"bounded": True, "read_only": False}},
+    )
+    path = tmp_path / "unsafe.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.check_notebook(path)
+
+    failures = "\n".join(result["failures"])
+    assert "read_only=true" in failures
+    assert "write operation" in failures
+    assert "unbounded Parquet read" in failures
+
+
+def test_notebook_execution_forces_isolated_fixture_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("JOUVENCE_DATA_MODE", "live")
+    monkeypatch.setenv("JOUVENCE_BILLING_PROJECT", "should-not-leak")
+    monkeypatch.setenv("JOUVENCE_LAMIN_LIVE", "1")
+    monkeypatch.setenv("JOUVENCE_EMBEDDING_MANIFEST_URI", "gs://should-not-leak/manifest.json")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/should/not/leak.json")
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_code_cell(
+                "import os\n"
+                "assert os.environ['JOUVENCE_DATA_MODE'] == 'fixture'\n"
+                "assert os.environ['JOUVENCE_NOTEBOOK_CACHE'].startswith(" + repr(str(tmp_path)) + ")\n"
+                "for name in ['JOUVENCE_BILLING_PROJECT', 'JOUVENCE_LAMIN_LIVE', "
+                "'JOUVENCE_EMBEDDING_MANIFEST_URI', 'GOOGLE_APPLICATION_CREDENTIALS']:\n"
+                "    assert name not in os.environ\n"
+                "print('isolated fixture pass')"
+            )
+        ]
+    )
+    path = tmp_path / "environment.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.execute_notebook(path, tmp_path)
+
+    executed = nbformat.read(result["executed_copy"], as_version=4)
+    assert "isolated fixture pass" in executed.cells[0].outputs[0]["text"]
+    assert os.environ["JOUVENCE_DATA_MODE"] == "live"
 
 
 def test_notebook_generation_is_byte_deterministic() -> None:

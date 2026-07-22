@@ -45,7 +45,7 @@ from manage_db.public_notebooks import (
 
 MODE = os.environ.get("JOUVENCE_DATA_MODE", "fixture")
 BILLING_PROJECT = os.environ.get("JOUVENCE_BILLING_PROJECT")
-CACHE = REPO_ROOT / "artifacts" / "cache" / "public-notebooks"
+CACHE = Path(os.environ.get("JOUVENCE_NOTEBOOK_CACHE", REPO_ROOT / "artifacts" / "cache" / "public-notebooks"))
 CACHE.mkdir(parents=True, exist_ok=True)
 KG_ROOT = build_public_fixture(CACHE / "kg-fixture") if MODE == "fixture" else PUBLIC_KG_ROOT
 print({"mode": MODE, "kg_root": str(KG_ROOT), "bounded": True})

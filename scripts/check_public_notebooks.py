@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -38,6 +40,48 @@ REQUIRED_PHRASES = [
     "partial",
     "bounded",
 ]
+WRITE_PATTERNS = (
+    ".write_text(",
+    ".write_bytes(",
+    ".to_parquet(",
+    ".to_csv(",
+    ".unlink(",
+    "shutil.rmtree(",
+    "os.remove(",
+    "write_nodes(",
+    "write_edges(",
+    "write_evidence(",
+)
+UNBOUNDED_PARQUET_PATTERNS = ("pd.read_parquet(", "pq.read_table(", "pyarrow.parquet.read_table(")
+NETWORK_PATTERNS = ("requests.", "httpx.", "urllib.request", "subprocess.", "socket.")
+CREDENTIAL_ACCESS_PATTERNS = (
+    "os.environ['GOOGLE_APPLICATION_CREDENTIALS']",
+    'os.environ["GOOGLE_APPLICATION_CREDENTIALS"]',
+    "os.getenv('GOOGLE_APPLICATION_CREDENTIALS'",
+    'os.getenv("GOOGLE_APPLICATION_CREDENTIALS"',
+)
+SCRUBBED_EXECUTION_ENV = (
+    "JOUVENCE_BILLING_PROJECT",
+    "JOUVENCE_LAMIN_LIVE",
+    "JOUVENCE_EMBEDDING_MANIFEST_URI",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+)
+
+
+@contextmanager
+def fixture_execution_environment(cache_path: Path):
+    """Force generated-notebook execution into a contained fixture environment."""
+
+    previous = os.environ.copy()
+    try:
+        os.environ["JOUVENCE_DATA_MODE"] = "fixture"
+        os.environ["JOUVENCE_NOTEBOOK_CACHE"] = str(cache_path)
+        for name in SCRUBBED_EXECUTION_ENV:
+            os.environ.pop(name, None)
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(previous)
 
 
 def check_notebook(path: Path) -> dict[str, object]:
@@ -47,6 +91,7 @@ def check_notebook(path: Path) -> dict[str, object]:
     failures: list[str] = []
     markdown = [cell for cell in notebook.cells if cell.cell_type == "markdown"]
     code = [cell for cell in notebook.cells if cell.cell_type == "code"]
+    code_text = "\n".join(str(cell.source) for cell in code)
     headings = [
         line
         for cell in markdown
@@ -65,6 +110,16 @@ def check_notebook(path: Path) -> dict[str, object]:
         failures.append("contains trivial markdown cell")
     if notebook.metadata.get("jouvence", {}).get("bounded") is not True:
         failures.append("missing metadata.jouvence.bounded=true")
+    if notebook.metadata.get("jouvence", {}).get("read_only") is not True:
+        failures.append("missing metadata.jouvence.read_only=true")
+    if any(pattern in code_text for pattern in WRITE_PATTERNS):
+        failures.append("contains forbidden write operation")
+    if any(pattern in code_text for pattern in UNBOUNDED_PARQUET_PATTERNS):
+        failures.append("contains unbounded Parquet read")
+    if any(pattern in code_text for pattern in NETWORK_PATTERNS):
+        failures.append("contains direct network/process operation")
+    if any(pattern in code_text for pattern in CREDENTIAL_ACCESS_PATTERNS):
+        failures.append("contains direct credential-file access")
     for token in FORBIDDEN:
         if token in text:
             failures.append(f"forbidden token: {token}")
@@ -91,7 +146,8 @@ def execute_notebook(path: Path, destination: Path) -> dict[str, object]:
         kernel_name="python3",
         resources={"metadata": {"path": str(ROOT)}},
     )
-    client.execute()
+    with fixture_execution_environment(destination / "_fixture_cache"):
+        client.execute()
     output_path = destination / path.name
     nbformat.write(notebook, output_path)
     return {"path": str(path.relative_to(ROOT)), "status": "pass", "executed_copy": str(output_path)}
