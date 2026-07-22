@@ -61,23 +61,6 @@
   "evidence": [
     {
       "edge_key": "fixture:edge:1",
-      "evidence_score": 0.92,
-      "license": "CC BY 4.0 fixture metadata",
-      "paper_id": "PMID:0000001",
-      "predicate": "associated_with",
-      "relation": "disease_associated_gene",
-      "release": "fixture-v1",
-      "row_kind": "observed",
-      "source": "OpenTargets fixture",
-      "source_dataset": "associationByDatasourceDirect",
-      "source_record_id": "fixture:ot:brca1-breast",
-      "x_id": "ENSG00000012048",
-      "x_type": "gene",
-      "y_id": "EFO:0000305",
-      "y_type": "disease"
-    },
-    {
-      "edge_key": "fixture:edge:1",
       "evidence_score": 0.88,
       "license": "fixture only",
       "paper_id": "PMID:0000002",
@@ -88,6 +71,23 @@
       "source": "ClinGen fixture",
       "source_dataset": "gene_validity",
       "source_record_id": "fixture:cg:brca1",
+      "x_id": "ENSG00000012048",
+      "x_type": "gene",
+      "y_id": "EFO:0000305",
+      "y_type": "disease"
+    },
+    {
+      "edge_key": "fixture:edge:1",
+      "evidence_score": 0.92,
+      "license": "CC BY 4.0 fixture metadata",
+      "paper_id": "PMID:0000001",
+      "predicate": "associated_with",
+      "relation": "disease_associated_gene",
+      "release": "fixture-v1",
+      "row_kind": "observed",
+      "source": "OpenTargets fixture",
+      "source_dataset": "associationByDatasourceDirect",
+      "source_record_id": "fixture:ot:brca1-breast",
       "x_id": "ENSG00000012048",
       "x_type": "gene",
       "y_id": "EFO:0000305",
@@ -111,6 +111,15 @@
       "y_type": "disease"
     }
   ],
+  "evidence_meta": {
+    "bundle_version": "viewer-fixture-schema-v1",
+    "data_mode": "fixture",
+    "next_cursor": null,
+    "returned": 3,
+    "snapshot_id": "fixture-v1",
+    "total": 3,
+    "truncated": false
+  },
   "features": [
     {
       "epistemic_kind": "source-backed",

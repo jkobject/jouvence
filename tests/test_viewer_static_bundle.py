@@ -6,6 +6,7 @@ from pathlib import Path
 
 from manage_db.viewer import fixture
 from manage_db.viewer.app import _full_dossier
+from manage_db.viewer.bundle import FIXTURE_DATA
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,7 +29,7 @@ def test_static_manifest_and_entity_shards_match_backend_fixture() -> None:
 
     for (node_type, node_id), node in fixture.NODES.items():
         static_dossier = json.loads((BUNDLE_ROOT / "entities" / _entity_filename(node_type, node_id)).read_text())
-        assert static_dossier == _full_dossier(node)
+        assert static_dossier == _full_dossier(FIXTURE_DATA, node)
 
 
 def test_embedded_file_fallback_is_generated_from_same_bundle() -> None:
@@ -43,7 +44,7 @@ def test_embedded_file_fallback_is_generated_from_same_bundle() -> None:
 
     for key, dossier in embedded["entities"].items():
         node_type, node_id = key.split(":", 1)
-        assert dossier == _full_dossier(fixture.NODES[(node_type, node_id)])
+        assert dossier == _full_dossier(FIXTURE_DATA, fixture.NODES[(node_type, node_id)])
 
 
 def test_static_fixture_does_not_promote_ranked_gefitinib_link_to_observed() -> None:
