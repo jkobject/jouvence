@@ -101,11 +101,12 @@ def test_public_notebooks_are_substantial_chaptered_and_output_free() -> None:
 
         assert check["failures"] == [], path.name
         assert check["cells"] == len(notebook.cells)
+        assert check["commented_chapters"] == check["chapter_headings"], path.name
         assert all(cell.source.strip() for cell in notebook.cells), path.name
         assert all(cell.execution_count is None and not cell.outputs for cell in code), path.name
 
 
-def test_static_checker_accepts_a_concise_structured_notebook(
+def test_static_checker_accepts_a_compact_complete_course_with_placeholder_discussion(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     notebook = nbformat.v4.new_notebook(
@@ -116,13 +117,35 @@ def test_static_checker_accepts_a_concise_structured_notebook(
             nbformat.v4.new_markdown_cell(
                 "## Inspect one relation\n\nUse a stable identifier and retain source provenance."
             ),
-            nbformat.v4.new_code_cell("rows = [1, 2, 3]\nprint(rows)"),
+            nbformat.v4.new_code_cell(
+                "# Inspect the bounded rows before interpreting them.\nrows = [1, 2, 3]\nprint(rows)"
+            ),
             nbformat.v4.new_markdown_cell(
                 "### Interpretation and limitations\n\n"
                 "This illustrates execution but does not prove biological completeness."
             ),
             nbformat.v4.new_markdown_cell(
-                "## Troubleshooting\n\nCheck the selected identifier and bounded input before increasing scope."
+                "### Checkpoint\n\nExplain which conclusion the bounded rows support before continuing."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "## Troubleshoot misleading lesson labels\n\n"
+                "Discussing the words placeholder and smoke test is legitimate pedagogical prose, "
+                "not evidence that this complete lesson is unfinished."
+            ),
+            nbformat.v4.new_code_cell(
+                "# Summarize the exact bounded result for the checkpoint.\n"
+                "summary = {'rows': len(rows), 'bounded': True}\nprint(summary)"
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Interpretation and limitations\n\n"
+                "The summary describes this example but does not establish source completeness."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Troubleshooting checkpoint\n\n"
+                "Check the selected identifier and bounded input before increasing scope."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Next lesson\n\nContinue only after recording the supported claim and its boundary."
             ),
         ],
         metadata={"jouvence": {"bounded": True, "read_only": True}},
@@ -133,8 +156,78 @@ def test_static_checker_accepts_a_concise_structured_notebook(
 
     result = check_public_notebooks.check_notebook(path)
 
-    assert result["cells"] == 5
+    assert result["cells"] == 10
     assert result["failures"] == []
+
+
+def test_static_checker_rejects_a_two_cell_keyword_stuffed_notebook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_markdown_cell(
+                "# Relations\n\n"
+                "## Everything at once\n\n"
+                "### Interpretation and limitations\n\n"
+                "edge key source_record_id observed inferred provenance bounded. "
+                "This does not prove completeness, but it merely lists the required vocabulary."
+            ),
+            nbformat.v4.new_code_cell("value = 1\nprint(value)"),
+        ],
+        metadata={"jouvence": {"bounded": True, "read_only": True}},
+    )
+    path = tmp_path / "03_relations_evidence_and_questions.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.check_notebook(path)
+
+    result_failures = result["failures"]
+    assert isinstance(result_failures, list)
+    failures = "\n".join(str(failure) for failure in result_failures)
+    assert "coherent chapter" in failures
+    assert "multiple chapters" in failures
+
+
+def test_static_checker_rejects_repeated_cell_padding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repeated_chapter = (
+        "## Repeated chapter\n\n"
+        "edge key source_record_id observed inferred provenance bounded are listed without a lesson."
+    )
+    repeated_code = "value = 1\nprint(value)"
+    repeated_interpretation = (
+        "### Interpretation\n\nThis repeated text does not prove pedagogical completeness."
+    )
+    repeated_checkpoint = (
+        "### Checkpoint\n\nRepeat the same material instead of developing the question."
+    )
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_markdown_cell(
+                "# Padded relations lesson\n\nRepeated cells must not substitute for coherent progression."
+            ),
+            nbformat.v4.new_markdown_cell(repeated_chapter),
+            nbformat.v4.new_code_cell(repeated_code),
+            nbformat.v4.new_markdown_cell(repeated_interpretation),
+            nbformat.v4.new_markdown_cell(repeated_checkpoint),
+            nbformat.v4.new_markdown_cell(repeated_chapter),
+            nbformat.v4.new_code_cell(repeated_code),
+            nbformat.v4.new_markdown_cell(repeated_interpretation),
+            nbformat.v4.new_markdown_cell(repeated_checkpoint),
+        ],
+        metadata={"jouvence": {"bounded": True, "read_only": True}},
+    )
+    path = tmp_path / "03_relations_evidence_and_questions.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.check_notebook(path)
+
+    result_failures = result["failures"]
+    assert isinstance(result_failures, list)
+    assert "contains repeated cell padding" in result_failures
 
 
 def test_static_checker_rejects_a_placeholder_without_course_structure(
@@ -158,6 +251,47 @@ def test_static_checker_rejects_a_placeholder_without_course_structure(
     assert "missing executable example" in failures
     assert "missing interpretation or limitations" in failures
     assert "placeholder marker" in failures
+
+
+@pytest.mark.parametrize("marker", ["TBD: add analysis", "Stub — replace me", "Lorem ipsum", "To be completed"])
+def test_static_checker_rejects_explicit_unfinished_markers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, marker: str
+) -> None:
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_markdown_cell(
+                "# Structured shell\n\nThe shape is complete so the unfinished marker is tested directly."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "## First chapter\n\nInspect one bounded relation and retain its provenance."
+            ),
+            nbformat.v4.new_code_cell("rows = [1, 2]\nprint(rows)"),
+            nbformat.v4.new_markdown_cell(
+                "### Interpretation\n\nThese rows do not prove biological completeness."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Checkpoint\n\nState the supported conclusion before continuing."
+            ),
+            nbformat.v4.new_markdown_cell(f"## Second chapter\n\n{marker}"),
+            nbformat.v4.new_code_cell("summary = len(rows)\nprint(summary)"),
+            nbformat.v4.new_markdown_cell(
+                "### Interpretation\n\nThe summary has a bounded interpretation and limitation."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Troubleshooting\n\nCheck the selected identifier before increasing scope."
+            ),
+        ],
+        metadata={"jouvence": {"bounded": True, "read_only": True}},
+    )
+    path = tmp_path / "unfinished.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.check_notebook(path)
+
+    result_failures = result["failures"]
+    assert isinstance(result_failures, list)
+    assert "contains placeholder marker" in result_failures
 
 
 def test_static_checker_rejects_a_known_notebook_missing_its_topic_contract(
@@ -221,6 +355,69 @@ def test_static_checker_rejects_writes_unbounded_reads_and_false_read_only(
     assert "read_only=true" in failures
     assert "write operation" in failures
     assert "unbounded Parquet read" in failures
+
+
+@pytest.mark.parametrize(
+    ("unsafe_code", "expected_failure"),
+    [
+        ("open('/tmp/jouvence-escape', 'w').write('unsafe')", "write operation"),
+        (
+            "from pathlib import Path\nPath('/tmp/jouvence-escape').open('a').write('unsafe')",
+            "write operation",
+        ),
+        ("from subprocess import run as launch\nlaunch(['whoami'])", "process operation"),
+        ("import requests as client\nclient.get('https://example.com')", "network operation"),
+        ("import os\nprint(os.environ.get('PRIVATE_TOKEN'))", "environment access"),
+    ],
+)
+def test_static_checker_rejects_aliased_or_indirect_runtime_capabilities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_code: str,
+    expected_failure: str,
+) -> None:
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_markdown_cell(
+                "# Capability boundary\n\nThis bounded course demonstrates why execution stays contained."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "## Inspect the safe input\n\nUse fixture rows and retain stable identifiers."
+            ),
+            nbformat.v4.new_code_cell(
+                "# Inspect the fixture rows without external capabilities.\n"
+                "rows = [1, 2, 3]\nprint(rows)"
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Interpretation\n\nThe fixture output does not prove biological completeness."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Checkpoint\n\nConfirm that the selected rows support the stated conclusion."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "## Test the capability boundary\n\nThe checker must reject access beyond fixture computation."
+            ),
+            nbformat.v4.new_code_cell(
+                "# This operation must be rejected before notebook execution.\n" + unsafe_code
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Interpretation\n\nRejecting the operation preserves the read-only boundary."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Troubleshooting\n\nMove external operations outside the executable public course."
+            ),
+        ],
+        metadata={"jouvence": {"bounded": True, "read_only": True}},
+    )
+    path = tmp_path / "capability_boundary.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.check_notebook(path)
+
+    result_failures = result["failures"]
+    assert isinstance(result_failures, list)
+    assert expected_failure in "\n".join(str(failure) for failure in result_failures)
 
 
 def test_notebook_execution_forces_isolated_fixture_environment(

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from contextlib import contextmanager
 import json
 import os
@@ -89,7 +90,13 @@ REQUIRED_NOTEBOOK_CONCEPTS = {
         "link prediction",
     ),
 }
-PLACEHOLDER_PATTERNS = (r"\bcoming soon\b", r"\bplaceholder\b", r"\btodo\b")
+PLACEHOLDER_PATTERNS = (
+    r"(?im)^\s*(?:#{1,6}\s*)?coming soon\b",
+    r"(?im)^\s*(?:#{1,6}\s*)?(?:todo|tbd|placeholder|stub)(?:\s*[:—-]|\s*$)",
+    r"(?im)^\s*(?:#{1,6}\s*)?(?:lorem ipsum|to be completed)\b",
+)
+INTERPRETATION_HEADINGS = ("interpret", "limitation", "what this means", "boundary")
+CHECKPOINT_HEADINGS = ("checkpoint", "troubleshoot", "practice", "takeaway", "next step")
 WRITE_PATTERNS = (
     ".write_text(",
     ".write_bytes(",
@@ -104,11 +111,12 @@ WRITE_PATTERNS = (
 )
 UNBOUNDED_PARQUET_PATTERNS = ("pd.read_parquet(", "pq.read_table(", "pyarrow.parquet.read_table(")
 NETWORK_PATTERNS = ("requests.", "httpx.", "urllib.request", "subprocess.", "socket.")
-CREDENTIAL_ACCESS_PATTERNS = (
-    "os.environ['GOOGLE_APPLICATION_CREDENTIALS']",
-    'os.environ["GOOGLE_APPLICATION_CREDENTIALS"]',
-    "os.getenv('GOOGLE_APPLICATION_CREDENTIALS'",
-    'os.getenv("GOOGLE_APPLICATION_CREDENTIALS"',
+ALLOWED_ENVIRONMENT_VARIABLES = (
+    "JOUVENCE_BILLING_PROJECT",
+    "JOUVENCE_DATA_MODE",
+    "JOUVENCE_EMBEDDING_MANIFEST_URI",
+    "JOUVENCE_LAMIN_LIVE",
+    "JOUVENCE_NOTEBOOK_CACHE",
 )
 SCRUBBED_EXECUTION_ENV = (
     "JOUVENCE_BILLING_PROJECT",
@@ -132,6 +140,137 @@ def fixture_execution_environment(cache_path: Path):
     finally:
         os.environ.clear()
         os.environ.update(previous)
+
+
+def _leading_heading(source: str) -> tuple[int, str] | None:
+    """Return the first Markdown heading only when it leads the cell."""
+
+    first_line = next((line.strip() for line in source.splitlines() if line.strip()), "")
+    match = re.fullmatch(r"(#{1,6})\s+(.+)", first_line)
+    if not match:
+        return None
+    return len(match.group(1)), match.group(2).strip().lower()
+
+
+def _chapter_contracts(notebook: nbformat.NotebookNode) -> list[dict[str, object]]:
+    """Describe chapter-level teaching progression without prescribing total cells."""
+
+    chapter_starts = [
+        index
+        for index, cell in enumerate(notebook.cells)
+        if cell.cell_type == "markdown"
+        and (heading := _leading_heading(str(cell.source))) is not None
+        and heading[0] == 2
+    ]
+    contracts: list[dict[str, object]] = []
+    for position, start in enumerate(chapter_starts):
+        end = chapter_starts[position + 1] if position + 1 < len(chapter_starts) else len(notebook.cells)
+        cells = notebook.cells[start:end]
+        headings = [
+            heading[1]
+            for cell in cells
+            if cell.cell_type == "markdown"
+            and (heading := _leading_heading(str(cell.source))) is not None
+            and heading[0] == 3
+        ]
+        text = "\n".join(str(cell.source) for cell in cells).lower()
+        chapter_heading = _leading_heading(str(notebook.cells[start].source))
+        assert chapter_heading is not None
+        contracts.append(
+            {
+                "heading": chapter_heading[1],
+                "has_code": any(cell.cell_type == "code" and cell.source.strip() for cell in cells),
+                "has_interpretation": any(
+                    term in heading for heading in headings for term in INTERPRETATION_HEADINGS
+                ),
+                "has_checkpoint": any(
+                    term in heading for heading in headings for term in CHECKPOINT_HEADINGS
+                ),
+                "text": text,
+            }
+        )
+    return contracts
+
+
+def _qualified_name(node: ast.AST, aliases: dict[str, str]) -> str | None:
+    """Resolve a call target through direct and imported aliases."""
+
+    if isinstance(node, ast.Name):
+        return aliases.get(node.id, node.id)
+    if isinstance(node, ast.Attribute):
+        parent = _qualified_name(node.value, aliases)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    return None
+
+
+def _literal_string(node: ast.AST | None) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _code_capability_failures(code_text: str) -> list[str]:
+    """Reject executable capabilities outside the fixture-only course contract."""
+
+    try:
+        tree = ast.parse(code_text)
+    except SyntaxError as error:
+        return [f"contains invalid Python code: {error.msg}"]
+
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for imported in node.names:
+                aliases[imported.asname or imported.name.split(".")[0]] = imported.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for imported in node.names:
+                aliases[imported.asname or imported.name] = f"{node.module}.{imported.name}"
+
+    failures: set[str] = set()
+    write_methods = {
+        "open",
+        "to_csv",
+        "to_json",
+        "to_parquet",
+        "unlink",
+        "write",
+        "write_bytes",
+        "write_text",
+        "writelines",
+    }
+    process_prefixes = ("multiprocessing.", "os.popen", "os.system", "subprocess.")
+    network_prefixes = ("httpx.", "requests.", "socket.", "urllib.request.")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and _qualified_name(node.value, aliases) == "os.environ":
+            key = _literal_string(node.slice)
+            if key not in ALLOWED_ENVIRONMENT_VARIABLES:
+                failures.add("contains undeclared environment access")
+        if not isinstance(node, ast.Call):
+            continue
+
+        name = _qualified_name(node.func, aliases) or ""
+        method = name.rsplit(".", 1)[-1]
+        if name in {"os.getenv", "os.environ.get"}:
+            key = _literal_string(node.args[0] if node.args else None)
+            if key not in ALLOWED_ENVIRONMENT_VARIABLES:
+                failures.add("contains undeclared environment access")
+        if name == "open" or method == "open":
+            mode_node = node.args[1] if len(node.args) > 1 else next(
+                (keyword.value for keyword in node.keywords if keyword.arg == "mode"),
+                None,
+            )
+            mode = _literal_string(mode_node)
+            if mode is None or any(flag in mode for flag in "wax+"):
+                failures.add("contains forbidden write operation")
+        elif method in write_methods:
+            failures.add("contains forbidden write operation")
+        if name.startswith(process_prefixes):
+            failures.add("contains direct process operation")
+        if name.startswith(network_prefixes):
+            failures.add("contains direct network operation")
+
+    return sorted(failures)
 
 
 def check_notebook(path: Path) -> dict[str, object]:
@@ -160,6 +299,12 @@ def check_notebook(path: Path) -> dict[str, object]:
         for line in cell.source.splitlines()
         if re.match(r"^###\s+\S", line)
     ]
+    leading_titles = [
+        cell
+        for cell in markdown
+        if (heading := _leading_heading(str(cell.source))) is not None and heading[0] == 1
+    ]
+    chapter_contracts = _chapter_contracts(notebook)
     if not title_headings:
         failures.append("missing course title heading")
     if not chapter_headings:
@@ -168,30 +313,61 @@ def check_notebook(path: Path) -> dict[str, object]:
         failures.append("missing subsection heading")
     if not code:
         failures.append("missing executable example")
+    if len(leading_titles) != 1 or any(
+        re.search(r"(?m)^#{2,6}\s+\S", str(cell.source)) for cell in leading_titles
+    ):
+        failures.append("course title must be a dedicated leading cell")
+    incomplete_chapters = [
+        contract["heading"]
+        for contract in chapter_contracts
+        if not (
+            contract["has_code"]
+            and contract["has_interpretation"]
+            and contract["has_checkpoint"]
+        )
+    ]
+    if len(chapter_contracts) < 2 or incomplete_chapters:
+        failures.append(
+            "requires coherent chapter progression with an example, interpretation, and checkpoint "
+            f"in each chapter; incomplete={incomplete_chapters}"
+        )
     if not any(term in lower for term in ("interpret", "limitation", "does not", "not prove", "boundary")):
         failures.append("missing interpretation or limitations")
     if any(re.search(pattern, lower) for pattern in PLACEHOLDER_PATTERNS):
         failures.append("contains placeholder marker")
     required_concepts = REQUIRED_NOTEBOOK_CONCEPTS.get(path.name, ())
-    missing_concepts = [concept for concept in required_concepts if concept not in lower]
+    concept_chapters = {
+        index
+        for index, contract in enumerate(chapter_contracts)
+        if any(concept in str(contract["text"]) for concept in required_concepts)
+    }
+    missing_concepts = [
+        concept
+        for concept in required_concepts
+        if not any(concept in str(contract["text"]) for contract in chapter_contracts)
+    ]
     if missing_concepts:
         failures.append(f"missing required curriculum concepts: {missing_concepts}")
+    if required_concepts and len(concept_chapters) < 2:
+        failures.append("required curriculum concepts must be taught across multiple chapters")
     if any(not cell.source.strip() for cell in notebook.cells):
         failures.append("contains empty cell padding")
+    normalized_sources = [re.sub(r"\s+", " ", str(cell.source)).strip().lower() for cell in notebook.cells]
+    if len(normalized_sources) != len(set(normalized_sources)):
+        failures.append("contains repeated cell padding")
     if any(len(cell.source.split()) < 5 for cell in markdown):
         failures.append("contains trivial markdown cell")
     if notebook.metadata.get("jouvence", {}).get("bounded") is not True:
         failures.append("missing metadata.jouvence.bounded=true")
     if notebook.metadata.get("jouvence", {}).get("read_only") is not True:
         failures.append("missing metadata.jouvence.read_only=true")
+    failures.extend(_code_capability_failures(code_text))
     if any(pattern in code_text for pattern in WRITE_PATTERNS):
         failures.append("contains forbidden write operation")
     if any(pattern in code_text for pattern in UNBOUNDED_PARQUET_PATTERNS):
         failures.append("contains unbounded Parquet read")
     if any(pattern in code_text for pattern in NETWORK_PATTERNS):
         failures.append("contains direct network/process operation")
-    if any(pattern in code_text for pattern in CREDENTIAL_ACCESS_PATTERNS):
-        failures.append("contains direct credential-file access")
     for token in FORBIDDEN:
         if token in text:
             failures.append(f"forbidden token: {token}")
@@ -207,6 +383,15 @@ def check_notebook(path: Path) -> dict[str, object]:
         "title_headings": len(title_headings),
         "chapter_headings": len(chapter_headings),
         "subsection_headings": len(subsection_headings),
+        "coherent_chapters": sum(
+            bool(
+                contract["has_code"]
+                and contract["has_interpretation"]
+                and contract["has_checkpoint"]
+            )
+            for contract in chapter_contracts
+        ),
+        "curriculum_chapters": len(concept_chapters),
         "failures": failures,
         "phrases": {phrase: phrase in lower for phrase in REQUIRED_PHRASES},
     }
