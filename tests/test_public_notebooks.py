@@ -189,6 +189,48 @@ def test_static_checker_rejects_a_two_cell_keyword_stuffed_notebook(
     assert "multiple chapters" in failures
 
 
+def test_static_checker_rejects_a_structurally_dressed_keyword_stuffed_non_lesson(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_markdown_cell(
+                "# Relations shell\n\nThis shell distributes required words across a formal course shape."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "## A\n\nEdge key source_record_id observed are the first required concepts."
+            ),
+            nbformat.v4.new_code_cell("# Set a value without producing an interpretable result.\nx = 1"),
+            nbformat.v4.new_markdown_cell(
+                "### Interpretation\n\nThe value is bounded and does not prove completeness."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Checkpoint\n\nConfirm the generic statement before continuing."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "## B\n\nInferred provenance bounded are the remaining required concepts."
+            ),
+            nbformat.v4.new_code_cell("# Set another value without a meaningful output.\ny = 2"),
+            nbformat.v4.new_markdown_cell(
+                "### Interpretation\n\nThe second value is partial and has a limitation."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "### Checkpoint\n\nRepeat the generic conclusion to finish."
+            ),
+        ],
+        metadata={"jouvence": {"bounded": True, "read_only": True}},
+    )
+    path = tmp_path / "03_relations_evidence_and_questions.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.check_notebook(path)
+
+    failures = "\n".join(str(failure) for failure in result["failures"])
+    assert "descriptive chapter heading" in failures
+    assert "observable output" in failures
+
+
 def test_static_checker_rejects_repeated_cell_padding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -418,6 +460,22 @@ def test_static_checker_rejects_aliased_or_indirect_runtime_capabilities(
     result_failures = result["failures"]
     assert isinstance(result_failures, list)
     assert expected_failure in "\n".join(str(failure) for failure in result_failures)
+
+
+@pytest.mark.parametrize(
+    ("unsafe_code", "expected_failure"),
+    [
+        ("import subprocess\nlaunch = subprocess.run\nlaunch(['whoami'])", "process operation"),
+        ("import requests\nfetch = requests.get\nfetch('https://example.com')", "network operation"),
+        ("client = __import__('requests')\nclient.get('https://example.com')", "network operation"),
+    ],
+)
+def test_capability_analysis_tracks_assignment_aliases_and_dynamic_imports(
+    unsafe_code: str, expected_failure: str
+) -> None:
+    failures = check_public_notebooks._code_capability_failures(unsafe_code)
+
+    assert expected_failure in "\n".join(failures)
 
 
 def test_notebook_execution_forces_isolated_fixture_environment(

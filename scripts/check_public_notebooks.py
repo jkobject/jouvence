@@ -152,6 +152,26 @@ def _leading_heading(source: str) -> tuple[int, str] | None:
     return len(match.group(1)), match.group(2).strip().lower()
 
 
+def _has_observable_output(cells: list[nbformat.NotebookNode]) -> bool:
+    """Return whether a chapter visibly reports or asserts a computed result."""
+
+    for cell in cells:
+        if cell.cell_type != "code" or not cell.source.strip():
+            continue
+        try:
+            tree = ast.parse(str(cell.source))
+        except SyntaxError:
+            continue
+        if any(isinstance(node, ast.Assert) for node in ast.walk(tree)):
+            return True
+        if any(
+            isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call)
+            for statement in tree.body
+        ):
+            return True
+    return False
+
+
 def _chapter_contracts(notebook: nbformat.NotebookNode) -> list[dict[str, object]]:
     """Describe chapter-level teaching progression without prescribing total cells."""
 
@@ -179,6 +199,7 @@ def _chapter_contracts(notebook: nbformat.NotebookNode) -> list[dict[str, object
         contracts.append(
             {
                 "heading": chapter_heading[1],
+                "has_descriptive_heading": len(re.findall(r"[a-z0-9]+", chapter_heading[1])) >= 2,
                 "has_code": any(cell.cell_type == "code" and cell.source.strip() for cell in cells),
                 "has_comment": any(
                     cell.cell_type == "code"
@@ -191,6 +212,7 @@ def _chapter_contracts(notebook: nbformat.NotebookNode) -> list[dict[str, object
                 "has_checkpoint": any(
                     term in heading for heading in headings for term in CHECKPOINT_HEADINGS
                 ),
+                "has_observable_output": _has_observable_output(cells),
                 "text": text,
             }
         )
@@ -205,6 +227,13 @@ def _qualified_name(node: ast.AST, aliases: dict[str, str]) -> str | None:
     if isinstance(node, ast.Attribute):
         parent = _qualified_name(node.value, aliases)
         return f"{parent}.{node.attr}" if parent else node.attr
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "__import__"
+        and node.args
+    ):
+        return _literal_string(node.args[0])
     return None
 
 
@@ -230,6 +259,37 @@ def _code_capability_failures(code_text: str) -> list[str]:
         elif isinstance(node, ast.ImportFrom) and node.module:
             for imported in node.names:
                 aliases[imported.asname or imported.name] = f"{node.module}.{imported.name}"
+
+    assignments: list[tuple[str, ast.AST]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            assignments.extend(
+                (target.id, node.value) for target in node.targets if isinstance(target, ast.Name)
+            )
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value:
+            assignments.append((node.target.id, node.value))
+    denied_alias_roots = (
+        "httpx",
+        "multiprocessing",
+        "os.popen",
+        "os.system",
+        "requests",
+        "socket",
+        "subprocess",
+        "urllib.request",
+    )
+    for _ in range(len(assignments) + 1):
+        changed = False
+        for target, value in assignments:
+            provenance = _qualified_name(value, aliases)
+            denied_provenance = provenance is not None and any(
+                provenance == root or provenance.startswith(f"{root}.") for root in denied_alias_roots
+            )
+            if provenance is not None and denied_provenance and aliases.get(target) != provenance:
+                aliases[target] = provenance
+                changed = True
+        if not changed:
+            break
 
     failures: set[str] = set()
     write_methods = {
@@ -336,6 +396,19 @@ def check_notebook(path: Path) -> dict[str, object]:
         failures.append(
             "requires coherent chapter progression with a commented example, interpretation, and checkpoint "
             f"in each chapter; incomplete={incomplete_chapters}"
+        )
+    undescriptive_chapters = [
+        contract["heading"] for contract in chapter_contracts if not contract["has_descriptive_heading"]
+    ]
+    if undescriptive_chapters:
+        failures.append(f"requires a descriptive chapter heading; incomplete={undescriptive_chapters}")
+    chapters_without_output = [
+        contract["heading"] for contract in chapter_contracts if not contract["has_observable_output"]
+    ]
+    if chapters_without_output:
+        failures.append(
+            "requires an observable output or assertion in each chapter; "
+            f"incomplete={chapters_without_output}"
         )
     if not any(term in lower for term in ("interpret", "limitation", "does not", "not prove", "boundary")):
         failures.append("missing interpretation or limitations")
