@@ -40,6 +40,56 @@ REQUIRED_PHRASES = [
     "partial",
     "bounded",
 ]
+REQUIRED_NOTEBOOK_CONCEPTS = {
+    "01_data_model_and_use_cases.ipynb": (
+        "application default credentials",
+        "requester-pays",
+        "serviceusage.services.use",
+        "edge key",
+        "proof/",
+    ),
+    "02_nodes_features_and_embeddings.ipynb": (
+        "accepted immutable",
+        "manifest",
+        "cosine",
+        "pca fallback",
+        "sequence modality",
+        "leakage",
+    ),
+    "03_relations_evidence_and_questions.ipynb": (
+        "edge key",
+        "source_record_id",
+        "observed",
+        "inferred",
+        "provenance",
+        "bounded",
+    ),
+    "04_lamindb_equivalent_queries.ipynb": (
+        "canonical parquet",
+        "jkobject/jouvencekb",
+        "read-only",
+        "partial",
+        "exact-id",
+        "troubleshoot",
+    ),
+    "05_sampled_pyg_heterodata.ipynb": (
+        "heterodata",
+        "node map",
+        "edge_index",
+        "fallback",
+        "feature coverage",
+        "reverse",
+    ),
+    "06_sampled_ml_use_cases.ipynb": (
+        "negative samples",
+        "split",
+        "leakage",
+        "error analysis",
+        "metric",
+        "link prediction",
+    ),
+}
+PLACEHOLDER_PATTERNS = (r"\bcoming soon\b", r"\bplaceholder\b", r"\btodo\b")
 WRITE_PATTERNS = (
     ".write_text(",
     ".write_bytes(",
@@ -92,18 +142,40 @@ def check_notebook(path: Path) -> dict[str, object]:
     markdown = [cell for cell in notebook.cells if cell.cell_type == "markdown"]
     code = [cell for cell in notebook.cells if cell.cell_type == "code"]
     code_text = "\n".join(str(cell.source) for cell in code)
-    headings = [
+    title_headings = [
         line
         for cell in markdown
         for line in cell.source.splitlines()
-        if re.match(r"^##(?:#)?\s+\S", line)
+        if re.match(r"^#\s+\S", line)
     ]
-    if len(notebook.cells) < 30:
-        failures.append("requires at least 30 meaningful cells")
-    if len(markdown) < 12 or len(code) < 10:
-        failures.append("requires substantial markdown/code balance (>=12 markdown, >=10 code)")
-    if len(headings) < 5:
-        failures.append("requires at least 5 real chapter/subchapter headings")
+    chapter_headings = [
+        line
+        for cell in markdown
+        for line in cell.source.splitlines()
+        if re.match(r"^##\s+\S", line)
+    ]
+    subsection_headings = [
+        line
+        for cell in markdown
+        for line in cell.source.splitlines()
+        if re.match(r"^###\s+\S", line)
+    ]
+    if not title_headings:
+        failures.append("missing course title heading")
+    if not chapter_headings:
+        failures.append("missing chapter heading")
+    if not subsection_headings:
+        failures.append("missing subsection heading")
+    if not code:
+        failures.append("missing executable example")
+    if not any(term in lower for term in ("interpret", "limitation", "does not", "not prove", "boundary")):
+        failures.append("missing interpretation or limitations")
+    if any(re.search(pattern, lower) for pattern in PLACEHOLDER_PATTERNS):
+        failures.append("contains placeholder marker")
+    required_concepts = REQUIRED_NOTEBOOK_CONCEPTS.get(path.name, ())
+    missing_concepts = [concept for concept in required_concepts if concept not in lower]
+    if missing_concepts:
+        failures.append(f"missing required curriculum concepts: {missing_concepts}")
     if any(not cell.source.strip() for cell in notebook.cells):
         failures.append("contains empty cell padding")
     if any(len(cell.source.split()) < 5 for cell in markdown):
@@ -132,7 +204,9 @@ def check_notebook(path: Path) -> dict[str, object]:
         "cells": len(notebook.cells),
         "markdown_cells": len(markdown),
         "code_cells": len(code),
-        "chapter_headings": len(headings),
+        "title_headings": len(title_headings),
+        "chapter_headings": len(chapter_headings),
+        "subsection_headings": len(subsection_headings),
         "failures": failures,
         "phrases": {phrase: phrase in lower for phrase in REQUIRED_PHRASES},
     }

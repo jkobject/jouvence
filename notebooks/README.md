@@ -23,7 +23,9 @@ uv run python scripts/build_public_notebooks.py
 uv run python scripts/check_public_notebooks.py --execute
 ```
 
-Each notebook contains at least 30 substantive cells organized as chapters,
-interpretations, and checkpoints. Fixture mode is the default and performs no
-canonical write or full-KG read. Live reads are opt-in and bounded; follow the
-access variables documented in the repository [`README.md`](../README.md).
+Each notebook uses the natural number of substantive cells needed for its topic,
+organized as chapters, interpretations, and checkpoints. Cell counts are
+descriptive telemetry, not a release gate: concise lessons must not be padded or
+split artificially. Fixture mode is the default and performs no canonical write
+or full-KG read. Live reads are opt-in and bounded; follow the access variables
+documented in the repository [`README.md`](../README.md).

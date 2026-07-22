@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import re
 import hashlib
 import os
 
@@ -97,53 +96,117 @@ def test_public_notebooks_are_substantial_chaptered_and_output_free() -> None:
     assert len(PUBLIC_NOTEBOOKS) == 6
     for path in PUBLIC_NOTEBOOKS:
         notebook = nbformat.read(path, as_version=4)
-        markdown = [cell for cell in notebook.cells if cell.cell_type == "markdown"]
         code = [cell for cell in notebook.cells if cell.cell_type == "code"]
-        headings = [
-            line
-            for cell in markdown
-            for line in cell.source.splitlines()
-            if re.match(r"^##(?:#)?\s+\S", line)
-        ]
+        check = check_public_notebooks.check_notebook(path)
 
-        assert len(notebook.cells) >= 30, path.name
-        assert len(markdown) >= 12, path.name
-        assert len(code) >= 10, path.name
-        assert len(headings) >= 5, path.name
+        assert check["failures"] == [], path.name
+        assert check["cells"] == len(notebook.cells)
         assert all(cell.source.strip() for cell in notebook.cells), path.name
-        assert all(len(cell.source.split()) >= 5 for cell in markdown), path.name
         assert all(cell.execution_count is None and not cell.outputs for cell in code), path.name
 
 
-def test_static_checker_rejects_an_undersized_notebook(
+def test_static_checker_accepts_a_concise_structured_notebook(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     notebook = nbformat.v4.new_notebook(
-        cells=[nbformat.v4.new_markdown_cell("# Tiny notebook")],
-        metadata={"jouvence": {"bounded": True}},
+        cells=[
+            nbformat.v4.new_markdown_cell(
+                "# Focused lesson\n\nThis lesson answers one bounded scientific question."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "## Inspect one relation\n\nUse a stable identifier and retain source provenance."
+            ),
+            nbformat.v4.new_code_cell("rows = [1, 2, 3]\nprint(rows)"),
+            nbformat.v4.new_markdown_cell(
+                "### Interpretation and limitations\n\n"
+                "This illustrates execution but does not prove biological completeness."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "## Troubleshooting\n\nCheck the selected identifier and bounded input before increasing scope."
+            ),
+        ],
+        metadata={"jouvence": {"bounded": True, "read_only": True}},
     )
-    path = tmp_path / "tiny.ipynb"
+    path = tmp_path / "focused.ipynb"
     nbformat.write(notebook, path)
     monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
 
     result = check_public_notebooks.check_notebook(path)
 
-    assert any("at least 30 meaningful cells" in failure for failure in result["failures"])
+    assert result["cells"] == 5
+    assert result["failures"] == []
+
+
+def test_static_checker_rejects_a_placeholder_without_course_structure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notebook = nbformat.v4.new_notebook(
+        cells=[nbformat.v4.new_markdown_cell("# Tiny notebook\n\nComing soon with examples.")],
+        metadata={"jouvence": {"bounded": True, "read_only": True}},
+    )
+    path = tmp_path / "placeholder.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.check_notebook(path)
+
+    result_failures = result["failures"]
+    assert isinstance(result_failures, list)
+    failures = "\n".join(str(failure) for failure in result_failures)
+    assert "missing chapter heading" in failures
+    assert "missing subsection heading" in failures
+    assert "missing executable example" in failures
+    assert "missing interpretation or limitations" in failures
+    assert "placeholder marker" in failures
+
+
+def test_static_checker_rejects_a_known_notebook_missing_its_topic_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_markdown_cell(
+                "# Generic lesson\n\nThis is substantial prose about a bounded example."
+            ),
+            nbformat.v4.new_markdown_cell(
+                "## Generic chapter\n\nInspect the input before drawing conclusions."
+            ),
+            nbformat.v4.new_code_cell("values = [1, 2]\nprint(values)"),
+            nbformat.v4.new_markdown_cell(
+                "### Interpretation and limitations\n\nThe result does not prove completeness."
+            ),
+        ],
+        metadata={"jouvence": {"bounded": True, "read_only": True}},
+    )
+    path = tmp_path / "03_relations_evidence_and_questions.ipynb"
+    nbformat.write(notebook, path)
+    monkeypatch.setattr(check_public_notebooks, "ROOT", tmp_path)
+
+    result = check_public_notebooks.check_notebook(path)
+
+    result_failures = result["failures"]
+    assert isinstance(result_failures, list)
+    assert any("missing required curriculum concepts" in str(failure) for failure in result_failures)
 
 
 def test_static_checker_rejects_writes_unbounded_reads_and_false_read_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cells = [
-        nbformat.v4.new_markdown_cell(f"## Chapter {index}\n\nSubstantial explanatory content for chapter {index}.")
-        if index % 2 == 0
-        else nbformat.v4.new_code_cell("value = 1 + 1\nprint(value)")
-        for index in range(30)
+        nbformat.v4.new_markdown_cell(
+            "# Unsafe lesson\n\nA deliberately unsafe example for checker validation."
+        ),
+        nbformat.v4.new_code_cell(
+            "Path('/tmp/escape').write_text('unsafe')\n"
+            "frame = pd.read_parquet(dynamic_root)"
+        ),
+        nbformat.v4.new_markdown_cell(
+            "## Inspect behavior\n\nThe checker should reject unsafe data access."
+        ),
+        nbformat.v4.new_markdown_cell(
+            "### Interpretation and limitations\n\nThis example must not execute or authorize writes."
+        ),
     ]
-    cells[1] = nbformat.v4.new_code_cell(
-        "Path('/tmp/escape').write_text('unsafe')\n"
-        "frame = pd.read_parquet(dynamic_root)"
-    )
     notebook = nbformat.v4.new_notebook(
         cells=cells,
         metadata={"jouvence": {"bounded": True, "read_only": False}},
