@@ -13,11 +13,28 @@ GCS_ROOT=gs://jouvencekb/kg/staging/gene-genomic-sequence-embeddings-20260721-t_
 SOURCE_ORIGIN=gs://jouvencekb/kg/staging/gene-genomic-sequence-20260625-t_720528ea
 
 write_heartbeat() {
-  "$REPO/.venv/bin/python" - "$HEARTBEAT" "$LEASE_ID" "$GENERATION" <<'PY'
-import json, os, sys
+  "$REPO/.venv/bin/python" - "$HEARTBEAT" "$LEASE_ID" "$GENERATION" "$BUILDER_OUT/manifest.json" "$GCS_ROOT" "$TASK_ROOT/source/features/gene_genomic_sequence.parquet" "$TASK_ROOT/preflight/gene.parquet" <<'PY'
+import json, os, re, sys
 from datetime import UTC, datetime
 from pathlib import Path
-path, lease_id, generation = sys.argv[1:]
+import pyarrow.parquet as pq
+path, lease_id, generation, manifest_path, target, source_path, canonical_path = sys.argv[1:]
+now = datetime.now(UTC).isoformat()
+durable_rows = 0
+durable_windows = 0
+source_denominator = pq.ParquetFile(source_path).metadata.num_rows
+canonical_ids = pq.read_table(canonical_path, columns=["id"])["id"].to_pylist()
+exact_ensg_denominator = sum(bool(re.fullmatch(r"ENSG[0-9]+", str(node_id))) for node_id in canonical_ids)
+manifest = Path(manifest_path)
+if manifest.is_file():
+    try:
+        value = json.loads(manifest.read_text())
+    except (OSError, json.JSONDecodeError):
+        value = {}
+    validation = value.get("validation", {})
+    if validation.get("passed"):
+        durable_rows = int(validation.get("source_rows_embedded", 0))
+        durable_windows = durable_rows
 payload = {
     "kind": "payload",
     "gcp_project_id": "jkobject-1549353370965",
@@ -27,8 +44,15 @@ payload = {
     "task": "t_03bf9e27",
     "lease_id": lease_id,
     "generation": int(generation),
-    "at": datetime.now(UTC).isoformat(),
+    "at": now,
+    "last_progress_at": now,
     "payload_pid": os.getppid(),
+    "target": target,
+    "phase": "resume_validate_finalize_publish",
+    "durable_rows": durable_rows,
+    "durable_windows": durable_windows,
+    "source_denominator": source_denominator,
+    "exact_ensg_denominator": exact_ensg_denominator,
 }
 tmp = Path(path + ".tmp")
 tmp.write_text(json.dumps(payload, sort_keys=True) + "\n")
